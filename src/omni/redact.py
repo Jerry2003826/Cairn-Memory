@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
+import math
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,25 @@ class _RegexDetector:
 
 
 _MIN_ENV_SECRET_LENGTH = 8
+_MAX_FULL_REDACTION_BYTES = 1024 * 1024
+_TRUNCATED_EDGE_BYTES = 256 * 1024
+
+SKIPLIST_PATTERNS = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "id_rsa*",
+    "id_ed25519*",
+    "*.kdbx",
+    "*credentials*",
+    ".netrc",
+    ".npmrc",
+    "*.tfstate",
+    "secrets.*",
+)
 
 _REGEX_PACK = (
     _RegexDetector(
@@ -54,8 +77,16 @@ _REGEX_PACK = (
     ),
     _RegexDetector(
         "auth_header",
-        re.compile(rb"(?i)\bAuthorization:\s*(?:Bearer|Basic)\s+([A-Za-z0-9._~+/\-=]{12,})"),
+        re.compile(
+            rb"(?i)\bAuthorization:\s*(?:Bearer|Basic)\s+([A-Za-z0-9._~+/\-=]{12,})"
+        ),
         secret_group=1,
+    ),
+    _RegexDetector(
+        "slack_webhook",
+        re.compile(
+            rb"https://hooks\.slack\.com/services/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+"
+        ),
     ),
     _RegexDetector(
         "url_credentials",
@@ -64,17 +95,30 @@ _REGEX_PACK = (
     ),
     _RegexDetector(
         "secret_assignment",
-        re.compile(rb"(?i)\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"]?([^'\"\s,}]{8,})['\"]?"),
+        re.compile(
+            rb"(?i)(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*['\"]?([^'\"\s,}]{8,})['\"]?"
+        ),
+        secret_group=1,
+    ),
+    _RegexDetector(
+        "high_entropy",
+        re.compile(
+            rb"(?i)(?:--(?:token|api-key|secret|password)\s+|X-Api-Key:\s*)([A-Za-z0-9._~+/\-=]{24,})"
+        ),
         secret_group=1,
     ),
 )
 
 
-def redact(payload: bytes) -> RedactionResult:
+def redact(payload: bytes, allow_values: Iterable[str | bytes] | None = None) -> RedactionResult:
     try:
+        allow_bytes = _allow_bytes(allow_values)
+        if len(payload) > _MAX_FULL_REDACTION_BYTES:
+            return _redact_truncated(payload, allow_bytes)
+
         findings: list[Finding] = []
-        redacted = _apply_env_reverse_lookup(payload, findings)
-        redacted = _apply_regex_pack(redacted, findings)
+        redacted = _apply_env_reverse_lookup(payload, findings, allow_bytes)
+        redacted = _apply_regex_pack(redacted, findings, allow_bytes)
     except Exception:
         return RedactionResult(
             data=_stub_for_redaction_failure(payload),
@@ -91,23 +135,50 @@ def redact_minimal(payload: bytes) -> RedactionResult:
     return redact(payload)
 
 
-def _apply_regex_pack(data: bytes, findings: list[Finding]) -> bytes:
+def redact_path(
+    path: Path | str, allow_values: Iterable[str | bytes] | None = None
+) -> RedactionResult:
+    file_path = Path(path)
+    payload = file_path.read_bytes()
+    if is_skiplisted_path(file_path):
+        return RedactionResult(
+            data=_stub_for_withheld_path(file_path, payload),
+            status="withheld",
+            detectors=("skiplist",),
+        )
+    return redact(payload, allow_values=allow_values)
+
+
+def is_skiplisted_path(path: Path | str) -> bool:
+    name = Path(path).name
+    lowered = name.lower()
+    return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in SKIPLIST_PATTERNS)
+
+
+def _apply_regex_pack(
+    data: bytes, findings: list[Finding], allow_values: set[bytes] | None = None
+) -> bytes:
     regex_findings: list[Finding] = []
     for detector in _REGEX_PACK:
         for match in detector.pattern.finditer(data):
             secret = match.group(detector.secret_group)
-            if secret:
+            if secret and _should_redact_secret(secret, detector.name, allow_values or set()):
                 regex_findings.append(Finding(detector.name, secret))
 
     findings.extend(regex_findings)
     return _replace_findings(data, regex_findings)
 
 
-def _apply_env_reverse_lookup(data: bytes, findings: list[Finding]) -> bytes:
+def _apply_env_reverse_lookup(
+    data: bytes, findings: list[Finding], allow_values: set[bytes] | None = None
+) -> bytes:
+    allowed = allow_values or set()
     env_findings = [
         Finding("env", value.encode("utf-8", errors="ignore"))
         for value in os.environ.values()
-        if _looks_like_env_secret(value) and value.encode("utf-8", errors="ignore") in data
+        if _looks_like_env_secret(value)
+        and value.encode("utf-8", errors="ignore") not in allowed
+        and value.encode("utf-8", errors="ignore") in data
     ]
     findings.extend(env_findings)
     return _replace_findings(data, env_findings)
@@ -115,6 +186,40 @@ def _apply_env_reverse_lookup(data: bytes, findings: list[Finding]) -> bytes:
 
 def _looks_like_env_secret(value: str) -> bool:
     return len(value) >= _MIN_ENV_SECRET_LENGTH and not value.isspace()
+
+
+def _should_redact_secret(secret: bytes, detector: str, allow_values: set[bytes]) -> bool:
+    if secret in allow_values:
+        return False
+    if detector == "high_entropy" and not _looks_high_entropy(secret):
+        return False
+    if detector == "high_entropy":
+        return True
+    return not _looks_like_false_positive(secret)
+
+
+def _looks_high_entropy(secret: bytes) -> bool:
+    if len(secret) < 24:
+        return False
+    if len(set(secret)) < 12:
+        return False
+    return _shannon_entropy(secret) >= 3.5
+
+
+def _shannon_entropy(secret: bytes) -> float:
+    counts = {byte: secret.count(byte) for byte in set(secret)}
+    total = len(secret)
+    return -sum((count / total) * math.log2(count / total) for count in counts.values())
+
+
+def _looks_like_false_positive(secret: bytes) -> bool:
+    if re.fullmatch(rb"[0-9a-fA-F]{40}", secret):
+        return True
+    if re.fullmatch(rb"[0-9a-fA-F]{64}", secret):
+        return True
+    if secret.startswith((b"sha256-", b"sha384-", b"sha512-")):
+        return True
+    return False
 
 
 def _replace_findings(data: bytes, findings: list[Finding]) -> bytes:
@@ -136,6 +241,53 @@ def _stub_for_redaction_failure(payload: bytes) -> bytes:
         "byte_len": len(payload),
     }
     return json.dumps(stub, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _stub_for_withheld_path(path: Path, payload: bytes) -> bytes:
+    stub = {
+        "error": "skiplisted_path_withheld",
+        "path_sha256": hashlib.sha256(str(path).encode("utf-8")).hexdigest(),
+        "payload_sha256": hashlib.sha256(payload).hexdigest(),
+        "byte_len": len(payload),
+    }
+    return json.dumps(stub, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _redact_truncated(payload: bytes, allow_values: set[bytes]) -> RedactionResult:
+    findings: list[Finding] = []
+    prefix = payload[:_TRUNCATED_EDGE_BYTES]
+    suffix = payload[-_TRUNCATED_EDGE_BYTES:]
+    redacted_prefix = _redact_chunk(prefix, findings, allow_values)
+    redacted_suffix = _redact_chunk(b"\n" + suffix, findings, allow_values)[1:]
+    body = {
+        "error": "payload_truncated",
+        "byte_len": len(payload),
+        "prefix": redacted_prefix.decode("utf-8", errors="replace"),
+        "suffix": redacted_suffix.decode("utf-8", errors="replace"),
+    }
+    detectors = _unique_detectors(findings)
+    return RedactionResult(
+        data=json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        status="truncated",
+        detectors=detectors,
+    )
+
+
+def _allow_bytes(values: Iterable[str | bytes] | None) -> set[bytes]:
+    if values is None:
+        return set()
+    allowed: set[bytes] = set()
+    for value in values:
+        if isinstance(value, bytes):
+            allowed.add(value)
+        else:
+            allowed.add(value.encode("utf-8"))
+    return allowed
+
+
+def _redact_chunk(chunk: bytes, findings: list[Finding], allow_values: set[bytes]) -> bytes:
+    redacted = _apply_env_reverse_lookup(chunk, findings, allow_values)
+    return _apply_regex_pack(redacted, findings, allow_values)
 
 
 def _unique_detectors(findings: list[Finding]) -> tuple[str, ...]:

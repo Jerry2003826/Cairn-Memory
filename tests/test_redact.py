@@ -23,7 +23,9 @@ def test_regex_pack_redacts_each_minimal_detector() -> None:
     cases = [
         ("aws_access_key", "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"),
         ("github_token", "token=ghp_abcdefghijklmnopqrstuvwxyz1234567890"),
+        ("github_token", "token=github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz1234567890"),
         ("openai_token", "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456789012"),
+        ("openai_token", "ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456789012"),
         (
             "jwt",
             "jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
@@ -34,8 +36,11 @@ def test_regex_pack_redacts_each_minimal_detector() -> None:
             "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBANsecret\n-----END RSA PRIVATE KEY-----",
         ),
         ("auth_header", "Authorization: Bearer bearer-token-value-123456"),
+        ("auth_header", "Authorization: Basic dXNlcjp2ZXJ5LXNlY3JldC12YWx1ZQ=="),
         ("url_credentials", "https://user:password@example.com/path"),
+        ("slack_webhook", "https://hooks.slack.invalid/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"),
         ("secret_assignment", "password = very-secret-password-123456"),
+        ("high_entropy", "--token 7c92d52a0a1b4e8faf4f0f21736e4a9df1fcd980"),
     ]
 
     for detector, payload in cases:
@@ -83,3 +88,37 @@ def test_redactor_exception_returns_stub_without_raw_payload(monkeypatch) -> Non
         "byte_len": len(payload),
     }
     assert payload.decode("utf-8") not in result.data.decode("utf-8")
+
+
+def test_large_payload_is_truncated_and_redacted() -> None:
+    prefix_secret = b"api_key=large-secret-value-123456"
+    suffix_secret = b"token=another-large-secret-value-7890"
+    payload = prefix_secret + b"A" * (1024 * 1024 + 10) + suffix_secret
+
+    result = redact_mod.redact(payload)
+
+    assert result.status == "truncated"
+    assert "secret_assignment" in result.detectors
+    assert len(result.data) < len(payload)
+    assert b"large-secret-value-123456" not in result.data
+    assert b"another-large-secret-value-7890" not in result.data
+    assert b"payload_truncated" in result.data
+
+
+def test_false_positive_guards_and_allow_values_do_not_redact() -> None:
+    allowed = "ghp_allowedallowedallowedallowedallowedallowed12"
+    payload = "\n".join(
+        [
+            "commit 0123456789abcdef0123456789abcdef01234567",
+            "HEAD detached at 0123456789abcdef0123456789abcdef01234567",
+            "sha512-deadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabe",
+            "artifact=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            f"token={allowed}",
+        ]
+    ).encode("utf-8")
+
+    result = redact_mod.redact(payload, allow_values={allowed})
+
+    assert result.status == "clean"
+    assert result.detectors == ()
+    assert result.data == payload

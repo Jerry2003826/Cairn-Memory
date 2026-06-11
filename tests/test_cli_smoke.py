@@ -221,6 +221,17 @@ def test_ingest_and_run_show_cli(tmp_path: Path) -> None:
     assert '"source": "transcript"' in expanded_result.stdout
 
 
+def test_audit_secrets_cli_passes_clean_omni_tree(tmp_path: Path) -> None:
+    (tmp_path / ".omni" / "spool").mkdir(parents=True)
+    (tmp_path / ".omni" / "spool" / "safe.jsonl").write_text("safe\n", encoding="utf-8")
+
+    result = run_omni(tmp_path, "audit", "secrets")
+
+    assert result.returncode == 0, result.stderr
+    assert '"ok": true' in result.stdout
+    assert (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
+
+
 def test_create_sandbox_script_creates_repo_fixture(tmp_path: Path) -> None:
     bash_check = subprocess.run(
         ["bash", "-lc", "true"],

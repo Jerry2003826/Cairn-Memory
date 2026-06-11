@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from omni import __version__
+from omni.audit import run_audit_cli
 from omni.config import ensure_project_layout
 from omni.hook import install_claude_hooks, run_from_stdin
 from omni.ingest import ingest as ingest_project
@@ -33,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_show_parser = run_subcommands.add_parser("show")
     run_show_parser.add_argument("run_id")
     run_show_parser.add_argument("--seq", type=int)
+    audit_parser = subcommands.add_parser("audit", help=argparse.SUPPRESS)
+    audit_subcommands = audit_parser.add_subparsers(dest="audit_command", required=True)
+    audit_subcommands.add_parser("secrets")
 
     return parser
 
@@ -74,6 +78,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run" and args.run_command == "show":
         _print_diff(run_show(None, args.run_id, seq=args.seq))
         return 0
+
+    if args.command == "audit" and args.audit_command == "secrets":
+        code, body = run_audit_cli(".")
+        _print_diff(body)
+        return code
 
     parser.error(f"unknown command: {args.command}")
     return 2

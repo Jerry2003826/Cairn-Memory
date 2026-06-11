@@ -1,0 +1,3 @@
+-----BEGIN RSA PRIVATE KEY-----
+MIIBOgIBAAJBANsecret
+-----END RSA PRIVATE KEY-----
