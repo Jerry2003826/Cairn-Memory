@@ -12,6 +12,8 @@ from omni.hook import install_claude_hooks, run_from_stdin
 from omni.ingest import ingest as ingest_project
 from omni.ingest import run_show
 from omni.parse import events_as_jsonl, parse_transcript
+from omni import inject
+from omni import render
 from omni import review
 
 
@@ -43,6 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     for command in ("approve", "reject"):
         review_command = review_subcommands.add_parser(command)
         review_command.add_argument("cand_id")
+    render_parser = subcommands.add_parser("render")
+    render_parser.add_argument("--diff", action="store_true")
+    render_parser.add_argument("--force", action="store_true")
+    inject_parser = subcommands.add_parser("inject")
+    inject_subcommands = inject_parser.add_subparsers(dest="inject_command", required=True)
+    inject_claude_parser = inject_subcommands.add_parser("claude")
+    inject_claude_parser.add_argument("--mode", choices=("preview", "link"), required=True)
 
     return parser
 
@@ -100,6 +109,33 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             conn.close()
         _print_diff(result.as_json())
+        return 0
+
+    if args.command == "render":
+        conn = render.connect_project(".")
+        try:
+            try:
+                result = render.render_project(conn, ".", diff=args.diff, force=args.force)
+            except render.ManualEditError as exc:
+                _print_diff(exc.diff)
+                print(str(exc), file=sys.stderr)
+                return 2
+        finally:
+            conn.close()
+        if args.diff:
+            _print_diff(result.diff)
+        else:
+            _print_diff(f"rendered {result.path}\n")
+        return 0
+
+    if args.command == "inject" and args.inject_command == "claude":
+        try:
+            result = inject.inject_claude(".", mode=args.mode)
+        except inject.ManagedRegionEditedError as exc:
+            _print_diff(exc.diff)
+            print(str(exc), file=sys.stderr)
+            return 2
+        _print_diff(result.body if args.mode == "preview" else result.diff)
         return 0
 
     parser.error(f"unknown command: {args.command}")

@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from omni import db
+from omni import gate
+from omni import render
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def run_omni(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "omni.cli", *args],
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def connect(tmp_path: Path):
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    return conn
+
+
+def add_fact(conn, *, predicate: str, qualifier: str, object_norm: str) -> None:
+    gate.insert_fact(
+        conn,
+        gate.FactCandidate(
+            scope="project",
+            subject=".",
+            predicate=predicate,
+            qualifier=qualifier,
+            object_norm=object_norm,
+            value_type="string",
+            claim=f"{predicate}: {object_norm}",
+            trust=2,
+            sensitivity="low",
+            origin="test@1",
+            evidence={"files": [{"path": "package.json", "hash": "abc"}]},
+        ),
+    )
+    conn.commit()
+
+
+def seed_project_facts(conn) -> None:
+    add_fact(conn, predicate="uses_package_manager", qualifier="node", object_norm="pnpm")
+    add_fact(conn, predicate="uses_test_command", qualifier="default", object_norm="pnpm run test")
+    add_fact(conn, predicate="uses_build_command", qualifier="default", object_norm="pnpm run build")
+
+
+def test_render_generates_byte_stable_memory_without_internal_metadata(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+
+    first = render.render_project(conn, tmp_path)
+    first_text = first.path.read_text(encoding="utf-8")
+    second = render.render_project(conn, tmp_path)
+    second_text = second.path.read_text(encoding="utf-8")
+
+    assert first.path == tmp_path / ".omni" / "generated" / "memory.md"
+    assert first_text == second_text
+    assert first_text.startswith("<!-- omni:generated render_ver=1 sha256=")
+    assert "# Project memory" in first_text
+    assert "## Commands" in first_text
+    assert "## Boundaries" in first_text
+    assert "## Project" in first_text
+    assert first_text.index("pnpm run build") < first_text.index("pnpm run test")
+    assert first_text.index("pnpm run test") < first_text.index("node package manager: pnpm")
+    assert "fact_" not in first_text
+    assert "confidence" not in first_text.lower()
+    assert "created_at" not in first_text.lower()
+
+
+def test_render_dirty_changes_only_when_visible_line_hash_changes(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="default", object_norm="pnpm run test")
+
+    render.render_project(conn, tmp_path)
+    first_hashes = [
+        row["dep_line_hash"]
+        for row in conn.execute("SELECT dep_line_hash FROM block_deps ORDER BY dep_line_hash")
+    ]
+    assert conn.execute("SELECT dirty FROM blocks WHERE block_id = 'project_memory'").fetchone()["dirty"] == 1
+
+    conn.execute("UPDATE facts SET confidence = 0.9, evidence = ? WHERE predicate = 'uses_test_command'", ('{"files":[]}',))
+    render.render_project(conn, tmp_path)
+    evidence_only_hashes = [
+        row["dep_line_hash"]
+        for row in conn.execute("SELECT dep_line_hash FROM block_deps ORDER BY dep_line_hash")
+    ]
+    assert evidence_only_hashes == first_hashes
+    assert conn.execute("SELECT dirty FROM blocks WHERE block_id = 'project_memory'").fetchone()["dirty"] == 0
+
+    conn.execute("UPDATE facts SET object_norm = 'npm test' WHERE predicate = 'uses_test_command'")
+    render.render_project(conn, tmp_path)
+    visible_change_hashes = [
+        row["dep_line_hash"]
+        for row in conn.execute("SELECT dep_line_hash FROM block_deps ORDER BY dep_line_hash")
+    ]
+    assert visible_change_hashes != first_hashes
+    assert conn.execute("SELECT dirty FROM blocks WHERE block_id = 'project_memory'").fetchone()["dirty"] == 1
+
+
+def test_render_refuses_manual_edit_without_force(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    result = render.render_project(conn, tmp_path)
+    result.path.write_text(result.path.read_text(encoding="utf-8") + "\nmanual edit\n", encoding="utf-8")
+
+    with pytest.raises(render.ManualEditError):
+        render.render_project(conn, tmp_path)
+
+    forced = render.render_project(conn, tmp_path, force=True)
+    assert "manual edit" not in forced.path.read_text(encoding="utf-8")
+
+
+def test_render_cli_diff_previews_without_writing_and_render_writes_file(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    conn.close()
+
+    diff = run_omni(tmp_path, "render", "--diff")
+    assert diff.returncode == 0, diff.stderr
+    assert "pnpm run test" in diff.stdout
+    assert not (tmp_path / ".omni" / "generated" / "memory.md").exists()
+
+    written = run_omni(tmp_path, "render")
+    assert written.returncode == 0, written.stderr
+    assert (tmp_path / ".omni" / "generated" / "memory.md").exists()
