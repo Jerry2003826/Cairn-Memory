@@ -38,6 +38,23 @@ _MAX_FULL_REDACTION_BYTES = 1024 * 1024
 _TRUNCATED_EDGE_BYTES = 256 * 1024
 _TRUNCATED_BOUNDARY_GUARD_BYTES = 4 * 1024
 _SECRET_ENV_KEY_HINTS = ("AUTH", "CREDENTIAL", "KEY", "PASSWORD", "SECRET", "TOKEN")
+_COMMON_LOW_ENTROPY_ENV_VALUES = {
+    "admin",
+    "administrator",
+    "changeme",
+    "changeit",
+    "default",
+    "example",
+    "letmein",
+    "none",
+    "null",
+    "password",
+    "qwerty",
+    "secret",
+    "test",
+    "testing",
+    "undefined",
+}
 _ALWAYS_REDACT_DETECTORS = {
     "auth_header",
     "aws_access_key",
@@ -199,11 +216,13 @@ def _apply_env_reverse_lookup(
 
 def _looks_like_env_secret(key: str, value: str) -> bool:
     upper_key = key.upper()
+    stripped = value.strip()
     return (
-        len(value) >= _MIN_ENV_SECRET_LENGTH
-        and not value.isspace()
+        len(stripped) >= _MIN_ENV_SECRET_LENGTH
+        and stripped
         and any(hint in upper_key for hint in _SECRET_ENV_KEY_HINTS)
-        and not _looks_like_path_value(value)
+        and stripped.lower() not in _COMMON_LOW_ENTROPY_ENV_VALUES
+        and not _looks_like_path_value(stripped)
     )
 
 

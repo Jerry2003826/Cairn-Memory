@@ -30,6 +30,17 @@ def test_env_reverse_lookup_ignores_path_like_environment_values(monkeypatch) ->
     assert result.data == payload
 
 
+def test_env_reverse_lookup_ignores_common_low_entropy_words(monkeypatch) -> None:
+    monkeypatch.setenv("DB_PASSWORD", "password")
+    payload = b'{"message":"Please type the word password when prompted."}'
+
+    result = redact_mod.redact(payload)
+
+    assert result.status == "clean"
+    assert result.detectors == ()
+    assert result.data == payload
+
+
 def test_regex_pack_redacts_each_minimal_detector() -> None:
     slack_webhook = (
         "https://hooks."

@@ -65,6 +65,34 @@ def test_capture_hook_skips_raw_event_parse_for_oversized_payload(
     assert not list((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
 
 
+@pytest.mark.parametrize("event_name", ["SessionEnd", "Stop"])
+def test_oversized_ingest_event_still_writes_request_file(
+    tmp_path: Path, monkeypatch, event_name: str
+) -> None:
+    def fail_raw_parse(_payload: bytes) -> dict[str, object]:
+        raise AssertionError("oversized payload should not be parsed as full JSON")
+
+    monkeypatch.setattr(hook, "_event_from_payload", fail_raw_parse)
+    payload = (
+        f'{{"hook_event_name":"{event_name}","session_id":"s-big",'.encode("utf-8")
+        + b'"transcript_path":"large.jsonl","padding":"'
+        + b"x" * hook.MAX_HOOK_EVENT_PARSE_BYTES
+        + b'"}'
+    )
+
+    result = hook.capture_hook(payload, root=tmp_path)
+
+    request_files = sorted((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+    request = json.loads(request_files[0].read_text(encoding="utf-8"))
+    assert result.ok is True
+    assert len(request_files) == 1
+    assert request == {
+        "event": event_name,
+        "session_id": "s-big",
+        "transcript_path": "large.jsonl",
+    }
+
+
 def test_capture_hook_discovers_project_root_from_subdirectory(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -204,8 +204,24 @@ def _event_from_payload(payload: bytes) -> dict[str, object]:
 
 def _event_for_enqueue(payload: bytes) -> dict[str, object]:
     if len(payload) > MAX_HOOK_EVENT_PARSE_BYTES:
-        return {}
+        event = {
+            key: _json_string_field(payload, key)
+            for key in ("hook_event_name", "session_id", "transcript_path")
+        }
+        return event if event.get("hook_event_name") in INGEST_EVENTS else {}
     return _event_from_payload(payload)
+
+
+def _json_string_field(payload: bytes, key: str) -> str | None:
+    pattern = rb'"' + re.escape(key.encode("utf-8")) + rb'"\s*:\s*"((?:\\.|[^"\\])*)"'
+    match = re.search(pattern, payload)
+    if match is None:
+        return None
+    try:
+        value = json.loads(b'"' + match.group(1) + b'"')
+    except Exception:
+        return None
+    return value if isinstance(value, str) else None
 
 
 def _redact_line(record: dict[str, object]) -> bytes:
