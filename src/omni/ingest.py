@@ -65,11 +65,19 @@ def ingest(
             if requests:
                 for request in requests:
                     transcript_path = request.get("transcript_path")
-                    rid = str(request.get("session_id") or run_id or "queued_run")
+                    request_session_id = _optional_str(request.get("session_id"))
+                    rid = request_session_id or run_id or "queued_run"
                     path = Path(str(transcript_path)) if transcript_path else None
                     if path is not None and not path.is_absolute():
                         path = base / path
-                    total_inserted += _ingest_one(conn, base, rid, path, include_hooks=True)
+                    total_inserted += _ingest_one(
+                        conn,
+                        base,
+                        rid,
+                        path,
+                        include_hooks=True,
+                        session_id=request_session_id,
+                    )
                     run_ids.append(rid)
             else:
                 rid = run_id or "hook_run"
@@ -153,12 +161,13 @@ def _ingest_one(
     transcript: Path | None,
     *,
     include_hooks: bool,
+    session_id: str | None = None,
 ) -> int:
     transcript_events: list[EventCandidate] = []
     if transcript is not None and transcript.exists():
         transcript_events = _transcript_candidates(conn, root, transcript)
 
-    hook_events = _hook_candidates(conn, root) if include_hooks else []
+    hook_events = _hook_candidates(conn, root, session_id=session_id) if include_hooks else []
     candidates = _reconcile_candidates(transcript_events, hook_events)
     _ensure_run(conn, root, run_id, transcript)
 
@@ -220,8 +229,16 @@ def _candidate_from_transcript_event(
     )
 
 
-def _hook_candidates(conn: sqlite3.Connection, root: Path) -> list[EventCandidate]:
+def _hook_candidates(
+    conn: sqlite3.Connection, root: Path, *, session_id: str | None = None
+) -> list[EventCandidate]:
     records = iter_hook_records(root)
+    if session_id is not None:
+        records = [
+            record
+            for record in records
+            if _optional_str(record.payload.get("session_id")) == session_id
+        ]
     by_tool: dict[str, list[HookRecord]] = {}
     without_tool: list[HookRecord] = []
     for record in records:

@@ -248,3 +248,45 @@ def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path)
     assert queue_path.read_text(encoding="utf-8") == ""
     assert closed >= 1
     assert dict(stale) == {"status": "closed", "end_reason": "watchdog"}
+
+
+def test_queued_ingest_scopes_hook_events_to_session_id(tmp_path: Path) -> None:
+    for session_id, tool_use_id, command in (
+        ("session_a", "toolu_a", "pnpm run test"),
+        ("session_b", "toolu_b", "pnpm run build"),
+    ):
+        hook.capture_hook(
+            json.dumps(
+                {
+                    "hook_event_name": "PostToolUse",
+                    "session_id": session_id,
+                    "timestamp": f"2026-06-11T00:00:0{1 if session_id == 'session_a' else 2}Z",
+                    "tool_use_id": tool_use_id,
+                    "tool": "Bash",
+                    "tool_input": {"command": command},
+                }
+            ).encode("utf-8"),
+            root=tmp_path,
+        )
+        hook.capture_hook(
+            json.dumps(
+                {
+                    "hook_event_name": "SessionEnd",
+                    "session_id": session_id,
+                    "transcript_path": None,
+                }
+            ).encode("utf-8"),
+            root=tmp_path,
+        )
+
+    result = ingest.ingest(root=tmp_path)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        "SELECT run_id, tool_use_id, meta FROM events WHERE tool_use_id IS NOT NULL ORDER BY run_id"
+    ).fetchall()
+
+    assert result.run_ids == ("session_a", "session_b")
+    assert [(row["run_id"], row["tool_use_id"]) for row in rows] == [
+        ("session_a", "toolu_a"),
+        ("session_b", "toolu_b"),
+    ]
