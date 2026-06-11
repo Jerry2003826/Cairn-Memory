@@ -155,10 +155,14 @@ def test_review_interactive_approves_rejects_and_summarizes(tmp_path: Path) -> N
     conn = connect(tmp_path)
     approve_candidate = gate.stage_candidate(conn, candidate("interactive-approve"))
     reject_candidate = gate.stage_candidate(conn, candidate("interactive-reject"))
-    conn.close()
+    decisions = iter(["a", "r"])
+    output: list[str] = []
 
-    result = run_omni(tmp_path, "review", "interactive", input_text="a\nr\n")
-    conn = connect(tmp_path)
+    result = review.interactive(
+        conn,
+        input_fn=lambda _prompt: next(decisions),
+        output_fn=output.append,
+    )
     states = dict(
         conn.execute(
             "SELECT object_norm, state FROM fact_candidates ORDER BY object_norm"
@@ -171,15 +175,14 @@ def test_review_interactive_approves_rejects_and_summarizes(tmp_path: Path) -> N
         "SELECT object_norm FROM suppressions WHERE object_norm = 'interactive-reject'"
     ).fetchone()
 
-    assert result.returncode == 0, result.stderr
-    assert approve_candidate.cand_id in result.stdout
-    assert reject_candidate.cand_id in result.stdout
-    assert json.loads(result.stdout.splitlines()[-1]) == {
-        "approved": 1,
-        "rejected": 1,
-        "skipped": 0,
-        "remaining": 0,
-    }
+    assert str(approve_candidate.cand_id) in "\n".join(output)
+    assert str(reject_candidate.cand_id) in "\n".join(output)
+    assert result == review.ReviewSummary(
+        approved=1,
+        rejected=1,
+        skipped=0,
+        remaining=0,
+    )
     assert states == {
         "interactive-approve": "approved",
         "interactive-reject": "rejected",
@@ -189,14 +192,13 @@ def test_review_interactive_approves_rejects_and_summarizes(tmp_path: Path) -> N
 
 
 def test_review_interactive_no_pending_candidates(tmp_path: Path) -> None:
-    connect(tmp_path).close()
+    conn = connect(tmp_path)
 
-    result = run_omni(tmp_path, "review", "interactive", input_text="")
+    result = review.interactive(conn, input_fn=lambda _prompt: "", output_fn=lambda _line: None)
 
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout.splitlines()[-1]) == {
-        "approved": 0,
-        "rejected": 0,
-        "skipped": 0,
-        "remaining": 0,
-    }
+    assert result == review.ReviewSummary(
+        approved=0,
+        rejected=0,
+        skipped=0,
+        remaining=0,
+    )

@@ -6,7 +6,6 @@ import argparse
 import sys
 
 from omni import __version__
-from omni import db
 from omni.audit import run_audit_cli
 from omni.config import ensure_project_layout
 from omni.hook import install_claude_hooks, run_from_stdin
@@ -102,19 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "doctor":
-        result = doctor.run(".")
-        _print_diff(result.as_json())
-        return 0 if result.ok else 1
+        return _experimental_disabled()
 
     if args.command == "parse":
-        layout = ensure_project_layout()
-        conn = db.connect(layout.root / ".omni" / "omni.sqlite3")
-        db.migrate(conn)
-        try:
-            result = parse_transcript(args.transcript, root=layout.root, conn=conn)
-            conn.commit()
-        finally:
-            conn.close()
+        result = parse_transcript(args.transcript)
         _print_diff(events_as_jsonl(result.events))
         return 0
 
@@ -136,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
         return code
 
     if args.command == "review":
+        if args.review_command == "interactive":
+            return _experimental_disabled()
         conn = review.connect_project(".")
         try:
             if args.review_command == "approve":
@@ -190,6 +182,11 @@ def _hide_subcommands(subparsers: argparse._SubParsersAction, names: set[str]) -
     subparsers._choices_actions = [
         action for action in subparsers._choices_actions if action.dest not in names
     ]
+
+
+def _experimental_disabled() -> int:
+    print("experimental disabled in week-1", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

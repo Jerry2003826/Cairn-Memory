@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from omni import db
 from omni.redact import redact
-from omni.store import put_artifact
 
 KNOWN_EVENT_KEYS = {
     "created_at",
@@ -57,8 +54,7 @@ class NormalizedEvent:
 @dataclass(frozen=True)
 class TranscriptArchive:
     kind: str
-    path: Path
-    artifact_hash: str
+    payload: bytes
     line_count: int
     redaction_status: str
     detectors: tuple[str, ...]
@@ -73,10 +69,8 @@ class ParseResult:
 def parse_transcript(
     path: Path | str,
     root: Path | str | None = None,
-    conn: sqlite3.Connection | None = None,
 ) -> ParseResult:
     transcript_path = Path(path)
-    base = Path(root or Path.cwd()).resolve()
     events: list[NormalizedEvent] = []
     archive_lines: list[bytes] = []
     archive_detectors: list[str] = []
@@ -108,28 +102,10 @@ def parse_transcript(
     archive = None
     if archive_lines:
         archive_payload = b"\n".join(archive_lines) + b"\n"
-        artifact_conn = conn
-        owns_conn = artifact_conn is None
-        if artifact_conn is None:
-            artifact_conn = db.connect(base / ".omni" / "omni.sqlite3")
-            db.migrate(artifact_conn)
-        try:
-            artifact = put_artifact(
-                base,
-                artifact_conn,
-                kind="transcript_archive",
-                data=archive_payload,
-            )
-            if owns_conn:
-                artifact_conn.commit()
-        finally:
-            if owns_conn:
-                artifact_conn.close()
         archive = TranscriptArchive(
             kind="transcript_archive",
-            path=artifact.path,
-            artifact_hash=artifact.hash,
-            line_count=artifact.line_count,
+            payload=archive_payload,
+            line_count=len(archive_lines),
             redaction_status=archive_status,
             detectors=tuple(dict.fromkeys(archive_detectors)),
         )

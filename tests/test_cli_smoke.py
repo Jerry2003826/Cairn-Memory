@@ -56,6 +56,7 @@ def test_init_creates_layout_and_is_idempotent(tmp_path: Path) -> None:
 
     gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert gitignore.count(".omni/generated/") == 1
+    assert gitignore.count(".omni/project_id") == 1
 
 
 def test_init_creates_project_id_file_and_keeps_it_after_path_move(tmp_path: Path) -> None:
@@ -222,6 +223,14 @@ def test_review_interactive_is_hidden_from_review_help(tmp_path: Path) -> None:
     assert "interactive" not in result.stdout
 
 
+def test_review_interactive_cli_is_disabled_for_week1(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "review", "interactive", input_text="")
+
+    assert result.returncode == 2
+    assert "experimental disabled in week-1" in result.stderr
+    assert not (tmp_path / ".omni").exists()
+
+
 def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path) -> None:
     empty_status = run_omni(tmp_path, "status")
 
@@ -245,81 +254,12 @@ def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path
     assert initialized["claude_link"] is False
 
 
-def test_doctor_cli_reports_missing_layout_without_creating_it(tmp_path: Path) -> None:
+def test_doctor_cli_is_disabled_for_week1(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "doctor")
 
-    assert result.returncode == 1
+    assert result.returncode == 2
     assert not (tmp_path / ".omni").exists()
-    body = json.loads(result.stdout)
-    assert body["experimental"] is True
-    assert body["ok"] is False
-    checks = {check["name"]: check["ok"] for check in body["checks"]}
-    assert checks["omni_dir"] is False
-    assert checks["config"] is False
-
-
-def test_doctor_cli_passes_ready_project(tmp_path: Path) -> None:
-    run_omni(tmp_path, "init")
-    run_omni(tmp_path, "ingest")
-    (tmp_path / ".omni" / "generated" / "memory.md").write_text(rendered_memory(), encoding="utf-8")
-    (tmp_path / "CLAUDE.md").write_text(
-        "# Demo\n<!-- omni:begin -->\n@.omni/generated/memory.md\n<!-- omni:end -->\n",
-        encoding="utf-8",
-    )
-    audit_dir = tmp_path / ".omni" / "audit"
-    audit_dir.mkdir()
-    (audit_dir / "secrets.passed").write_text("ok\n", encoding="utf-8")
-
-    result = run_omni(tmp_path, "doctor")
-
-    assert result.returncode == 0, result.stderr
-    body = json.loads(result.stdout)
-    assert body["experimental"] is True
-    assert body["ok"] is True
-    assert all(check["ok"] for check in body["checks"])
-
-
-def test_doctor_cli_fails_on_generated_memory_hash_mismatch(tmp_path: Path) -> None:
-    run_omni(tmp_path, "init")
-    run_omni(tmp_path, "ingest")
-    (tmp_path / ".omni" / "generated" / "memory.md").write_text(
-        "<!-- omni:generated render_ver=1 sha256="
-        + ("0" * 64)
-        + " DO NOT EDIT -->\n# Project memory\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "CLAUDE.md").write_text(
-        "<!-- omni:begin -->\n@.omni/generated/memory.md\n<!-- omni:end -->\n",
-        encoding="utf-8",
-    )
-    audit_dir = tmp_path / ".omni" / "audit"
-    audit_dir.mkdir()
-    (audit_dir / "secrets.passed").write_text("ok\n", encoding="utf-8")
-
-    result = run_omni(tmp_path, "doctor")
-
-    assert result.returncode == 1
-    checks = {check["name"]: check["ok"] for check in json.loads(result.stdout)["checks"]}
-    assert checks["generated_memory"] is False
-
-
-def test_doctor_cli_fails_on_corrupt_database(tmp_path: Path) -> None:
-    run_omni(tmp_path, "init")
-    (tmp_path / ".omni" / "omni.sqlite3").write_text("not sqlite", encoding="utf-8")
-    (tmp_path / ".omni" / "generated" / "memory.md").write_text(rendered_memory(), encoding="utf-8")
-    (tmp_path / "CLAUDE.md").write_text(
-        "<!-- omni:begin -->\n@.omni/generated/memory.md\n<!-- omni:end -->\n",
-        encoding="utf-8",
-    )
-    audit_dir = tmp_path / ".omni" / "audit"
-    audit_dir.mkdir()
-    (audit_dir / "secrets.passed").write_text("ok\n", encoding="utf-8")
-
-    result = run_omni(tmp_path, "doctor")
-
-    assert result.returncode == 1
-    checks = {check["name"]: check["ok"] for check in json.loads(result.stdout)["checks"]}
-    assert checks["database_schema"] is False
+    assert "experimental disabled in week-1" in result.stderr
 
 
 def test_hook_cli_redacts_stdin_to_spool_and_exits_zero(tmp_path: Path) -> None:
@@ -380,15 +320,8 @@ def test_parse_cli_outputs_events_and_redacted_archive(tmp_path: Path) -> None:
     event = json.loads(result.stdout)
     assert event["event_type"] == "tool_use"
     assert event["tool"] == "Bash"
+    assert not (tmp_path / ".omni").exists()
     assert not (tmp_path / ".omni" / "artifacts" / "transcript_archive.jsonl").exists()
-    conn = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
-    archive_hash = conn.execute(
-        "SELECT hash FROM artifacts WHERE kind = 'transcript_archive'"
-    ).fetchone()[0]
-    archive = tmp_path / ".omni" / "artifacts" / archive_hash[7:9] / archive_hash[9:11] / archive_hash
-    archive_text = archive.read_text(encoding="utf-8")
-    assert "cli-secret-value-123" not in archive_text
-    assert "REDACTED:env:" in archive_text
 
 
 def test_ingest_and_run_show_cli(tmp_path: Path) -> None:
@@ -478,8 +411,8 @@ def test_ingest_extracts_static_facts_for_render_cli(tmp_path: Path) -> None:
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 3
     assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
     assert "node package manager: pnpm" in memory
-    assert "node test command: pnpm run test" in memory
-    assert "node build command: pnpm run build" in memory
+    assert "Use pnpm run test for Node tests." in memory
+    assert "Use pnpm run build to build Node." in memory
 
 
 def test_audit_secrets_cli_passes_clean_omni_tree(tmp_path: Path) -> None:

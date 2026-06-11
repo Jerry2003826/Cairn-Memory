@@ -9,7 +9,10 @@ from omni.ids import ensure_project_id
 
 OMNI_DIRNAME = ".omni"
 CONFIG_FILENAME = "config.toml"
-GITIGNORE_ENTRY = ".omni/generated/"
+GITIGNORE_ENTRIES = (
+    ".omni/generated/",
+    ".omni/project_id",
+)
 
 OMNI_SUBDIRS = (
     "spool",
@@ -69,11 +72,14 @@ def ensure_gitignore_entry(root: Path) -> bool:
     gitignore = root / ".gitignore"
     existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
     lines = existing.splitlines()
+    normalized = {line.strip().rstrip("/") for line in lines}
+    missing = [
+        entry for entry in GITIGNORE_ENTRIES if entry.rstrip("/") not in normalized
+    ]
 
-    for line in lines:
-        if line.strip().rstrip("/") == GITIGNORE_ENTRY.rstrip("/"):
-            return False
+    if not missing:
+        return False
 
     prefix = "" if not existing or existing.endswith(("\n", "\r\n")) else "\n"
-    gitignore.write_text(f"{existing}{prefix}{GITIGNORE_ENTRY}\n", encoding="utf-8")
+    gitignore.write_text(f"{existing}{prefix}{chr(10).join(missing)}\n", encoding="utf-8")
     return True

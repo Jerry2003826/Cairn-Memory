@@ -167,6 +167,41 @@ def test_ingest_transcript_is_idempotent_and_redacts_db_content(
     assert b"ingest-secret-value-123" not in omni_bytes
 
 
+def test_ingest_stores_transcript_archive_artifact_for_unknown_lines(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OMNI_ARCHIVE_SECRET", "archive-secret-value-123")
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","timestamp":"2026-06-11T00:00:00Z","id":"toolu_1","name":"Bash"}\n'
+        "not-json archive-secret-value-123\n",
+        encoding="utf-8",
+    )
+
+    ingest.ingest(root=tmp_path, run_id="run_archive", transcript=transcript)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    archive = conn.execute(
+        "SELECT hash, kind, line_count FROM artifacts WHERE kind = 'transcript_archive'"
+    ).fetchone()
+
+    assert dict(archive) == {
+        "hash": archive["hash"],
+        "kind": "transcript_archive",
+        "line_count": 1,
+    }
+    archive_path = (
+        tmp_path
+        / ".omni"
+        / "artifacts"
+        / archive["hash"][7:9]
+        / archive["hash"][9:11]
+        / archive["hash"]
+    )
+    archive_text = archive_path.read_text(encoding="utf-8")
+    assert "archive-secret-value-123" not in archive_text
+    assert "REDACTED:env:" in archive_text
+
+
 def test_ingest_reconciles_hook_and_transcript_by_tool_use_id(tmp_path: Path) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PreToolUse","timestamp":"2026-06-11T00:00:00Z",'

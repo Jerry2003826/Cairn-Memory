@@ -202,7 +202,14 @@ def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: P
 
 
 def _transcript_candidates(conn: sqlite3.Connection, root: Path, path: Path) -> list[EventCandidate]:
-    parsed = parse_transcript(path, root=root, conn=conn)
+    parsed = parse_transcript(path, root=root)
+    if parsed.archive is not None:
+        put_artifact(
+            root,
+            conn,
+            kind=parsed.archive.kind,
+            data=parsed.archive.payload,
+        )
     return [_candidate_from_transcript_event(conn, root, event) for event in parsed.events]
 
 

@@ -127,7 +127,7 @@ def _render_fact_line(fact: sqlite3.Row) -> tuple[str, str] | None:
 
     if predicate.startswith("uses_") and predicate.endswith("_command"):
         command_kind = predicate.removeprefix("uses_").removesuffix("_command").replace("_", " ")
-        return ("Commands", f"- {qualifier} {command_kind} command: {object_norm}")
+        return ("Commands", f"- {_command_instruction(command_kind, qualifier, object_norm)}")
 
     if predicate == "uses_package_manager":
         return ("Project", f"- {qualifier} package manager: {object_norm}")
@@ -142,6 +142,37 @@ def _render_fact_line(fact: sqlite3.Row) -> tuple[str, str] | None:
 
 def _with_header(body: str) -> str:
     return f"<!-- omni:generated render_ver={RENDER_VER} sha256={_sha256(body)} DO NOT EDIT -->\n{body}"
+
+
+def _command_instruction(command_kind: str, qualifier: str, object_norm: str) -> str:
+    label = _qualifier_label(qualifier)
+    if command_kind == "test":
+        return f"Use {object_norm} for {label} tests."
+    if command_kind == "build":
+        return f"Use {object_norm} to build {label}."
+    if command_kind == "lint":
+        return f"Use {object_norm} to lint {label}."
+    if command_kind == "typecheck":
+        return f"Use {object_norm} to type-check {label}."
+    if command_kind == "dev":
+        return f"Use {object_norm} to start {label} development."
+    return f"Use {object_norm} for {label} {command_kind}."
+
+
+def _qualifier_label(qualifier: str) -> str:
+    parts = qualifier.split(":")
+    if parts[0] == "node":
+        base = "Node"
+    elif parts[0] == "python":
+        base = "Python"
+    elif parts[0] == "default":
+        base = "project"
+    else:
+        base = parts[0].replace("_", " ")
+    if len(parts) == 1:
+        return base
+    suffix = " ".join(part.replace("_", " ") for part in parts[1:])
+    return f"{base} {suffix}"
 
 
 def _manual_edit_detected(path: Path) -> bool:

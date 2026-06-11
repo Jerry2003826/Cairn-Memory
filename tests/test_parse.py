@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from omni import db
 from omni import parse
 
 
@@ -52,8 +51,6 @@ def test_parse_transcript_normalizes_known_jsonl_events(tmp_path: Path) -> None:
 
 def test_parse_transcript_archives_unknown_lines_with_redaction(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OMNI_PARSE_SECRET", "parse-secret-value-123")
-    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
-    db.migrate(conn)
     transcript = tmp_path / "transcript.jsonl"
     transcript.write_text(
         "\n".join(
@@ -72,23 +69,16 @@ def test_parse_transcript_archives_unknown_lines_with_redaction(tmp_path: Path, 
         encoding="utf-8",
     )
 
-    result = parse.parse_transcript(transcript, root=tmp_path, conn=conn)
-    conn.commit()
+    result = parse.parse_transcript(transcript, root=tmp_path)
 
     assert len(result.events) == 1
     assert result.archive is not None
     assert result.archive.kind == "transcript_archive"
-    assert result.archive.artifact_hash
     assert result.archive.line_count == 2
     assert result.archive.redaction_status == "redacted"
     assert "env" in result.archive.detectors
-    assert not (tmp_path / ".omni" / "artifacts" / "transcript_archive.jsonl").exists()
-    stored = conn.execute(
-        "SELECT kind, line_count FROM artifacts WHERE hash = ?",
-        (result.archive.artifact_hash,),
-    ).fetchone()
-    assert dict(stored) == {"kind": "transcript_archive", "line_count": 2}
-    archive_text = result.archive.path.read_text(encoding="utf-8")
+    assert not (tmp_path / ".omni").exists()
+    archive_text = result.archive.payload.decode("utf-8")
     assert "parse-secret-value-123" not in archive_text
     records = [json.loads(line) for line in archive_text.splitlines()]
     assert [record["line"] for record in records] == [2, 3]

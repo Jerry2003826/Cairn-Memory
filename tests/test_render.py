@@ -56,8 +56,8 @@ def add_fact(conn, *, predicate: str, qualifier: str, object_norm: str) -> None:
 
 def seed_project_facts(conn) -> None:
     add_fact(conn, predicate="uses_package_manager", qualifier="node", object_norm="pnpm")
-    add_fact(conn, predicate="uses_test_command", qualifier="default", object_norm="pnpm run test")
-    add_fact(conn, predicate="uses_build_command", qualifier="default", object_norm="pnpm run build")
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+    add_fact(conn, predicate="uses_build_command", qualifier="node", object_norm="pnpm run build")
 
 
 def test_render_generates_byte_stable_memory_without_internal_metadata(tmp_path: Path) -> None:
@@ -76,8 +76,10 @@ def test_render_generates_byte_stable_memory_without_internal_metadata(tmp_path:
     assert "## Commands" in first_text
     assert "## Boundaries" in first_text
     assert "## Project" in first_text
-    assert first_text.index("pnpm run test") < first_text.index("pnpm run build")
-    assert first_text.index("pnpm run test") < first_text.index("node package manager: pnpm")
+    assert "Use pnpm run test for Node tests." in first_text
+    assert "Use pnpm run build to build Node." in first_text
+    assert first_text.index("Use pnpm run test") < first_text.index("Use pnpm run build")
+    assert first_text.index("Use pnpm run test") < first_text.index("node package manager: pnpm")
     assert "fact_" not in first_text
     assert "confidence" not in first_text.lower()
     assert "created_at" not in first_text.lower()
@@ -85,7 +87,7 @@ def test_render_generates_byte_stable_memory_without_internal_metadata(tmp_path:
 
 def test_render_dirty_changes_only_when_visible_line_hash_changes(tmp_path: Path) -> None:
     conn = connect(tmp_path)
-    add_fact(conn, predicate="uses_test_command", qualifier="default", object_norm="pnpm run test")
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
 
     render.render_project(conn, tmp_path)
     first_hashes = [
