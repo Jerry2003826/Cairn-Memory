@@ -16,7 +16,7 @@ from omni.config import ensure_project_layout
 from omni.ids import project_id_for_path
 from omni.parse import NormalizedEvent, parse_transcript
 from omni.redact import redact
-from omni.spool import HookRecord, ack_ingest_queue, drain_ingest_queue, iter_hook_records
+from omni.spool import HookRecord, ack_hook_records, ack_ingest_queue, drain_ingest_queue, iter_hook_records
 from omni.store import REDACTION_VER, put_artifact
 
 
@@ -55,10 +55,13 @@ def ingest(
         total_inserted = 0
         run_ids: list[str] = []
         drained = 0
+        consumed_hook_paths: set[Path] = set()
 
         if transcript is not None:
             rid = run_id or _run_id_for_transcript(Path(transcript))
-            total_inserted += _ingest_one(conn, base, rid, Path(transcript), include_hooks=True)
+            inserted, hook_paths = _ingest_one(conn, base, rid, Path(transcript), include_hooks=True)
+            total_inserted += inserted
+            consumed_hook_paths.update(hook_paths)
             run_ids.append(rid)
         else:
             requests = drain_ingest_queue(base)
@@ -71,7 +74,7 @@ def ingest(
                     path = Path(str(transcript_path)) if transcript_path else None
                     if path is not None and not path.is_absolute():
                         path = base / path
-                    total_inserted += _ingest_one(
+                    inserted, hook_paths = _ingest_one(
                         conn,
                         base,
                         rid,
@@ -79,16 +82,21 @@ def ingest(
                         include_hooks=True,
                         session_id=request_session_id,
                     )
+                    total_inserted += inserted
+                    consumed_hook_paths.update(hook_paths)
                     run_ids.append(rid)
             else:
                 rid = run_id or "hook_run"
-                total_inserted += _ingest_one(conn, base, rid, None, include_hooks=True)
+                inserted, hook_paths = _ingest_one(conn, base, rid, None, include_hooks=True)
+                total_inserted += inserted
+                consumed_hook_paths.update(hook_paths)
                 run_ids.append(rid)
 
         gate.extract_static_facts(base, conn, commit=False)
         conn.commit()
         if transcript is None and requests:
             ack_ingest_queue(requests)
+        ack_hook_records(base, consumed_hook_paths)
         return IngestResult(
             run_ids=tuple(dict.fromkeys(run_ids)),
             events_inserted=total_inserted,
@@ -108,9 +116,11 @@ def close_stale_runs(
     closed = 0
     for row in rows:
         path = Path(row["transcript_path"])
-        if not path.exists():
-            continue
-        if now - path.stat().st_mtime < older_than_seconds:
+        try:
+            stale = not path.exists() or now - path.stat().st_mtime >= older_than_seconds
+        except OSError:
+            stale = True
+        if not stale:
             continue
         conn.execute(
             "UPDATE runs SET status = 'closed', end_reason = ?, ended_at = ? WHERE run_id = ?",
@@ -165,12 +175,15 @@ def _ingest_one(
     *,
     include_hooks: bool,
     session_id: str | None = None,
-) -> int:
+) -> tuple[int, set[Path]]:
     transcript_events: list[EventCandidate] = []
     if transcript is not None and transcript.exists():
         transcript_events = _transcript_candidates(conn, root, transcript)
 
-    hook_events = _hook_candidates(conn, root, session_id=session_id) if include_hooks else []
+    if include_hooks:
+        hook_events, hook_paths = _hook_candidates(conn, root, session_id=session_id)
+    else:
+        hook_events, hook_paths = [], set()
     candidates = _reconcile_candidates(transcript_events, hook_events)
     _ensure_run(conn, root, run_id, transcript)
 
@@ -179,7 +192,7 @@ def _ingest_one(
         inserted += _insert_event(conn, run_id, seq, candidate)
     _renumber_run_events(conn, run_id)
     _update_run_bounds(conn, run_id)
-    return inserted
+    return inserted, hook_paths
 
 
 def _connect_project_db(root: Path) -> sqlite3.Connection:
@@ -224,7 +237,12 @@ def _candidate_from_transcript_event(
         root,
         conn,
         kind="transcript_event",
-        data=json.dumps(event.as_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        data=json.dumps(
+            event.as_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8"),
     )
     return EventCandidate(
         event_type=event.event_type,
@@ -243,7 +261,7 @@ def _candidate_from_transcript_event(
 
 def _hook_candidates(
     conn: sqlite3.Connection, root: Path, *, session_id: str | None = None
-) -> list[EventCandidate]:
+) -> tuple[list[EventCandidate], set[Path]]:
     records = iter_hook_records(root)
     if session_id is not None:
         records = [
@@ -267,7 +285,7 @@ def _hook_candidates(
         candidates.append(_candidate_from_hook_group(conn, root, tool_use_id, grouped))
     for record in without_tool:
         candidates.append(_candidate_from_hook_record(conn, root, record, None))
-    return candidates
+    return candidates, {record.path for record in records}
 
 
 def _candidate_from_hook_group(
@@ -300,7 +318,12 @@ def _candidate_from_hook_record(
         root,
         conn,
         kind="hook_event",
-        data=json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        data=json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8"),
     )
     return EventCandidate(
         event_type=event_type,
@@ -479,9 +502,9 @@ def _existing_canonical_event(
           AND tool_use_id = ?
           AND (
             source = 'hook'
-            OR (source = 'reconciled' AND event_type = ?)
+            OR (source IN ('reconciled', 'transcript') AND event_type = ?)
           )
-        ORDER BY CASE source WHEN 'reconciled' THEN 0 ELSE 1 END, seq
+        ORDER BY CASE WHEN source IN ('reconciled', 'transcript') THEN 0 ELSE 1 END, seq
         LIMIT 1
         """,
         (run_id, candidate.tool_use_id, candidate.event_type),
@@ -539,7 +562,12 @@ def _update_run_bounds(conn: sqlite3.Connection, run_id: str) -> None:
 
 
 def _redacted_json(value: Any) -> tuple[str, str]:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
     redaction = redact(encoded)
     return redaction.data.decode("utf-8", errors="replace"), redaction.status
 

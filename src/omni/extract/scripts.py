@@ -14,6 +14,12 @@ from omni.gate import FactCandidate
 
 ORIGIN = "script_extractor@1"
 NPM_DEFAULT_TEST = 'echo "Error: no test specified" && exit 1'
+PYTHON_TEST_COMMANDS = {
+    "pip": "pytest",
+    "uv": "uv run pytest",
+    "poetry": "poetry run pytest",
+    "pipenv": "pipenv run pytest",
+}
 
 SCRIPT_MAP = {
     "test": ("uses_test_command", "node"),
@@ -101,15 +107,21 @@ def _python_commands(root: Path, pm_name: str) -> dict[tuple[str, str], FactCand
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
         return {}
-    parsed = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    try:
+        parsed = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return {}
     if _has_pytest_hint(parsed):
+        command = PYTHON_TEST_COMMANDS.get(pm_name)
+        if command is None:
+            return {}
         key = ("uses_test_command", "python")
         return {
             key: _candidate(
                 root,
                 predicate=key[0],
                 qualifier=key[1],
-                object_norm=f"{pm_name} run pytest",
+                object_norm=command,
                 evidence_paths=[pyproject],
             )
         }
@@ -163,7 +175,7 @@ def _candidate(
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -241,7 +253,11 @@ def _dependency_name(value: Any) -> str | None:
 
 def _make_targets(path: Path) -> set[str]:
     targets: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return targets
+    for line in lines:
         match = re.match(r"^([A-Za-z0-9_.-]+):", line)
         if match:
             targets.add(match.group(1))
@@ -253,9 +269,16 @@ def _evidence(root: Path, paths: list[Path]) -> dict[str, object]:
         "files": [
             {
                 "path": str(path.relative_to(root)).replace("\\", "/"),
-                "hash": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "hash": _file_hash(path),
             }
             for path in paths
             if path.exists()
         ]
     }
+
+
+def _file_hash(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""

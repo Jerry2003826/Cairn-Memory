@@ -63,6 +63,33 @@ def test_capture_hook_skips_raw_event_parse_for_oversized_payload(
     assert not list((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
 
 
+def test_capture_hook_withholds_payload_when_skiplisted_path_is_referenced(
+    tmp_path: Path,
+) -> None:
+    raw_secret = "DB_PASS=correcthorsebattery"
+    result = hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "tool": "Read",
+                "tool_input": {"file_path": ".env"},
+                "tool_response": {"content": raw_secret},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    assert result.ok is True
+    assert result.spool_path is not None
+    written = result.spool_path.read_text(encoding="utf-8")
+    assert raw_secret not in written
+    record = json.loads(written)
+    payload = json.loads(record["payload"])
+    assert record["meta"]["redaction_status"] == "withheld"
+    assert record["meta"]["detectors"] == ["skiplist"]
+    assert payload["error"] == "skiplisted_path_withheld"
+
+
 def test_drain_ingest_queue_reads_request_files_and_quarantines_malformed(
     tmp_path: Path,
 ) -> None:

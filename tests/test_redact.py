@@ -121,6 +121,23 @@ def test_large_payload_is_truncated_and_redacted() -> None:
     assert b"payload_truncated" in result.data
 
 
+def test_large_payload_drops_partial_secret_straddling_truncation_edge() -> None:
+    secret = b"ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    leaked_fragment = b"ghp_abcdefghijklmnop"
+    payload = (
+        b"A" * (redact_mod._TRUNCATED_EDGE_BYTES - len(leaked_fragment))
+        + secret
+        + b"\n"
+        + b"B" * (1024 * 1024)
+    )
+
+    result = redact_mod.redact(payload)
+
+    assert result.status == "truncated"
+    assert leaked_fragment not in result.data
+    assert secret not in result.data
+
+
 def test_false_positive_guards_and_allow_values_do_not_redact() -> None:
     allowed = "ghp_allowedallowedallowedallowedallowedallowed12"
     payload = "\n".join(
@@ -192,3 +209,21 @@ def test_json_api_key_token_or_secret_values_are_redacted() -> None:
     assert "secret_assignment" in result.detectors
     for secret in secrets.values():
         assert secret.encode("utf-8") not in result.data
+
+
+def test_secret_assignment_stops_at_escaped_newline() -> None:
+    payload = rb'{"payload":"secret=verysecret123\nNEXT_LINE=plain"}'
+
+    result = redact_mod.redact(payload)
+
+    assert b"verysecret123" not in result.data
+    assert b"NEXT_LINE=plain" in result.data
+
+
+def test_secret_assignment_does_not_redact_function_calls() -> None:
+    payload = b"token = get_token()\n"
+
+    result = redact_mod.redact(payload)
+
+    assert result.status == "clean"
+    assert result.data == payload

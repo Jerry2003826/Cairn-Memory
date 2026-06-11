@@ -108,7 +108,7 @@ _REGEX_PACK = (
     _RegexDetector(
         "secret_assignment",
         re.compile(
-            rb"(?i)(?:api[_-]?key|secret|token|password)\b['\"]?\s*[:=]\s*['\"]?([^'\"\s,}]{8,})['\"]?"
+            rb"(?i)(?:api[_-]?key|secret|token|password)\b['\"]?\s*[:=]\s*['\"]?([^'\"\\\s,}]{8,})['\"]?"
         ),
         secret_group=1,
     ),
@@ -222,6 +222,8 @@ def _should_redact_secret(secret: bytes, detector: str, allow_values: set[bytes]
         return False
     if _looks_like_redaction_placeholder(secret):
         return False
+    if detector == "secret_assignment" and secret.endswith(b"()"):
+        return False
     if detector in _ALWAYS_REDACT_DETECTORS:
         return True
     if detector == "high_entropy" and not _looks_high_entropy(secret):
@@ -256,7 +258,9 @@ def _looks_like_false_positive(secret: bytes) -> bool:
 
 
 def _looks_like_redaction_placeholder(secret: bytes) -> bool:
-    return re.fullmatch(rb"\xe2\x9f\xa8REDACTED:[A-Za-z0-9_:-]+\xe2\x9f\xa9", secret) is not None
+    raw = rb"\xe2\x9f\xa8REDACTED:[A-Za-z0-9_:-]+\xe2\x9f\xa9"
+    escaped = rb"\\u27e8REDACTED:[A-Za-z0-9_:-]+\\u27e9"
+    return re.fullmatch(rb"(?:" + raw + rb"|" + escaped + rb")", secret) is not None
 
 
 def _replace_findings(data: bytes, findings: list[Finding]) -> bytes:
@@ -294,8 +298,8 @@ def _redact_truncated(payload: bytes, allow_values: set[bytes]) -> RedactionResu
     findings: list[Finding] = []
     prefix = payload[:_TRUNCATED_EDGE_BYTES]
     suffix = payload[-_TRUNCATED_EDGE_BYTES:]
-    redacted_prefix = _redact_chunk(prefix, findings, allow_values)
-    redacted_suffix = _redact_chunk(b"\n" + suffix, findings, allow_values)[1:]
+    redacted_prefix = _line_safe_prefix(_redact_chunk(prefix, findings, allow_values))
+    redacted_suffix = _line_safe_suffix(_redact_chunk(suffix, findings, allow_values))
     body = {
         "error": "payload_truncated",
         "byte_len": len(payload),
@@ -304,10 +308,24 @@ def _redact_truncated(payload: bytes, allow_values: set[bytes]) -> RedactionResu
     }
     detectors = _unique_detectors(findings)
     return RedactionResult(
-        data=json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+        data=json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
         status="truncated",
         detectors=detectors,
     )
+
+
+def _line_safe_prefix(prefix: bytes) -> bytes:
+    newline = prefix.rfind(b"\n")
+    if newline == -1:
+        return b""
+    return prefix[: newline + 1]
+
+
+def _line_safe_suffix(suffix: bytes) -> bytes:
+    newline = suffix.find(b"\n")
+    if newline == -1:
+        return b""
+    return suffix[newline + 1 :]
 
 
 def _allow_bytes(values: Iterable[str | bytes] | None) -> set[bytes]:

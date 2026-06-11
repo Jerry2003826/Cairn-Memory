@@ -53,7 +53,15 @@ def _detect_node(root: Path) -> list[FactCandidate]:
         package_manager_field = package.get("packageManager")
         if isinstance(package_manager_field, str) and package_manager_field:
             pm_name = package_manager_field.split("@", 1)[0]
-            return [_candidate(root, "node", pm_name, [package_json, *_matching_lock_paths(root, pm_name)])]
+            if pm_name in NODE_LOCKS.values():
+                return [
+                    _candidate(
+                        root,
+                        "node",
+                        pm_name,
+                        [package_json, *_matching_lock_paths(root, pm_name)],
+                    )
+                ]
 
     if len(lock_candidates) > 1:
         ids = [ensure_candidate_id(candidate).cand_id for candidate in lock_candidates]
@@ -101,7 +109,7 @@ def _matching_lock_paths(root: Path, pm_name: str) -> list[Path]:
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -111,9 +119,16 @@ def _evidence(root: Path, paths: list[Path]) -> dict[str, object]:
         "files": [
             {
                 "path": str(path.relative_to(root)).replace("\\", "/"),
-                "hash": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "hash": _file_hash(path),
             }
             for path in paths
             if path.exists()
         ]
     }
+
+
+def _file_hash(path: Path) -> str:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""

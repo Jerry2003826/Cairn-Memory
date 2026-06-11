@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,8 +38,8 @@ def put_artifact(
     digest = hashlib.sha256(content).hexdigest()
     path = base / ".omni" / "artifacts" / digest[7:9] / digest[9:11] / digest
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists():
-        path.write_bytes(content)
+    if not _artifact_file_is_valid(path, digest):
+        _atomic_write_bytes(path, content)
 
     artifact = StoredArtifact(
         hash=digest,
@@ -72,3 +73,25 @@ def _line_count(content: bytes) -> int:
     if not content:
         return 0
     return len(content.splitlines())
+
+
+def _artifact_file_is_valid(path: Path, digest: str) -> bool:
+    if not path.exists():
+        return False
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    except OSError:
+        return False
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp.write_bytes(content)
+        temp.replace(path)
+    finally:
+        if temp.exists():
+            try:
+                temp.unlink()
+            except OSError:
+                pass

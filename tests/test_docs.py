@@ -14,6 +14,8 @@ def test_demo_doc_covers_manual_cold_warm_g6_and_definition_of_done() -> None:
     assert "# OmniMemory Manual Demo" in text
     for command in (
         "omni audit secrets",
+        "omni init",
+        "omni init --install-claude-hooks --yes",
         "omni ingest",
         "omni render --diff",
         "omni render",

@@ -97,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "hook":
-        run_from_stdin()
+        try:
+            run_from_stdin()
+        except Exception:
+            pass
         return 0
 
     if args.command == "status":

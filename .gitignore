@@ -4,3 +4,5 @@ __pycache__/
 *.egg-info/
 .omni/generated/
 .omni/
+.claude/*.omni-tmp
+.claude/settings.json.omni-bak

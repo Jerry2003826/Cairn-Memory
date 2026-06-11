@@ -5,6 +5,7 @@ from pathlib import Path
 
 from omni import db
 from omni import gate
+from omni.extract import scripts
 
 
 REPOS = Path(__file__).parent / "fixtures" / "repos"
@@ -113,3 +114,20 @@ def test_a12_monorepo_root_pnpm_detected_and_path_subjects_deferred(tmp_path: Pa
         }
     ]
     assert (REPOS / "monorepo-pnpm" / "A12_DEFERRED.md").read_text(encoding="utf-8")
+
+
+def test_python_pip_repo_with_pytest_hint_uses_plain_pytest_command(tmp_path: Path) -> None:
+    (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project.optional-dependencies]\ndev = ['pytest']\n",
+        encoding="utf-8",
+    )
+
+    candidates = scripts.detect(tmp_path)
+    commands = {
+        (candidate.predicate, candidate.qualifier): candidate.object_norm
+        for candidate in candidates
+    }
+
+    assert commands[("uses_test_command", "python")] == "pytest"
+    assert "pip run pytest" not in commands.values()

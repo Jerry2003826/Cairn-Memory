@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from omni import cli
 from omni import hook
 from omni.ids import project_id_for_path
 
@@ -530,6 +531,15 @@ def test_hook_cli_redacts_stdin_to_spool_and_exits_zero(tmp_path: Path) -> None:
     assert record["meta"]["detectors"] == ["env"]
     assert "secret-from-env-123" not in record["payload"]
     assert "REDACTED:env:" in record["payload"]
+
+
+def test_hook_cli_exits_zero_when_capture_boundary_raises(monkeypatch) -> None:
+    def fail_capture():
+        raise FileNotFoundError("cwd vanished")
+
+    monkeypatch.setattr(cli, "run_from_stdin", fail_capture)
+
+    assert cli.main(["hook"]) == 0
 
 
 def test_hook_cli_enqueues_ingest_for_stop_events(tmp_path: Path) -> None:

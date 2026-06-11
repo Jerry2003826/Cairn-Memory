@@ -113,6 +113,20 @@ def ack_ingest_queue(requests: list[dict[str, Any]]) -> None:
         path.write_text("", encoding="utf-8")
 
 
+def ack_hook_records(root: Path | str, paths: set[Path]) -> None:
+    if not paths:
+        return
+    processed_dir = spool_dir(root) / "processed"
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    for path in sorted(paths, key=lambda item: str(item)):
+        if not path.exists():
+            continue
+        target = processed_dir / path.name
+        if target.exists():
+            target = processed_dir / f"{path.name}.{time.time_ns()}.processed"
+        path.replace(target)
+
+
 def _quarantine(path: Path) -> None:
     bad_dir = path.parent / "bad"
     bad_dir.mkdir(parents=True, exist_ok=True)

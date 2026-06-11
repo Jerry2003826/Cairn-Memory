@@ -135,6 +135,31 @@ def test_put_artifact_does_not_commit_open_transaction(tmp_path: Path) -> None:
     assert conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
 
 
+def test_put_artifact_writes_content_through_temp_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    original_write_bytes = Path.write_bytes
+
+    def fail_direct_artifact_write(self: Path, data: bytes) -> int:
+        if ".omni" in self.parts and "artifacts" in self.parts and not self.name.endswith(".tmp"):
+            raise AssertionError("artifact content must be replaced from a temp file")
+        return original_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_direct_artifact_write)
+
+    artifact = store.put_artifact(
+        tmp_path,
+        conn,
+        kind="transcript_event",
+        data=b'{"event":"tool_use"}\n',
+    )
+
+    assert artifact.path.exists()
+    assert artifact.path.read_bytes() == b'{"event":"tool_use"}\n'
+
+
 def test_ingest_transcript_is_idempotent_and_redacts_db_content(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -356,7 +381,7 @@ def test_ingest_preserves_distinct_event_types_with_same_tool_use_id(
 
     assert hook_only.events_inserted == 1
     assert [row["event_type"] for row in rows] == ["tool_use", "tool_result"]
-    assert [row["source"] for row in rows] == ["reconciled", "reconciled"]
+    assert [row["source"] for row in rows] == ["transcript", "transcript"]
     assert [row["seq"] for row in rows] == [1, 2]
 
 
@@ -419,6 +444,8 @@ def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
     )
 
     hook_only = ingest.ingest(root=tmp_path, run_id="run_delayed")
+    for path in (tmp_path / ".omni" / "spool").glob("hook-*.jsonl"):
+        path.unlink()
     transcript = tmp_path / "delayed.jsonl"
     transcript.write_text(
         '{"type":"tool_use","timestamp":"2026-06-11T00:00:01Z",'
@@ -444,7 +471,7 @@ def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
     assert hook_only.events_inserted == 1
     assert repeated.events_inserted == 0
     assert [row["seq"] for row in rows] == [1]
-    assert [row["source"] for row in rows] == ["reconciled"]
+    assert [row["source"] for row in rows] == ["transcript"]
     assert len({row["event_id"] for row in rows}) == 1
     assert show.count("toolu_delayed") == 0
     assert "1 | 2026-06-11T00:00:01Z | tool_use | Bash | 0 |" in show
@@ -472,6 +499,26 @@ def test_ingest_calculates_hook_duration_when_possible(tmp_path: Path) -> None:
     assert row["event_type"] == "PostToolUse"
     assert row["source"] == "hook"
     assert row["duration_ms"] == 2000
+
+
+def test_successful_ingest_moves_consumed_hook_spool_files_to_processed(
+    tmp_path: Path,
+) -> None:
+    hook.capture_hook(
+        b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
+        b'"tool_use_id":"toolu_spool","tool":"Bash"}',
+        root=tmp_path,
+    )
+
+    first = ingest.ingest(root=tmp_path, run_id="run_spool")
+    second = ingest.ingest(root=tmp_path, run_id="manual_after_spool")
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+
+    assert first.events_inserted == 1
+    assert second.events_inserted == 0
+    assert not list((tmp_path / ".omni" / "spool").glob("hook-*.jsonl"))
+    assert len(list((tmp_path / ".omni" / "spool" / "processed").glob("hook-*.jsonl"))) == 1
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
 
 
 def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path) -> None:
@@ -517,6 +564,25 @@ def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path)
     assert dict(stale) == {"status": "closed", "end_reason": "watchdog"}
 
 
+def test_watchdog_closes_open_runs_with_missing_transcripts(tmp_path: Path) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    missing = tmp_path / "missing-transcript.jsonl"
+    conn.execute(
+        "INSERT INTO runs(run_id, project_id, snapshot_seq, transcript_path, status) VALUES(?,?,?,?,?)",
+        ("missing_run", "project", 0, str(missing), "open"),
+    )
+    conn.commit()
+
+    closed = ingest.close_stale_runs(conn, older_than_seconds=0, now_ts=10)
+    row = conn.execute(
+        "SELECT status, end_reason FROM runs WHERE run_id = 'missing_run'"
+    ).fetchone()
+
+    assert closed == 1
+    assert dict(row) == {"status": "closed", "end_reason": "watchdog"}
+
+
 def test_queued_ingest_keeps_request_file_when_transaction_fails(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -546,6 +612,44 @@ def test_queued_ingest_keeps_request_file_when_transaction_fails(
         ingest.ingest(root=tmp_path)
 
     assert request_file.exists()
+
+
+def test_queued_ingest_survives_malformed_static_extractor_inputs_and_acks_request(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "queued.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","id":"toolu_q","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "requirements.txt").write_text("pytest\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project\n", encoding="utf-8")
+    (tmp_path / "Makefile").write_bytes(b"\xff\xfe\x00")
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "queued_run",
+                "transcript_path": "queued.jsonl",
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+    request_file = next((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+
+    result = ingest.ingest(root=tmp_path)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+
+    assert result.events_inserted >= 1
+    assert not request_file.exists()
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM events WHERE run_id = ? AND tool_use_id = ?",
+            ("queued_run", "toolu_q"),
+        ).fetchone()[0]
+        == 1
+    )
+    assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
 
 
 def test_ingest_static_fact_failure_rolls_back_partial_database_work(

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from omni import audit
+from omni import hook
 from omni import redact
 from omni.redact import RedactionResult
 
@@ -116,6 +117,28 @@ def test_audit_accepts_generated_memory_redaction_placeholder(tmp_path: Path) ->
 
     assert result.ok is True
     assert result.omni_leaks == []
+
+
+def test_audit_accepts_redacted_hook_spool_after_capture(tmp_path: Path) -> None:
+    result = hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "tool": "Read",
+                "tool_input": {"file_path": "safe.txt"},
+                "tool_response": {"content": "secret=captured-secret-value-123456"},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    audit_result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is True
+    assert result.spool_path is not None
+    assert b"captured-secret-value-123456" not in result.spool_path.read_bytes()
+    assert audit_result.ok is True
+    assert audit_result.omni_leaks == []
 
 
 def test_audit_cli_scans_omni_tree_and_reports_json(tmp_path: Path) -> None:

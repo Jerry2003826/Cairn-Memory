@@ -6,6 +6,7 @@ import difflib
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -15,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from omni.redact import RedactionResult, redact, redact_minimal
+from omni.redact import RedactionResult, is_skiplisted_path, redact, redact_minimal
 
 LEGACY_HOOK_COMMAND = "omni hook"
 HOOK_COMMAND_ENV = "OMNI_HOOK_COMMAND"
@@ -67,10 +68,10 @@ class InstallResult:
 
 def capture_hook(payload: bytes, root: Path | str | None = None) -> HookCaptureResult:
     started = time.perf_counter()
-    base = Path(root or Path.cwd()).resolve()
-    spool_dir = base / ".omni" / "spool"
-
+    spool_dir: Path | None = None
     try:
+        base = _hook_base(root)
+        spool_dir = base / ".omni" / "spool"
         spool_dir.mkdir(parents=True, exist_ok=True)
         redaction = _redact_payload(payload)
         event = _event_for_enqueue(payload)
@@ -83,7 +84,12 @@ def capture_hook(payload: bytes, root: Path | str | None = None) -> HookCaptureR
             },
             "payload": redaction.data.decode("utf-8", errors="replace"),
         }
-        line = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        line = json.dumps(
+            record,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
         spool_path = spool_dir / f"hook-{time.time_ns()}-{uuid.uuid4().hex}.jsonl"
         temp_path = spool_path.with_suffix(".jsonl.tmp")
         temp_path.write_bytes(line + b"\n")
@@ -94,7 +100,8 @@ def capture_hook(payload: bytes, root: Path | str | None = None) -> HookCaptureR
 
         return HookCaptureResult(ok=True, spool_path=spool_path)
     except Exception as exc:
-        _write_error(spool_dir, exc)
+        if spool_dir is not None:
+            _write_error(spool_dir, exc)
         return HookCaptureResult(ok=True)
 
 
@@ -103,7 +110,10 @@ def run_from_stdin() -> HookCaptureResult:
         payload = sys.stdin.buffer.read()
     except Exception:
         payload = b""
-    return capture_hook(payload)
+    try:
+        return capture_hook(payload)
+    except Exception:
+        return HookCaptureResult(ok=True)
 
 
 def install_claude_hooks(root: Path | str | None = None, *, yes: bool = False) -> InstallResult:
@@ -147,6 +157,12 @@ def main() -> int:
 
 
 def _redact_payload(payload: bytes) -> RedactionResult:
+    if _payload_references_skiplisted_path(payload):
+        return RedactionResult(
+            data=_skiplisted_payload_stub(payload),
+            status="withheld",
+            detectors=("skiplist",),
+        )
     try:
         return redact_minimal(payload)
     except Exception:
@@ -160,6 +176,15 @@ def _redact_payload(payload: bytes) -> RedactionResult:
 def _redaction_failed_stub(payload: bytes) -> bytes:
     stub = {
         "error": "redaction_failed",
+        "payload_sha256": hashlib.sha256(payload).hexdigest(),
+        "byte_len": len(payload),
+    }
+    return json.dumps(stub, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _skiplisted_payload_stub(payload: bytes) -> bytes:
+    stub = {
+        "error": "skiplisted_path_withheld",
         "payload_sha256": hashlib.sha256(payload).hexdigest(),
         "byte_len": len(payload),
     }
@@ -181,8 +206,48 @@ def _event_for_enqueue(payload: bytes) -> dict[str, object]:
 
 
 def _redact_line(record: dict[str, object]) -> bytes:
-    encoded = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        record,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
     return redact(encoded).data
+
+
+def _hook_base(root: Path | str | None) -> Path:
+    configured = root or os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()
+    return Path(configured).resolve()
+
+
+def _payload_references_skiplisted_path(payload: bytes) -> bool:
+    if len(payload) > MAX_HOOK_EVENT_PARSE_BYTES:
+        return False
+    event = _event_from_payload(payload)
+    if not event:
+        return False
+    return any(_string_references_skiplisted_path(value) for value in _walk_strings(event))
+
+
+def _walk_strings(value: object):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _walk_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_strings(item)
+
+
+def _string_references_skiplisted_path(value: str) -> bool:
+    for token in re.split(r"[\s\"'`=,:;|&<>\[\]{}()]+", value):
+        if not token:
+            continue
+        name = token.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+        if name and is_skiplisted_path(name):
+            return True
+    return False
 
 
 def _enqueue_ingest_request(spool_dir: Path, event: dict[str, object]) -> None:

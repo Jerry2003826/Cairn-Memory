@@ -61,7 +61,12 @@ def extract_static_facts(
     from omni.extract import pm, scripts
 
     root = Path(repo).resolve()
-    candidates = [*pm.detect(root), *scripts.detect(root)]
+    candidates: list[FactCandidate] = []
+    for detector in (pm.detect, scripts.detect):
+        try:
+            candidates.extend(detector(root))
+        except Exception:
+            continue
     return apply_candidates(conn, candidates, commit=commit)
 
 

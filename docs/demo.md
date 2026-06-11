@@ -22,6 +22,9 @@ Create or refresh a sandbox on macOS/Linux or another environment with Bash:
 ```bash
 bash scripts/create_sandbox.sh /tmp/omni-demo-sandbox
 cd /tmp/omni-demo-sandbox
+omni init
+omni audit secrets
+omni init --install-claude-hooks --yes
 ```
 
 On Windows PowerShell, use the equivalent script:
@@ -29,6 +32,9 @@ On Windows PowerShell, use the equivalent script:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create_sandbox.ps1 $env:TEMP\omni-demo-sandbox
 Set-Location $env:TEMP\omni-demo-sandbox
+omni init
+omni audit secrets
+omni init --install-claude-hooks --yes
 ```
 
 Confirm the sandbox contains `package.json`, `pnpm-lock.yaml`, and `CLAUDE.md`.
