@@ -8,6 +8,7 @@ import sys
 from omni import __version__
 from omni.config import ensure_project_layout
 from omni.hook import install_claude_hooks, run_from_stdin
+from omni.parse import events_as_jsonl, parse_transcript
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,6 +21,8 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--yes", action="store_true")
 
     subcommands.add_parser("hook", help=argparse.SUPPRESS)
+    parse_parser = subcommands.add_parser("parse", help=argparse.SUPPRESS)
+    parse_parser.add_argument("transcript")
 
     return parser
 
@@ -43,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "hook":
         run_from_stdin()
+        return 0
+
+    if args.command == "parse":
+        result = parse_transcript(args.transcript)
+        _print_diff(events_as_jsonl(result.events))
         return 0
 
     parser.error(f"unknown command: {args.command}")

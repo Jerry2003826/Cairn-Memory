@@ -174,6 +174,32 @@ def test_hook_cli_enqueues_ingest_for_stop_events(tmp_path: Path) -> None:
     assert request["transcript_path"] == "transcript.jsonl"
 
 
+def test_parse_cli_outputs_events_and_redacted_archive(tmp_path: Path) -> None:
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","timestamp":"2026-06-11T00:00:00Z","name":"Bash"}\n'
+        "not-json cli-secret-value-123\n",
+        encoding="utf-8",
+    )
+
+    result = run_omni(
+        tmp_path,
+        "parse",
+        str(transcript),
+        extra_env={"OMNI_PARSE_CLI_SECRET": "cli-secret-value-123"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    event = json.loads(result.stdout)
+    assert event["event_type"] == "tool_use"
+    assert event["tool"] == "Bash"
+    archive = tmp_path / ".omni" / "artifacts" / "transcript_archive.jsonl"
+    assert archive.exists()
+    archive_text = archive.read_text(encoding="utf-8")
+    assert "cli-secret-value-123" not in archive_text
+    assert "REDACTED:env:" in archive_text
+
+
 def test_create_sandbox_script_creates_repo_fixture(tmp_path: Path) -> None:
     bash_check = subprocess.run(
         ["bash", "-lc", "true"],
