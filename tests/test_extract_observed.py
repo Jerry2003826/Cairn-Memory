@@ -56,8 +56,9 @@ def test_default_ingest_does_not_run_observed_command_extractor(tmp_path: Path) 
 def test_default_ingest_only_calls_static_extractors(tmp_path: Path, monkeypatch) -> None:
     calls: list[str] = []
 
-    def static_only(root: Path, conn) -> gate.GateResult:
+    def static_only(root: Path, conn, *, commit: bool = True) -> gate.GateResult:
         calls.append("static")
+        assert commit is False
         return gate.GateResult(auto_committed=0, pending=0)
 
     def observed_disabled(conn) -> gate.GateResult:

@@ -85,7 +85,7 @@ def ingest(
                 total_inserted += _ingest_one(conn, base, rid, None, include_hooks=True)
                 run_ids.append(rid)
 
-        gate.extract_static_facts(base, conn)
+        gate.extract_static_facts(base, conn, commit=False)
         conn.commit()
         if transcript is None and requests:
             ack_ingest_queue(requests)
@@ -473,11 +473,14 @@ def _existing_canonical_event(
         SELECT event_id, source FROM events
         WHERE run_id = ?
           AND tool_use_id = ?
-          AND source IN ('hook', 'reconciled')
+          AND (
+            source = 'hook'
+            OR (source = 'reconciled' AND event_type = ?)
+          )
         ORDER BY CASE source WHEN 'reconciled' THEN 0 ELSE 1 END, seq
         LIMIT 1
         """,
-        (run_id, candidate.tool_use_id),
+        (run_id, candidate.tool_use_id, candidate.event_type),
     ).fetchone()
 
 

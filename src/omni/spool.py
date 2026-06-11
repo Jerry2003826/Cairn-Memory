@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -115,4 +116,7 @@ def ack_ingest_queue(requests: list[dict[str, Any]]) -> None:
 def _quarantine(path: Path) -> None:
     bad_dir = path.parent / "bad"
     bad_dir.mkdir(parents=True, exist_ok=True)
-    path.replace(bad_dir / path.name)
+    target = bad_dir / path.name
+    if target.exists():
+        target = bad_dir / f"{path.name}.{time.time_ns()}.bad"
+    path.replace(target)

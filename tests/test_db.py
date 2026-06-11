@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from omni import db
+from omni import gate
 from omni import hook
 from omni import ingest
 from omni import store
@@ -305,6 +306,60 @@ def test_ingest_redacts_secret_hook_tool_use_id_and_reconciles_transcript(
     assert secret.encode("utf-8") not in omni_bytes
 
 
+def test_ingest_preserves_distinct_event_types_with_same_tool_use_id(
+    tmp_path: Path,
+) -> None:
+    hook.capture_hook(
+        b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
+        b'"tool_use_id":"toolu_multi","tool":"Bash"}',
+        root=tmp_path,
+    )
+    hook_only = ingest.ingest(root=tmp_path, run_id="run_multi")
+    transcript = tmp_path / "multi.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "tool_use",
+                        "timestamp": "2026-06-11T00:00:01Z",
+                        "id": "toolu_multi",
+                        "name": "Bash",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "tool_result",
+                        "timestamp": "2026-06-11T00:00:02Z",
+                        "tool_use_id": "toolu_multi",
+                        "tool": "Bash",
+                        "exit_code": 0,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ingest.ingest(root=tmp_path, run_id="run_multi", transcript=transcript)
+    ingest.ingest(root=tmp_path, run_id="run_multi", transcript=transcript)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        """
+        SELECT seq, event_type, source, tool_use_id
+        FROM events
+        WHERE run_id = 'run_multi'
+        ORDER BY seq
+        """
+    ).fetchall()
+
+    assert hook_only.events_inserted == 1
+    assert [row["event_type"] for row in rows] == ["tool_use", "tool_result"]
+    assert [row["source"] for row in rows] == ["reconciled", "reconciled"]
+    assert [row["seq"] for row in rows] == [1, 2]
+
+
 def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
     tmp_path: Path,
 ) -> None:
@@ -442,6 +497,43 @@ def test_queued_ingest_keeps_request_file_when_transaction_fails(
         ingest.ingest(root=tmp_path)
 
     assert request_file.exists()
+
+
+def test_ingest_static_fact_failure_rolls_back_partial_database_work(
+    tmp_path: Path, monkeypatch
+) -> None:
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","id":"toolu_txn","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+    def fail_after_staging(_root: Path, conn: sqlite3.Connection, *, commit: bool = True):
+        gate.apply_candidates(conn, [gate.FactCandidate(
+            scope="project",
+            subject=".",
+            predicate="uses_test_command",
+            qualifier="node",
+            object_norm="pytest",
+            value_type="string",
+            claim="Use pytest",
+            trust=1,
+            sensitivity="low",
+            origin="manual@1",
+            evidence={"files": []},
+        )], commit=commit)
+        raise RuntimeError("static extraction failed")
+
+    monkeypatch.setattr(ingest.gate, "extract_static_facts", fail_after_staging)
+
+    with pytest.raises(RuntimeError, match="static extraction failed"):
+        ingest.ingest(root=tmp_path, run_id="run_txn", transcript=transcript)
+
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 0
 
 
 def test_queued_ingest_scopes_hook_events_to_session_id(tmp_path: Path) -> None:

@@ -73,6 +73,20 @@ def test_review_approve_promotes_pending_candidate_to_fact(tmp_path: Path) -> No
     assert state == "approved"
 
 
+def test_stage_candidate_does_not_commit_open_transaction(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+
+    conn.execute("BEGIN")
+    pending = gate.stage_candidate(conn, candidate("transactional-pending"))
+    conn.rollback()
+
+    row = conn.execute(
+        "SELECT cand_id FROM fact_candidates WHERE cand_id = ?",
+        (pending.cand_id,),
+    ).fetchone()
+    assert row is None
+
+
 def test_review_reject_writes_suppression_and_blocks_auto_commit(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     pending = gate.stage_candidate(conn, candidate("blocked"))
@@ -185,6 +199,7 @@ def test_review_cli_approve_and_reject(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     approve_candidate = gate.stage_candidate(conn, candidate("cli-approve"))
     reject_candidate = gate.stage_candidate(conn, candidate("cli-reject"))
+    conn.commit()
     conn.close()
 
     approve = run_omni(tmp_path, "review", "approve", approve_candidate.cand_id)
@@ -202,6 +217,7 @@ def test_review_cli_approve_conflict_exits_nonzero_and_keeps_candidate_pending(
     conn = connect(tmp_path)
     gate.insert_fact(conn, candidate("pnpm run test", qualifier="node"))
     pending = gate.stage_candidate(conn, candidate("npm test", qualifier="node"))
+    conn.commit()
     conn.close()
 
     result = run_omni(tmp_path, "review", "approve", pending.cand_id)

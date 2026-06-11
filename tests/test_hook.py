@@ -102,6 +102,24 @@ def test_iter_hook_records_quarantines_malformed_hook_file(tmp_path: Path) -> No
     assert (spool_dir / "bad" / "hook-bad.jsonl").exists()
 
 
+def test_quarantine_preserves_existing_bad_file_with_same_name(tmp_path: Path) -> None:
+    spool_dir = tmp_path / ".omni" / "spool"
+    bad_dir = spool_dir / "bad"
+    bad_dir.mkdir(parents=True)
+    existing = bad_dir / "hook-bad.jsonl"
+    existing.write_text("first bad file\n", encoding="utf-8")
+    malformed = spool_dir / "hook-bad.jsonl"
+    malformed.write_text("not-json\n", encoding="utf-8")
+
+    records = spool.iter_hook_records(tmp_path)
+    bad_files = sorted(bad_dir.glob("hook-bad.jsonl*"))
+
+    assert records == []
+    assert existing.read_text(encoding="utf-8") == "first bad file\n"
+    assert len(bad_files) == 2
+    assert any(path.name != "hook-bad.jsonl" for path in bad_files)
+
+
 def test_spool_readers_quarantine_invalid_utf8_files(tmp_path: Path) -> None:
     spool_dir = tmp_path / ".omni" / "spool"
     spool_dir.mkdir(parents=True)

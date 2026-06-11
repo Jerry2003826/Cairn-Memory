@@ -55,21 +55,28 @@ class GateResult:
     pending: int
 
 
-def extract_static_facts(repo: Path | str, conn: sqlite3.Connection) -> GateResult:
+def extract_static_facts(
+    repo: Path | str, conn: sqlite3.Connection, *, commit: bool = True
+) -> GateResult:
     from omni.extract import pm, scripts
 
     root = Path(repo).resolve()
     candidates = [*pm.detect(root), *scripts.detect(root)]
-    return apply_candidates(conn, candidates)
+    return apply_candidates(conn, candidates, commit=commit)
 
 
-def extract_observed_facts(conn: sqlite3.Connection) -> GateResult:
+def extract_observed_facts(conn: sqlite3.Connection, *, commit: bool = True) -> GateResult:
     from omni.extract import observed
 
-    return apply_candidates(conn, observed.detect(conn))
+    return apply_candidates(conn, observed.detect(conn), commit=commit)
 
 
-def apply_candidates(conn: sqlite3.Connection, candidates: Iterable[FactCandidate]) -> GateResult:
+def apply_candidates(
+    conn: sqlite3.Connection,
+    candidates: Iterable[FactCandidate],
+    *,
+    commit: bool = True,
+) -> GateResult:
     auto_committed = 0
     pending = 0
     for candidate in candidates:
@@ -81,7 +88,8 @@ def apply_candidates(conn: sqlite3.Connection, candidates: Iterable[FactCandidat
         else:
             stage_candidate(conn, with_id)
             pending += 1
-    conn.commit()
+    if commit:
+        conn.commit()
     return GateResult(auto_committed=auto_committed, pending=pending)
 
 
@@ -113,7 +121,6 @@ def stage_candidate(conn: sqlite3.Connection, candidate: FactCandidate) -> FactC
             _now(),
         ),
     )
-    conn.commit()
     return with_id
 
 
