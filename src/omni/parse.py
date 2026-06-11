@@ -25,6 +25,9 @@ KNOWN_EVENT_KEYS = {
     "type",
 }
 
+MAX_TRANSCRIPT_ARCHIVE_BYTES = 768 * 1024
+
+
 @dataclass(frozen=True)
 class NormalizedEvent:
     seq: int
@@ -76,6 +79,9 @@ def parse_transcript(
     transcript_path = Path(path)
     events: list[NormalizedEvent] = []
     archive_lines: list[bytes] = []
+    archive_line_count = 0
+    archive_payload_bytes = 0
+    archive_omitted_lines = 0
     archive_detectors: list[str] = []
     archive_status = "clean"
 
@@ -88,7 +94,10 @@ def parse_transcript(
                 parsed = json.loads(raw_line.decode("utf-8"))
             except Exception:
                 record, status, detectors = _archive_record(line_no, "invalid_json", raw_line)
-                archive_lines.append(record)
+                archive_line_count += 1
+                archive_payload_bytes, archive_omitted_lines = _append_archive_record(
+                    archive_lines, archive_payload_bytes, archive_omitted_lines, record
+                )
                 archive_status = _merge_status(archive_status, status)
                 archive_detectors.extend(detectors)
                 continue
@@ -97,7 +106,10 @@ def parse_transcript(
                 record, status, detectors = _archive_record(
                     line_no, "unknown_transcript_shape", raw_line
                 )
-                archive_lines.append(record)
+                archive_line_count += 1
+                archive_payload_bytes, archive_omitted_lines = _append_archive_record(
+                    archive_lines, archive_payload_bytes, archive_omitted_lines, record
+                )
                 archive_status = _merge_status(archive_status, status)
                 archive_detectors.extend(detectors)
                 continue
@@ -105,12 +117,17 @@ def parse_transcript(
             events.append(_normalize_event(len(events) + 1, parsed))
 
     archive = None
-    if archive_lines:
+    if archive_line_count:
+        if archive_omitted_lines:
+            archive_status = _merge_status(archive_status, "truncated")
+            _append_archive_truncation_record(
+                archive_lines, archive_payload_bytes, archive_omitted_lines
+            )
         archive_payload = b"\n".join(archive_lines) + b"\n"
         archive = TranscriptArchive(
             kind="transcript_archive",
             payload=archive_payload,
-            line_count=len(archive_lines),
+            line_count=archive_line_count,
             redaction_status=archive_status,
             detectors=tuple(dict.fromkeys(archive_detectors)),
         )
@@ -240,9 +257,55 @@ def _archive_record(
     return redact(encoded).data, redaction.status, redaction.detectors
 
 
+def _append_archive_record(
+    archive_lines: list[bytes],
+    archive_payload_bytes: int,
+    archive_omitted_lines: int,
+    record: bytes,
+) -> tuple[int, int]:
+    if archive_omitted_lines:
+        return archive_payload_bytes, archive_omitted_lines + 1
+    record_size = len(record) + 1
+    if archive_payload_bytes + record_size <= MAX_TRANSCRIPT_ARCHIVE_BYTES:
+        archive_lines.append(record)
+        return archive_payload_bytes + record_size, archive_omitted_lines
+    return archive_payload_bytes, 1
+
+
+def _append_archive_truncation_record(
+    archive_lines: list[bytes],
+    archive_payload_bytes: int,
+    archive_omitted_lines: int,
+) -> None:
+    omitted_lines = archive_omitted_lines
+    while archive_lines:
+        truncated = _archive_truncation_record(omitted_lines)
+        if archive_payload_bytes + len(truncated) + 1 <= MAX_TRANSCRIPT_ARCHIVE_BYTES:
+            archive_lines.append(truncated)
+            return
+        removed = archive_lines.pop()
+        archive_payload_bytes -= len(removed) + 1
+        omitted_lines += 1
+    archive_lines.append(_archive_truncation_record(omitted_lines))
+
+
+def _archive_truncation_record(omitted_lines: int) -> bytes:
+    return json.dumps(
+        {
+            "error": "archive_truncated",
+            "omitted_lines": omitted_lines,
+            "redaction_status": "truncated",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
 def _merge_status(left: str, right: str) -> str:
     if "withheld" in (left, right):
         return "withheld"
+    if "truncated" in (left, right):
+        return "truncated"
     if "redacted" in (left, right):
         return "redacted"
     return "clean"

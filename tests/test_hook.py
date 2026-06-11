@@ -154,3 +154,24 @@ def test_drain_ingest_queue_quarantines_malformed_legacy_jsonl(tmp_path: Path) -
     assert requests == []
     assert not legacy.exists()
     assert (spool_dir / "bad" / "ingest_queue.jsonl").exists()
+
+
+def test_legacy_ingest_queue_malformed_line_quarantines_whole_file(
+    tmp_path: Path,
+) -> None:
+    spool_dir = tmp_path / ".omni" / "spool"
+    spool_dir.mkdir(parents=True)
+    legacy = spool_dir / "ingest_queue.jsonl"
+    legacy.write_text(
+        '{"session_id":"before"}\nnot-json\n{"session_id":"after"}\n',
+        encoding="utf-8",
+    )
+
+    requests = spool.drain_ingest_queue(tmp_path)
+    quarantined = spool_dir / "bad" / "ingest_queue.jsonl"
+
+    assert requests == []
+    assert not legacy.exists()
+    assert quarantined.exists()
+    assert '"session_id":"before"' in quarantined.read_text(encoding="utf-8")
+    assert '"session_id":"after"' in quarantined.read_text(encoding="utf-8")

@@ -360,6 +360,55 @@ def test_ingest_preserves_distinct_event_types_with_same_tool_use_id(
     assert [row["seq"] for row in rows] == [1, 2]
 
 
+def test_ingest_preserves_pre_and_post_transcript_events_with_same_tool_use_id(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "pre-post.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "PreToolUse",
+                        "timestamp": "2026-06-11T00:00:00Z",
+                        "tool_use_id": "toolu_prepost",
+                        "tool": "Bash",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "PostToolUse",
+                        "timestamp": "2026-06-11T00:00:01Z",
+                        "tool_use_id": "toolu_prepost",
+                        "tool": "Bash",
+                        "exit_code": 0,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ingest.ingest(root=tmp_path, run_id="run_prepost", transcript=transcript)
+    ingest.ingest(root=tmp_path, run_id="run_prepost", transcript=transcript)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        """
+        SELECT seq, event_type, source, tool_use_id
+        FROM events
+        WHERE run_id = 'run_prepost'
+        ORDER BY seq
+        """
+    ).fetchall()
+
+    assert [(row["seq"], row["event_type"], row["source"]) for row in rows] == [
+        (1, "PreToolUse", "transcript"),
+        (2, "PostToolUse", "transcript"),
+    ]
+    assert {row["tool_use_id"] for row in rows} == {"toolu_prepost"}
+
+
 def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
     tmp_path: Path,
 ) -> None:

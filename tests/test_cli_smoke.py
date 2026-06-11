@@ -249,6 +249,51 @@ def test_init_install_claude_hooks_redacts_printed_diff(tmp_path: Path) -> None:
     assert diff_secret in settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
 
+def test_install_claude_hooks_returned_diff_is_redacted(tmp_path: Path, monkeypatch) -> None:
+    diff_secret = "diff-secret-value-123456"
+    monkeypatch.setenv("OMNI_HOOK_COMMAND", f"python -m omni.cli hook --token={diff_secret}")
+
+    result = hook.install_claude_hooks(tmp_path, yes=True)
+
+    assert result.ok is True
+    assert diff_secret not in result.diff
+    assert "REDACTED:secret_assignment:" in result.diff
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert diff_secret in settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+
+def test_install_claude_hooks_writes_settings_through_temp_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings = claude_dir / "settings.json"
+    original = '{"permissions":{}}\n'
+    settings.write_text(original, encoding="utf-8")
+    original_write_text = Path.write_text
+
+    def fail_direct_final_write(
+        self: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        if self == settings and "omni.cli hook" in data:
+            raise AssertionError("settings.json must be replaced from a temp file")
+        return original_write_text(
+            self, data, encoding=encoding, errors=errors, newline=newline
+        )
+
+    monkeypatch.setattr(Path, "write_text", fail_direct_final_write)
+
+    result = hook.install_claude_hooks(tmp_path, yes=True)
+
+    assert result.ok is True
+    assert "omni.cli hook" in settings.read_text(encoding="utf-8")
+    assert not (claude_dir / "settings.json.omni-tmp").exists()
+
+
 def test_init_install_claude_hooks_fails_closed_on_invalid_project_settings(
     tmp_path: Path,
 ) -> None:

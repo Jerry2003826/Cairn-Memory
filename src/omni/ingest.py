@@ -468,6 +468,10 @@ def _existing_canonical_event(
 ) -> sqlite3.Row | None:
     if not candidate.tool_use_id or candidate.source not in {"reconciled", "transcript"}:
         return None
+    # Canonicalization is intentionally narrow: transcript-backed events may upgrade
+    # a prior hook-only placeholder for the same tool_use_id, but once an event is
+    # transcript/reconciled, later re-ingest only updates the same semantic event_type.
+    # Distinct Pre/Post/tool_result shapes under one tool_use_id remain separate rows.
     return conn.execute(
         """
         SELECT event_id, source FROM events

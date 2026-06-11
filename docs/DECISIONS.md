@@ -37,6 +37,13 @@ Rationale: hook failures must not block Claude Code. Error diagnostics are
 redacted before write, but a future version can move to file-per-error records
 if partial diagnostic writes become a practical problem.
 
+Decision: `events_as_jsonl()` performs output-safety redaction even though
+`NormalizedEvent` values are already redacted.
+
+Rationale: parse output is a terminal/log boundary, so a second redaction pass is
+intentional. The final JSONL may be redacted beyond the event.detectors metadata,
+which describes redaction found while normalizing the event.
+
 Decision: `omni status` computes hook latency p50/p95 by scanning hook spool
 files in Week-1.
 

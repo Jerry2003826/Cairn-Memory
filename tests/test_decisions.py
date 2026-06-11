@@ -26,3 +26,5 @@ def test_week1_operational_debt_is_documented() -> None:
     assert "ingest_queue.jsonl" in body
     assert "best-effort" in body.lower()
     assert "_errors.log" in body
+    assert "output-safety redaction" in body.lower()
+    assert "event.detectors" in body

@@ -138,8 +138,8 @@ def install_claude_hooks(root: Path | str | None = None, *, yes: bool = False) -
     claude_dir.mkdir(parents=True, exist_ok=True)
     if settings_path.exists() and original != rendered:
         _backup_claude_settings(base, settings_path)
-    settings_path.write_text(rendered, encoding="utf-8")
-    return InstallResult(ok=True, diff=diff)
+    _atomic_write_text(settings_path, rendered)
+    return InstallResult(ok=True, diff=_redacted_text(diff))
 
 
 def main() -> int:
@@ -213,6 +213,28 @@ def _backup_claude_settings(base: Path, settings_path: Path) -> Path:
     backup_path = backup_dir / f"claude-settings.{time.time_ns()}.json"
     shutil.copy2(settings_path, backup_path)
     return backup_path
+
+
+def _atomic_write_text(path: Path, content: str, *, encoding: str = "utf-8") -> None:
+    temp_path = path.with_name(f"{path.name}.omni-tmp")
+    try:
+        temp_path.write_text(content, encoding=encoding)
+        if path.exists():
+            try:
+                shutil.copymode(path, temp_path)
+            except OSError:
+                pass
+        temp_path.replace(path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+def _redacted_text(value: str) -> str:
+    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
 
 
 def _parse_settings(original: str) -> dict[str, object]:

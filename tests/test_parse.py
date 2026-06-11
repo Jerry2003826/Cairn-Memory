@@ -169,6 +169,24 @@ def test_parse_transcript_streams_without_reading_entire_file(
     assert result.archive is None
 
 
+def test_parse_transcript_caps_large_unknown_archive_payload(tmp_path: Path) -> None:
+    transcript = tmp_path / "large-unknown.jsonl"
+    with transcript.open("w", encoding="utf-8") as handle:
+        for index in range(100_000):
+            handle.write(json.dumps({"unknown": index, "padding": "x" * 40}) + "\n")
+
+    result = parse.parse_transcript(transcript)
+
+    assert result.events == []
+    assert result.archive is not None
+    assert result.archive.line_count == 100_000
+    assert len(result.archive.payload) < 1024 * 1024
+    records = [json.loads(line) for line in result.archive.payload.decode("utf-8").splitlines()]
+    assert records[-1]["error"] == "archive_truncated"
+    assert records[-1]["omitted_lines"] > 0
+    assert result.archive.redaction_status == "truncated"
+
+
 def test_events_as_jsonl_redacts_each_line_for_large_output() -> None:
     secret = "sk-" + "largeparseoutputsecretvalue1234567890"
     events = [
