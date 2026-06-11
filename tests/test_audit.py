@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from omni import audit
+from omni.redact import RedactionResult
 
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "redaction"
@@ -47,6 +48,32 @@ def test_audit_secrets_fails_on_planted_omni_secret(tmp_path: Path) -> None:
 
     assert result.ok is False
     assert result.omni_leaks == [spike_leak, leak]
+    assert not (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
+
+
+def test_audit_fails_on_positive_fixture_literal_even_if_redactor_misses(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / ".omni" / "spool").mkdir(parents=True)
+    leak = tmp_path / ".omni" / "spool" / "missed.jsonl"
+    leak.write_text(
+        "tool output included ghp_abcdefghijklmnopqrstuvwxyz1234567890\n",
+        encoding="utf-8",
+    )
+
+    def miss_path(path: Path, allow_values: set[str] | None = None) -> RedactionResult:
+        return RedactionResult(
+            data=Path(path).read_bytes(),
+            status="clean",
+            detectors=(),
+        )
+
+    monkeypatch.setattr(audit, "redact_path", miss_path)
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is False
+    assert result.omni_leaks == [leak]
     assert not (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
 
 

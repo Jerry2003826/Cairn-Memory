@@ -30,10 +30,11 @@ def audit_secrets(root: Path | str, fixtures_root: Path | str | None = None) -> 
     base = Path(root).resolve()
     fixture_base = Path(fixtures_root) if fixtures_root else _default_fixtures_root()
     allow_values = _load_allow_values(base)
+    planted_literals = _positive_fixture_literals(fixture_base, allow_values)
 
     positive_failures = _positive_failures(fixture_base, allow_values)
     negative_failures = _negative_failures(fixture_base, allow_values)
-    omni_leaks = _omni_leaks(base, allow_values)
+    omni_leaks = _omni_leaks(base, allow_values, planted_literals)
     ok = not positive_failures and not negative_failures and not omni_leaks
     result = AuditResult(
         ok=ok,
@@ -81,7 +82,11 @@ def _negative_failures(fixtures_root: Path, allow_values: set[str]) -> list[Path
     return failures
 
 
-def _omni_leaks(root: Path, allow_values: set[str]) -> list[Path]:
+def _omni_leaks(
+    root: Path,
+    allow_values: set[str],
+    planted_literals: tuple[bytes, ...],
+) -> list[Path]:
     omni_dir = root / ".omni"
     if not omni_dir.exists():
         return []
@@ -92,10 +97,37 @@ def _omni_leaks(root: Path, allow_values: set[str]) -> list[Path]:
             continue
         if path.relative_to(omni_dir) == Path("audit") / "secrets.passed":
             continue
+        payload = path.read_bytes()
+        literal_leak = any(literal in payload for literal in planted_literals)
         result = redact_path(path, allow_values=allow_values)
-        if result.status != "clean":
+        if literal_leak or result.status != "clean":
             leaks.append(path)
     return leaks
+
+
+def _positive_fixture_literals(fixtures_root: Path, allow_values: set[str]) -> tuple[bytes, ...]:
+    allowed = {value.encode("utf-8") for value in allow_values}
+    literals: set[bytes] = set()
+    for path in sorted((fixtures_root / "positives").glob("*")):
+        if not path.is_file():
+            continue
+        payload = path.read_bytes().strip()
+        if payload:
+            literals.add(payload)
+        for line in path.read_bytes().splitlines():
+            literals.update(_literals_from_positive_line(line))
+    return tuple(sorted((literal for literal in literals if literal not in allowed), key=len, reverse=True))
+
+
+def _literals_from_positive_line(line: bytes) -> set[bytes]:
+    stripped = line.strip()
+    literals = {stripped} if stripped else set()
+    for marker in (b"=", b"--token ", b"Bearer "):
+        if marker in stripped:
+            candidate = stripped.split(marker, 1)[1].strip()
+            if candidate:
+                literals.add(candidate)
+    return literals
 
 
 def _load_allow_values(root: Path) -> set[str]:

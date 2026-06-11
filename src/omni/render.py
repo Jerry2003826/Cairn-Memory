@@ -76,7 +76,19 @@ def _active_facts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         SELECT fact_id, scope, subject, predicate, qualifier, object_norm
         FROM facts
         WHERE retired_seq IS NULL
-        ORDER BY predicate, qualifier, subject, object_norm
+        ORDER BY
+          CASE predicate
+            WHEN 'uses_test_command' THEN 0
+            WHEN 'uses_build_command' THEN 1
+            WHEN 'uses_lint_command' THEN 2
+            WHEN 'uses_typecheck_command' THEN 3
+            WHEN 'uses_dev_command' THEN 4
+            ELSE 5
+          END,
+          predicate,
+          qualifier,
+          subject,
+          object_norm
         """
     ).fetchall()
 

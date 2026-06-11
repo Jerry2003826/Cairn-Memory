@@ -76,7 +76,7 @@ def test_render_generates_byte_stable_memory_without_internal_metadata(tmp_path:
     assert "## Commands" in first_text
     assert "## Boundaries" in first_text
     assert "## Project" in first_text
-    assert first_text.index("pnpm run build") < first_text.index("pnpm run test")
+    assert first_text.index("pnpm run test") < first_text.index("pnpm run build")
     assert first_text.index("pnpm run test") < first_text.index("node package manager: pnpm")
     assert "fact_" not in first_text
     assert "confidence" not in first_text.lower()
@@ -139,3 +139,31 @@ def test_render_cli_diff_previews_without_writing_and_render_writes_file(tmp_pat
     written = run_omni(tmp_path, "render")
     assert written.returncode == 0, written.stderr
     assert (tmp_path / ".omni" / "generated" / "memory.md").exists()
+
+
+def test_render_orders_commands_by_explicit_predicate_priority(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_dev_command", qualifier="node", object_norm="pnpm run dev")
+    add_fact(conn, predicate="uses_typecheck_command", qualifier="node", object_norm="pnpm run typecheck")
+    add_fact(conn, predicate="uses_lint_command", qualifier="node", object_norm="pnpm run lint")
+    add_fact(conn, predicate="uses_build_command", qualifier="node", object_norm="pnpm run build")
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert [
+        text.index("pnpm run test"),
+        text.index("pnpm run build"),
+        text.index("pnpm run lint"),
+        text.index("pnpm run typecheck"),
+        text.index("pnpm run dev"),
+    ] == sorted(
+        [
+            text.index("pnpm run test"),
+            text.index("pnpm run build"),
+            text.index("pnpm run lint"),
+            text.index("pnpm run typecheck"),
+            text.index("pnpm run dev"),
+        ]
+    )

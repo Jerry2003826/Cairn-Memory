@@ -94,6 +94,36 @@ def test_git_remote_project_id_is_stable_across_repo_paths(tmp_path: Path) -> No
     assert ids[0] == ids[1]
 
 
+def test_existing_project_id_wins_when_remote_changes_later(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/example/original.git"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    init = run_omni(repo, "init")
+    original_project_id = (repo / ".omni" / "project_id").read_text(encoding="utf-8").strip()
+
+    assert init.returncode == 0, init.stderr
+
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", "https://github.com/example/renamed.git"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    second_init = run_omni(repo, "init")
+
+    assert second_init.returncode == 0, second_init.stderr
+    assert project_id_for_path(repo) == original_project_id
+    assert (repo / ".omni" / "project_id").read_text(encoding="utf-8").strip() == original_project_id
+
+
 def test_init_does_not_modify_claude_settings(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()

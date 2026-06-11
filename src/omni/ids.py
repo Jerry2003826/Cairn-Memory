@@ -17,10 +17,6 @@ def new_id(prefix: str) -> str:
 
 def project_id_for_path(path: Path | str) -> str:
     base = Path(path).resolve()
-    remote_id = _project_id_from_git_remote(base)
-    if remote_id is not None:
-        return remote_id
-
     project_id_path = base / ".omni" / "project_id"
     if project_id_path.exists():
         existing = project_id_path.read_text(encoding="utf-8").strip()
@@ -33,10 +29,11 @@ def project_id_for_path(path: Path | str) -> str:
 def ensure_project_id(path: Path | str) -> str:
     base = Path(path).resolve()
     project_id_path = base / ".omni" / "project_id"
-    remote_id = _project_id_from_git_remote(base)
-    project_id = remote_id
-    if project_id is None and project_id_path.exists():
+    project_id = None
+    if project_id_path.exists():
         project_id = project_id_path.read_text(encoding="utf-8").strip() or None
+    if project_id is None:
+        project_id = _project_id_from_git_remote(base)
     if project_id is None:
         project_id = f"proj_{uuid.uuid4().hex[:16]}"
 
