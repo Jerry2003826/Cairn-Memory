@@ -93,6 +93,28 @@ def test_oversized_ingest_event_still_writes_request_file(
     }
 
 
+def test_oversized_non_ingest_event_ignores_nested_ingest_metadata(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def fail_raw_parse(_payload: bytes) -> dict[str, object]:
+        raise AssertionError("oversized payload should not be parsed as full JSON")
+
+    monkeypatch.setattr(hook, "_event_from_payload", fail_raw_parse)
+    payload = (
+        b'{"tool_input":{"hook_event_name":"Stop","session_id":"nested",'
+        b'"transcript_path":"nested.jsonl"},"hook_event_name":"PostToolUse",'
+        b'"session_id":"top","transcript_path":"top.jsonl","padding":"'
+        + b"x" * hook.MAX_HOOK_EVENT_PARSE_BYTES
+        + b'"}'
+    )
+
+    result = hook.capture_hook(payload, root=tmp_path)
+
+    assert result.ok is True
+    assert result.spool_path is not None
+    assert not list((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+
+
 def test_capture_hook_discovers_project_root_from_subdirectory(
     tmp_path: Path, monkeypatch
 ) -> None:

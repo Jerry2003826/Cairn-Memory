@@ -204,24 +204,81 @@ def _event_from_payload(payload: bytes) -> dict[str, object]:
 
 def _event_for_enqueue(payload: bytes) -> dict[str, object]:
     if len(payload) > MAX_HOOK_EVENT_PARSE_BYTES:
-        event = {
-            key: _json_string_field(payload, key)
-            for key in ("hook_event_name", "session_id", "transcript_path")
-        }
+        event = _top_level_json_string_fields(
+            payload,
+            {"hook_event_name", "session_id", "transcript_path"},
+        )
         return event if event.get("hook_event_name") in INGEST_EVENTS else {}
     return _event_from_payload(payload)
 
 
-def _json_string_field(payload: bytes, key: str) -> str | None:
-    pattern = rb'"' + re.escape(key.encode("utf-8")) + rb'"\s*:\s*"((?:\\.|[^"\\])*)"'
-    match = re.search(pattern, payload)
-    if match is None:
-        return None
+def _top_level_json_string_fields(payload: bytes, keys: set[str]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    depth = 0
+    index = 0
+    while index < len(payload):
+        char = payload[index]
+        if char == ord('"'):
+            raw_key, next_index = _read_json_string(payload, index)
+            if raw_key is None:
+                return fields
+            if depth == 1:
+                colon = _skip_json_whitespace(payload, next_index)
+                if colon < len(payload) and payload[colon] == ord(":"):
+                    key = _decode_json_string(raw_key)
+                    value_start = _skip_json_whitespace(payload, colon + 1)
+                    if (
+                        key in keys
+                        and value_start < len(payload)
+                        and payload[value_start] == ord('"')
+                    ):
+                        raw_value, value_end = _read_json_string(payload, value_start)
+                        if raw_value is None:
+                            return fields
+                        value = _decode_json_string(raw_value)
+                        if value is not None:
+                            fields[key] = value
+                        index = value_end
+                        continue
+            index = next_index
+            continue
+        if char == ord("{"):
+            depth += 1
+        elif char == ord("}"):
+            depth -= 1
+            if depth < 0:
+                return fields
+        index += 1
+    return fields
+
+
+def _read_json_string(payload: bytes, start: int) -> tuple[bytes | None, int]:
+    escaped = False
+    index = start + 1
+    while index < len(payload):
+        char = payload[index]
+        if escaped:
+            escaped = False
+        elif char == ord("\\"):
+            escaped = True
+        elif char == ord('"'):
+            return payload[start + 1 : index], index + 1
+        index += 1
+    return None, len(payload)
+
+
+def _decode_json_string(raw: bytes) -> str | None:
     try:
-        value = json.loads(b'"' + match.group(1) + b'"')
+        value = json.loads(b'"' + raw + b'"')
     except Exception:
         return None
     return value if isinstance(value, str) else None
+
+
+def _skip_json_whitespace(payload: bytes, index: int) -> int:
+    while index < len(payload) and payload[index] in b" \t\r\n":
+        index += 1
+    return index
 
 
 def _redact_line(record: dict[str, object]) -> bytes:
