@@ -87,7 +87,74 @@ def test_capture_hook_withholds_payload_when_skiplisted_path_is_referenced(
     payload = json.loads(record["payload"])
     assert record["meta"]["redaction_status"] == "withheld"
     assert record["meta"]["detectors"] == ["skiplist"]
-    assert payload["error"] == "skiplisted_path_withheld"
+    assert payload["hook_event_name"] == "PostToolUse"
+    assert payload["tool"] == "Read"
+    assert payload["tool_input"] == {"file_path": ".env"}
+    assert payload["tool_response"]["content"]["error"] == "skiplisted_path_withheld"
+
+
+def test_capture_hook_does_not_withhold_directory_listing_that_mentions_env(
+    tmp_path: Path,
+) -> None:
+    result = hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "tool": "Bash",
+                "tool_input": {"command": "ls -la"},
+                "tool_response": {"stdout": ".env\npackage.json\n"},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    assert result.spool_path is not None
+    record = json.loads(result.spool_path.read_text(encoding="utf-8"))
+    payload = json.loads(record["payload"])
+    assert record["meta"]["redaction_status"] == "clean"
+    assert payload["tool_input"]["command"] == "ls -la"
+    assert payload["tool_response"]["stdout"] == ".env\npackage.json\n"
+
+
+def test_capture_hook_does_not_withhold_prompt_mentioning_env_example(
+    tmp_path: Path,
+) -> None:
+    result = hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "Please compare .env.example with README instructions.",
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    assert result.spool_path is not None
+    record = json.loads(result.spool_path.read_text(encoding="utf-8"))
+    payload = json.loads(record["payload"])
+    assert record["meta"]["redaction_status"] == "clean"
+    assert ".env.example" in payload["prompt"]
+
+
+def test_capture_hook_does_not_withhold_plain_credentials_word_in_output(
+    tmp_path: Path,
+) -> None:
+    result = hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "tool": "Bash",
+                "tool_response": {"stdout": "credentials were not configured\n"},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    assert result.spool_path is not None
+    record = json.loads(result.spool_path.read_text(encoding="utf-8"))
+    payload = json.loads(record["payload"])
+    assert record["meta"]["redaction_status"] == "clean"
+    assert payload["tool_response"]["stdout"] == "credentials were not configured\n"
 
 
 def test_drain_ingest_queue_reads_request_files_and_quarantines_malformed(

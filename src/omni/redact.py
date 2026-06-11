@@ -36,6 +36,7 @@ class _RegexDetector:
 _MIN_ENV_SECRET_LENGTH = 8
 _MAX_FULL_REDACTION_BYTES = 1024 * 1024
 _TRUNCATED_EDGE_BYTES = 256 * 1024
+_TRUNCATED_BOUNDARY_GUARD_BYTES = 4 * 1024
 _SECRET_ENV_KEY_HINTS = ("AUTH", "CREDENTIAL", "KEY", "PASSWORD", "SECRET", "TOKEN")
 _ALWAYS_REDACT_DETECTORS = {
     "auth_header",
@@ -222,7 +223,7 @@ def _should_redact_secret(secret: bytes, detector: str, allow_values: set[bytes]
         return False
     if _looks_like_redaction_placeholder(secret):
         return False
-    if detector == "secret_assignment" and secret.endswith(b"()"):
+    if detector == "secret_assignment" and b"(" in secret and secret.endswith(b")"):
         return False
     if detector in _ALWAYS_REDACT_DETECTORS:
         return True
@@ -317,14 +318,14 @@ def _redact_truncated(payload: bytes, allow_values: set[bytes]) -> RedactionResu
 def _line_safe_prefix(prefix: bytes) -> bytes:
     newline = prefix.rfind(b"\n")
     if newline == -1:
-        return b""
+        return prefix[:-_TRUNCATED_BOUNDARY_GUARD_BYTES]
     return prefix[: newline + 1]
 
 
 def _line_safe_suffix(suffix: bytes) -> bytes:
     newline = suffix.find(b"\n")
     if newline == -1:
-        return b""
+        return suffix[_TRUNCATED_BOUNDARY_GUARD_BYTES:]
     return suffix[newline + 1 :]
 
 

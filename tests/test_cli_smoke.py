@@ -502,6 +502,32 @@ def test_status_cli_reports_hook_elapsed_percentiles_when_available(tmp_path: Pa
     assert body["hook_elapsed_ms_p95"] == 40
 
 
+def test_status_cli_reports_hook_elapsed_percentiles_after_ingest_processed_spool(
+    tmp_path: Path,
+) -> None:
+    run_omni(
+        tmp_path,
+        "hook",
+        input_text=json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "s1",
+                "tool_use_id": "toolu_status",
+                "tool": "Bash",
+            }
+        ),
+    )
+    ingest_result = run_omni(tmp_path, "ingest")
+
+    result = run_omni(tmp_path, "status")
+    body = json.loads(result.stdout)
+
+    assert ingest_result.returncode == 0, ingest_result.stderr
+    assert result.returncode == 0, result.stderr
+    assert "hook_elapsed_ms_p50" in body
+    assert "hook_elapsed_ms_p95" in body
+
+
 def test_doctor_cli_is_disabled_for_week1(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "doctor")
 

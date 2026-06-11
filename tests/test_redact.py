@@ -138,6 +138,17 @@ def test_large_payload_drops_partial_secret_straddling_truncation_edge() -> None
     assert secret not in result.data
 
 
+def test_large_single_line_payload_keeps_nonempty_safe_truncation_sample() -> None:
+    payload = b'{"tool_response":"' + b"A" * (2 * 1024 * 1024) + b'"}'
+
+    result = redact_mod.redact(payload)
+    body = json.loads(result.data)
+
+    assert result.status == "truncated"
+    assert body["prefix"] or body["suffix"]
+    assert len(result.data) < len(payload)
+
+
 def test_false_positive_guards_and_allow_values_do_not_redact() -> None:
     allowed = "ghp_allowedallowedallowedallowedallowedallowed12"
     payload = "\n".join(
@@ -221,7 +232,7 @@ def test_secret_assignment_stops_at_escaped_newline() -> None:
 
 
 def test_secret_assignment_does_not_redact_function_calls() -> None:
-    payload = b"token = get_token()\n"
+    payload = b"token = load_secret_from_vault(name)\n"
 
     result = redact_mod.redact(payload)
 

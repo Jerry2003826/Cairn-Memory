@@ -32,7 +32,8 @@ def _hook_elapsed_summary(root: Path) -> dict[str, int]:
     if not spool.exists():
         return {}
 
-    for path in sorted(spool.glob("hook-*.jsonl")):
+    hook_paths = [*spool.glob("hook-*.jsonl"), *(spool / "processed").glob("hook-*.jsonl")]
+    for path in sorted(hook_paths):
         for line in path.read_text(encoding="utf-8").splitlines():
             try:
                 record = json.loads(line)

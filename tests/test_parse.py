@@ -112,6 +112,8 @@ def test_parse_transcript_redacts_known_event_meta_in_return_value(tmp_path: Pat
     assert result.events[0].as_dict()["redaction_status"] == "redacted"
     assert "openai_token" in result.events[0].as_dict()["detectors"]
     assert secret not in rendered
+    assert "\\u27e8REDACTED:" not in rendered
+    assert "\u27e8REDACTED:" in rendered
     assert not (tmp_path / ".omni").exists()
     assert not (tmp_path / ".omni" / "omni.sqlite3").exists()
 

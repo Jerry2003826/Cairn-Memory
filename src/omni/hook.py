@@ -157,12 +157,9 @@ def main() -> int:
 
 
 def _redact_payload(payload: bytes) -> RedactionResult:
-    if _payload_references_skiplisted_path(payload):
-        return RedactionResult(
-            data=_skiplisted_payload_stub(payload),
-            status="withheld",
-            detectors=("skiplist",),
-        )
+    skiplisted = _redact_skiplisted_payload(payload)
+    if skiplisted is not None:
+        return skiplisted
     try:
         return redact_minimal(payload)
     except Exception:
@@ -220,24 +217,53 @@ def _hook_base(root: Path | str | None) -> Path:
     return Path(configured).resolve()
 
 
-def _payload_references_skiplisted_path(payload: bytes) -> bool:
+def _redact_skiplisted_payload(payload: bytes) -> RedactionResult | None:
     if len(payload) > MAX_HOOK_EVENT_PARSE_BYTES:
-        return False
+        return None
     event = _event_from_payload(payload)
     if not event:
-        return False
-    return any(_string_references_skiplisted_path(value) for value in _walk_strings(event))
+        return None
+    if not _event_input_references_skiplisted_path(event):
+        return None
+
+    sanitized = _withhold_response_content(event, _skiplisted_payload_stub(payload))
+    encoded = json.dumps(
+        sanitized,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    redaction = redact_minimal(encoded)
+    return RedactionResult(
+        data=redaction.data,
+        status="withheld",
+        detectors=tuple(dict.fromkeys(("skiplist", *redaction.detectors))),
+    )
 
 
-def _walk_strings(value: object):
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _walk_strings(item)
+def _event_input_references_skiplisted_path(event: dict[str, object]) -> bool:
+    for key in ("tool_input", "input", "parameters", "args"):
+        value = event.get(key)
+        if _input_value_references_skiplisted_path(value):
+            return True
+    return False
+
+
+def _input_value_references_skiplisted_path(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if lowered in {"file_path", "filepath", "path", "filename"}:
+                if _string_references_skiplisted_path(str(item)):
+                    return True
+            if lowered in {"command", "cmd"} and isinstance(item, str):
+                if _command_references_skiplisted_path(item):
+                    return True
+            if isinstance(item, (dict, list)) and _input_value_references_skiplisted_path(item):
+                return True
     elif isinstance(value, list):
-        for item in value:
-            yield from _walk_strings(item)
+        return any(_input_value_references_skiplisted_path(item) for item in value)
+    return False
 
 
 def _string_references_skiplisted_path(value: str) -> bool:
@@ -248,6 +274,47 @@ def _string_references_skiplisted_path(value: str) -> bool:
         if name and is_skiplisted_path(name):
             return True
     return False
+
+
+def _command_references_skiplisted_path(command: str) -> bool:
+    for token in re.split(r"[\s\"'`=,:;|&<>\[\]{}()]+", command):
+        if "/" not in token and "\\" not in token and not token.startswith("."):
+            continue
+        if _string_references_skiplisted_path(token):
+            return True
+    return False
+
+
+def _withhold_response_content(value: object, stub: bytes) -> object:
+    stub_obj = json.loads(stub.decode("utf-8"))
+    return _replace_response_content(value, stub_obj, in_response=False)
+
+
+def _replace_response_content(value: object, stub: dict[str, object], *, in_response: bool) -> object:
+    if isinstance(value, dict):
+        replaced: dict[str, object] = {}
+        for key, item in value.items():
+            key_in_response = in_response or str(key) in {
+                "tool_response",
+                "tool_result",
+                "response",
+                "result",
+            }
+            if key_in_response and isinstance(item, str):
+                replaced[key] = stub
+            else:
+                replaced[key] = _replace_response_content(
+                    item,
+                    stub,
+                    in_response=key_in_response,
+                )
+        return replaced
+    if isinstance(value, list):
+        return [
+            _replace_response_content(item, stub, in_response=in_response)
+            for item in value
+        ]
+    return stub if in_response and isinstance(value, str) else value
 
 
 def _enqueue_ingest_request(spool_dir: Path, event: dict[str, object]) -> None:

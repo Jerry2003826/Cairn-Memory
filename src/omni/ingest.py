@@ -59,7 +59,14 @@ def ingest(
 
         if transcript is not None:
             rid = run_id or _run_id_for_transcript(Path(transcript))
-            inserted, hook_paths = _ingest_one(conn, base, rid, Path(transcript), include_hooks=True)
+            inserted, hook_paths = _ingest_one(
+                conn,
+                base,
+                rid,
+                Path(transcript),
+                include_hooks=True,
+                session_id=rid,
+            )
             total_inserted += inserted
             consumed_hook_paths.update(hook_paths)
             run_ids.append(rid)

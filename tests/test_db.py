@@ -251,7 +251,7 @@ def test_ingest_stores_transcript_archive_artifact_for_unknown_lines(
 def test_ingest_reconciles_hook_and_transcript_by_tool_use_id(tmp_path: Path) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PreToolUse","timestamp":"2026-06-11T00:00:00Z",'
-        b'"tool_use_id":"toolu_1","tool":"Bash"}',
+        b'"session_id":"run_reconciled","tool_use_id":"toolu_1","tool":"Bash"}',
         root=tmp_path,
     )
     transcript = tmp_path / "transcript.jsonl"
@@ -288,6 +288,7 @@ def test_ingest_redacts_secret_hook_tool_use_id_and_reconciles_transcript(
         json.dumps(
             {
                 "hook_event_name": "PostToolUse",
+                "session_id": "run_secret_id",
                 "timestamp": "2026-06-11T00:00:00Z",
                 "tool_use_id": secret,
                 "tool": "Bash",
@@ -519,6 +520,62 @@ def test_successful_ingest_moves_consumed_hook_spool_files_to_processed(
     assert not list((tmp_path / ".omni" / "spool").glob("hook-*.jsonl"))
     assert len(list((tmp_path / ".omni" / "spool" / "processed").glob("hook-*.jsonl"))) == 1
     assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
+
+
+def test_manual_transcript_ingest_does_not_consume_unrelated_queued_hook_spool(
+    tmp_path: Path,
+) -> None:
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "session_a",
+                "timestamp": "2026-06-11T00:00:00Z",
+                "tool_use_id": "toolu_a",
+                "tool": "Bash",
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "session_a",
+                "transcript_path": None,
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+    manual_transcript = tmp_path / "manual.jsonl"
+    manual_transcript.write_text(
+        '{"type":"tool_use","id":"toolu_b","timestamp":"2026-06-11T00:00:01Z"}\n',
+        encoding="utf-8",
+    )
+
+    manual = ingest.ingest(
+        root=tmp_path,
+        run_id="manual_b",
+        transcript=manual_transcript,
+    )
+    queued = ingest.ingest(root=tmp_path)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        """
+        SELECT run_id, tool_use_id FROM events
+        WHERE tool_use_id IS NOT NULL
+        ORDER BY run_id, tool_use_id
+        """
+    ).fetchall()
+
+    assert manual.events_inserted == 1
+    assert queued.run_ids == ("session_a",)
+    assert [(row["run_id"], row["tool_use_id"]) for row in rows] == [
+        ("manual_b", "toolu_b"),
+        ("session_a", "toolu_a"),
+    ]
+    assert not list((tmp_path / ".omni" / "spool").glob("hook-*.jsonl"))
+    assert len(list((tmp_path / ".omni" / "spool" / "processed").glob("hook-*.jsonl"))) == 2
 
 
 def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path) -> None:

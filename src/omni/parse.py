@@ -138,7 +138,12 @@ def parse_transcript(
 def events_as_jsonl(events: list[NormalizedEvent]) -> str:
     lines: list[str] = []
     for event in events:
-        raw = json.dumps(event.as_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        raw = json.dumps(
+            event.as_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
         line = redact(raw).data.decode("utf-8", errors="replace")
         lines.append(line if line.endswith("\n") else line + "\n")
     return "".join(lines)
@@ -189,7 +194,12 @@ def _normalize_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
 def _redacted_meta(meta: dict[str, Any]) -> tuple[dict[str, Any], str, tuple[str, ...]]:
     if not meta:
         return {}, "clean", ()
-    encoded = json.dumps(meta, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        meta,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
     redaction = redact(encoded)
     redacted = redaction.data.decode("utf-8", errors="replace")
     try:
@@ -253,7 +263,12 @@ def _archive_record(
         "reason": reason,
         "redaction_status": redaction.status,
     }
-    encoded = json.dumps(record, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        record,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
     return redact(encoded).data, redaction.status, redaction.detectors
 
 
