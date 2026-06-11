@@ -1,0 +1,41 @@
+"""SQLite connection and migration helpers."""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+LATEST_SCHEMA_VERSION = "1"
+
+
+def connect(path: Path | str) -> sqlite3.Connection:
+    db_path = Path(path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    if _current_schema_version(conn) == LATEST_SCHEMA_VERSION:
+        return
+    conn.executescript(migration_sql("001_init.sql"))
+    conn.commit()
+
+
+def migration_sql(filename: str) -> str:
+    return (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+
+
+def _current_schema_version(conn: sqlite3.Connection) -> str | None:
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'"
+    ).fetchone()
+    if not exists:
+        return None
+    row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    return row["value"] if row else None
