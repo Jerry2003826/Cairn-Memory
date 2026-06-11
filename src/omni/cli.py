@@ -12,6 +12,7 @@ from omni.hook import install_claude_hooks, run_from_stdin
 from omni.ingest import ingest as ingest_project
 from omni.ingest import run_show
 from omni.parse import events_as_jsonl, parse_transcript
+from omni import review
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser = subcommands.add_parser("audit", help=argparse.SUPPRESS)
     audit_subcommands = audit_parser.add_subparsers(dest="audit_command", required=True)
     audit_subcommands.add_parser("secrets")
+    review_parser = subcommands.add_parser("review", help=argparse.SUPPRESS)
+    review_subcommands = review_parser.add_subparsers(dest="review_command", required=True)
+    for command in ("approve", "reject"):
+        review_command = review_subcommands.add_parser(command)
+        review_command.add_argument("cand_id")
 
     return parser
 
@@ -83,6 +89,18 @@ def main(argv: list[str] | None = None) -> int:
         code, body = run_audit_cli(".")
         _print_diff(body)
         return code
+
+    if args.command == "review":
+        conn = review.connect_project(".")
+        try:
+            if args.review_command == "approve":
+                result = review.approve(conn, args.cand_id)
+            else:
+                result = review.reject(conn, args.cand_id)
+        finally:
+            conn.close()
+        _print_diff(result.as_json())
+        return 0
 
     parser.error(f"unknown command: {args.command}")
     return 2
