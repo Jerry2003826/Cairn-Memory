@@ -11,6 +11,24 @@ from pathlib import Path
 from typing import Any, Iterable
 
 AUTO_ORIGINS = {"pm_detector@1", "script_extractor@1"}
+SINGLE_VALUED_PREDICATES = {
+    "uses_package_manager",
+    "uses_test_command",
+    "uses_build_command",
+    "uses_dev_command",
+    "uses_lint_command",
+    "uses_typecheck_command",
+}
+
+
+class ConflictRequiresSupersede(RuntimeError):
+    def __init__(self, *, fact_id: str, object_norm: str) -> None:
+        self.fact_id = fact_id
+        self.object_norm = object_norm
+        super().__init__(
+            "conflict requires supersede: "
+            f"active fact {fact_id} already has object_norm={object_norm!r}"
+        )
 
 
 @dataclass(frozen=True)
@@ -103,6 +121,12 @@ def insert_fact(conn: sqlite3.Connection, candidate: FactCandidate) -> int:
     with_id = ensure_candidate_id(candidate)
     if _active_fact_exists(conn, with_id):
         return 0
+    conflict = _single_valued_conflict(conn, with_id)
+    if conflict is not None:
+        raise ConflictRequiresSupersede(
+            fact_id=conflict["fact_id"],
+            object_norm=conflict["object_norm"],
+        )
 
     before = conn.total_changes
     conn.execute(
@@ -188,6 +212,29 @@ def _active_key_exists(conn: sqlite3.Connection, candidate: FactCandidate) -> bo
         ),
     ).fetchone()
     return row is not None
+
+
+def _single_valued_conflict(
+    conn: sqlite3.Connection, candidate: FactCandidate
+) -> sqlite3.Row | None:
+    if candidate.predicate not in SINGLE_VALUED_PREDICATES:
+        return None
+    return conn.execute(
+        """
+        SELECT fact_id, object_norm FROM facts
+        WHERE scope = ? AND subject = ? AND predicate = ? AND qualifier = ?
+          AND object_norm <> ? AND retired_seq IS NULL
+        ORDER BY created_seq, fact_id
+        LIMIT 1
+        """,
+        (
+            candidate.scope,
+            candidate.subject,
+            candidate.predicate,
+            candidate.qualifier,
+            candidate.object_norm,
+        ),
+    ).fetchone()
 
 
 def _is_suppressed(conn: sqlite3.Connection, candidate: FactCandidate) -> bool:

@@ -86,6 +86,60 @@ def test_parse_transcript_archives_unknown_lines_with_redaction(tmp_path: Path, 
     assert records[1]["reason"] == "unknown_transcript_shape"
 
 
+def test_parse_transcript_redacts_known_event_meta_in_return_value(tmp_path: Path) -> None:
+    secret = "sk-parsemetasecretvalue1234567890"
+    transcript = tmp_path / "transcript.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": "2026-06-11T00:00:00Z",
+                "name": "Bash",
+                "api_key": secret,
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript)
+    meta_text = json.dumps(result.events[0].meta, sort_keys=True)
+    rendered = parse.events_as_jsonl(result.events)
+
+    assert secret not in meta_text
+    assert "REDACTED:" in meta_text
+    assert secret not in rendered
+    assert not (tmp_path / ".omni").exists()
+    assert not (tmp_path / ".omni" / "omni.sqlite3").exists()
+
+
+def test_parse_transcript_streams_without_reading_entire_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    transcript = tmp_path / "large.jsonl"
+    with transcript.open("w", encoding="utf-8") as handle:
+        for index in range(50_000):
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "tool_use",
+                        "timestamp": f"2026-06-11T00:00:{index % 60:02d}Z",
+                        "id": f"toolu_{index}",
+                    }
+                )
+                + "\n"
+            )
+
+    def fail_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("parse_transcript must stream transcript lines")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+
+    result = parse.parse_transcript(transcript)
+
+    assert len(result.events) == 50_000
+    assert result.archive is None
+
+
 def test_events_as_jsonl_is_stable(tmp_path: Path) -> None:
     transcript = tmp_path / "transcript.jsonl"
     write_jsonl(transcript, [{"hook_event_name": "SessionEnd", "session_id": "s1"}])

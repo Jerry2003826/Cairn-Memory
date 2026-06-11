@@ -31,12 +31,16 @@ def run_omni(
     )
 
 
-def candidate(object_norm: str = "custom") -> gate.FactCandidate:
+def candidate(
+    object_norm: str = "custom",
+    *,
+    qualifier: str = "default",
+) -> gate.FactCandidate:
     return gate.FactCandidate(
         scope="project",
         subject=".",
         predicate="uses_test_command",
-        qualifier="default",
+        qualifier=qualifier,
         object_norm=object_norm,
         value_type="string",
         claim=f"Use {object_norm}",
@@ -126,6 +130,54 @@ def test_gate_keeps_new_value_pending_when_active_key_exists(tmp_path: Path) -> 
     assert [row["object_norm"] for row in facts] == ["current"]
 
 
+def test_review_approve_rejects_conflicting_single_valued_fact(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    gate.insert_fact(conn, candidate("pnpm run test", qualifier="node"))
+    pending = gate.stage_candidate(conn, candidate("npm test", qualifier="node"))
+    conflict = conn.execute(
+        """
+        SELECT fact_id FROM facts
+        WHERE predicate = 'uses_test_command' AND qualifier = 'node'
+        """
+    ).fetchone()["fact_id"]
+
+    with pytest.raises(gate.ConflictRequiresSupersede) as exc:
+        review.approve(conn, pending.cand_id)
+
+    facts = conn.execute(
+        """
+        SELECT object_norm FROM facts
+        WHERE predicate = 'uses_test_command' AND qualifier = 'node'
+        """
+    ).fetchall()
+    state = conn.execute(
+        "SELECT state FROM fact_candidates WHERE cand_id = ?", (pending.cand_id,)
+    ).fetchone()["state"]
+    message = str(exc.value)
+
+    assert [row["object_norm"] for row in facts] == ["pnpm run test"]
+    assert state == "pending"
+    assert conflict in message
+    assert "pnpm run test" in message
+
+
+def test_review_approve_exact_duplicate_is_harmless(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    gate.insert_fact(conn, candidate("pnpm run test", qualifier="node"))
+    pending = gate.stage_candidate(conn, candidate("pnpm run test", qualifier="node"))
+
+    result = review.approve(conn, pending.cand_id)
+
+    facts = conn.execute(
+        """
+        SELECT object_norm FROM facts
+        WHERE predicate = 'uses_test_command' AND qualifier = 'node'
+        """
+    ).fetchall()
+    assert result.state == "approved"
+    assert [row["object_norm"] for row in facts] == ["pnpm run test"]
+
+
 def test_review_cli_approve_and_reject(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     approve_candidate = gate.stage_candidate(conn, candidate("cli-approve"))
@@ -139,6 +191,33 @@ def test_review_cli_approve_and_reject(tmp_path: Path) -> None:
     assert reject.returncode == 0, reject.stderr
     assert json.loads(approve.stdout)["state"] == "approved"
     assert json.loads(reject.stdout)["state"] == "rejected"
+
+
+def test_review_cli_approve_conflict_exits_nonzero_and_keeps_candidate_pending(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    gate.insert_fact(conn, candidate("pnpm run test", qualifier="node"))
+    pending = gate.stage_candidate(conn, candidate("npm test", qualifier="node"))
+    conn.close()
+
+    result = run_omni(tmp_path, "review", "approve", pending.cand_id)
+    conn = connect(tmp_path)
+    state = conn.execute(
+        "SELECT state FROM fact_candidates WHERE cand_id = ?", (pending.cand_id,)
+    ).fetchone()["state"]
+    facts = conn.execute(
+        """
+        SELECT object_norm FROM facts
+        WHERE predicate = 'uses_test_command' AND qualifier = 'node'
+        """
+    ).fetchall()
+
+    assert result.returncode != 0
+    assert "conflict" in result.stderr.lower()
+    assert "pnpm run test" in result.stderr
+    assert state == "pending"
+    assert [row["object_norm"] for row in facts] == ["pnpm run test"]
 
 
 def test_review_refuses_to_reprocess_already_reviewed_candidate(tmp_path: Path) -> None:

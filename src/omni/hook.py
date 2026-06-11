@@ -5,7 +5,10 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import os
+import shlex
 import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -14,7 +17,8 @@ from pathlib import Path
 
 from omni.redact import RedactionResult, redact, redact_minimal
 
-HOOK_COMMAND = "omni hook"
+LEGACY_HOOK_COMMAND = "omni hook"
+HOOK_COMMAND_ENV = "OMNI_HOOK_COMMAND"
 INGEST_EVENTS = {"Stop", "SessionEnd"}
 AUDIT_PASSED_MARKER = Path(".omni") / "audit" / "secrets.passed"
 
@@ -114,8 +118,12 @@ def install_claude_hooks(root: Path | str | None = None, *, yes: bool = False) -
     settings_path = claude_dir / "settings.json"
     backup_path = claude_dir / "settings.json.omni-bak"
     original = settings_path.read_text(encoding="utf-8-sig") if settings_path.exists() else "{}\n"
-    settings = _parse_settings(original)
-    updated = _settings_with_omni_hooks(settings)
+    try:
+        settings = _parse_settings(original)
+    except ValueError as exc:
+        return InstallResult(ok=False, message=str(exc))
+    hook_command = _hook_command()
+    updated = _settings_with_omni_hooks(settings, command=hook_command)
     rendered = json.dumps(updated, indent=2, sort_keys=True) + "\n"
     diff = "".join(
         difflib.unified_diff(
@@ -178,8 +186,10 @@ def _enqueue_ingest_request(spool_dir: Path, event: dict[str, object]) -> None:
         "transcript_path": event.get("transcript_path"),
     }
     line = _redact_line(request)
-    with (spool_dir / "ingest_queue.jsonl").open("ab") as handle:
-        handle.write(line + b"\n")
+    target = spool_dir / f"ingest-{time.time_ns()}-{uuid.uuid4().hex}.json"
+    temp = target.with_suffix(".json.tmp")
+    temp.write_bytes(line + b"\n")
+    temp.replace(target)
 
 
 def _write_error(spool_dir: Path, exc: Exception) -> None:
@@ -199,12 +209,14 @@ def _write_error(spool_dir: Path, exc: Exception) -> None:
 def _parse_settings(original: str) -> dict[str, object]:
     try:
         parsed = json.loads(original) if original.strip() else {}
-    except json.JSONDecodeError:
-        parsed = {}
-    return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid .claude/settings.json: {exc.msg}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("invalid .claude/settings.json: root must be a JSON object")
+    return parsed
 
 
-def _settings_with_omni_hooks(settings: dict[str, object]) -> dict[str, object]:
+def _settings_with_omni_hooks(settings: dict[str, object], *, command: str) -> dict[str, object]:
     updated = dict(settings)
     hooks = updated.get("hooks")
     if not isinstance(hooks, dict):
@@ -217,20 +229,30 @@ def _settings_with_omni_hooks(settings: dict[str, object]) -> dict[str, object]:
         if not isinstance(groups, list):
             groups = []
         groups = list(groups)
-        if not _has_omni_hook(groups):
-            groups.append(_hook_group(event_name))
+        if not _has_omni_hook(groups, command):
+            groups.append(_hook_group(event_name, command))
         hooks[event_name] = groups
 
     updated["hooks"] = hooks
     return updated
 
 
-def _hook_group(event_name: str) -> dict[str, object]:
+def _hook_command() -> str:
+    override = os.environ.get(HOOK_COMMAND_ENV)
+    if override:
+        return override
+    parts = [sys.executable, "-m", "omni.cli", "hook"]
+    if os.name == "nt":
+        return subprocess.list2cmdline(parts)
+    return shlex.join(parts)
+
+
+def _hook_group(event_name: str, command: str) -> dict[str, object]:
     group: dict[str, object] = {
         "hooks": [
             {
                 "type": "command",
-                "command": HOOK_COMMAND,
+                "command": command,
                 "timeout": 5,
             }
         ]
@@ -240,7 +262,7 @@ def _hook_group(event_name: str) -> dict[str, object]:
     return group
 
 
-def _has_omni_hook(groups: list[object]) -> bool:
+def _has_omni_hook(groups: list[object], command: str) -> bool:
     for group in groups:
         if not isinstance(group, dict):
             continue
@@ -248,6 +270,6 @@ def _has_omni_hook(groups: list[object]) -> bool:
         if not isinstance(handlers, list):
             continue
         for handler in handlers:
-            if isinstance(handler, dict) and handler.get("command") == HOOK_COMMAND:
+            if isinstance(handler, dict) and handler.get("command") == command:
                 return True
     return False

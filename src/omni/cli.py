@@ -15,6 +15,7 @@ from omni.parse import events_as_jsonl, parse_transcript
 from omni import inject
 from omni import render
 from omni import review
+from omni import gate
 from omni.status import status_json
 
 
@@ -130,7 +131,11 @@ def main(argv: list[str] | None = None) -> int:
         conn = review.connect_project(".")
         try:
             if args.review_command == "approve":
-                result = review.approve(conn, args.cand_id)
+                try:
+                    result = review.approve(conn, args.cand_id)
+                except gate.ConflictRequiresSupersede as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 2
             elif args.review_command == "reject":
                 result = review.reject(conn, args.cand_id)
             else:

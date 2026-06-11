@@ -75,28 +75,30 @@ def parse_transcript(
     archive_detectors: list[str] = []
     archive_status = "clean"
 
-    for line_no, raw_line in enumerate(transcript_path.read_bytes().splitlines(), start=1):
-        if not raw_line.strip():
-            continue
-        try:
-            parsed = json.loads(raw_line.decode("utf-8"))
-        except Exception:
-            record, status, detectors = _archive_record(line_no, "invalid_json", raw_line)
-            archive_lines.append(record)
-            archive_status = _merge_status(archive_status, status)
-            archive_detectors.extend(detectors)
-            continue
+    with transcript_path.open("rb") as handle:
+        for line_no, raw_line in enumerate(handle, start=1):
+            raw_line = raw_line.rstrip(b"\r\n")
+            if not raw_line.strip():
+                continue
+            try:
+                parsed = json.loads(raw_line.decode("utf-8"))
+            except Exception:
+                record, status, detectors = _archive_record(line_no, "invalid_json", raw_line)
+                archive_lines.append(record)
+                archive_status = _merge_status(archive_status, status)
+                archive_detectors.extend(detectors)
+                continue
 
-        if not isinstance(parsed, dict) or not _event_type(parsed):
-            record, status, detectors = _archive_record(
-                line_no, "unknown_transcript_shape", raw_line
-            )
-            archive_lines.append(record)
-            archive_status = _merge_status(archive_status, status)
-            archive_detectors.extend(detectors)
-            continue
+            if not isinstance(parsed, dict) or not _event_type(parsed):
+                record, status, detectors = _archive_record(
+                    line_no, "unknown_transcript_shape", raw_line
+                )
+                archive_lines.append(record)
+                archive_status = _merge_status(archive_status, status)
+                archive_detectors.extend(detectors)
+                continue
 
-        events.append(_normalize_event(len(events) + 1, parsed))
+            events.append(_normalize_event(len(events) + 1, parsed))
 
     archive = None
     if archive_lines:
@@ -121,6 +123,7 @@ def events_as_jsonl(events: list[NormalizedEvent]) -> str:
 
 
 def _normalize_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
+    meta = {key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS}
     return NormalizedEvent(
         seq=seq,
         ts=str(row.get("timestamp") or row.get("ts") or row.get("created_at") or ""),
@@ -130,8 +133,20 @@ def _normalize_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
         exit_code=_optional_int(row.get("exit_code")),
         duration_ms=_optional_int(row.get("duration_ms")),
         source="transcript",
-        meta={key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS},
+        meta=_redacted_meta(meta),
     )
+
+
+def _redacted_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    if not meta:
+        return {}
+    encoded = json.dumps(meta, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    redacted = redact(encoded).data.decode("utf-8", errors="replace")
+    try:
+        parsed = json.loads(redacted)
+    except json.JSONDecodeError:
+        return {"redacted_meta": redacted}
+    return parsed if isinstance(parsed, dict) else {"redacted_meta": redacted}
 
 
 def _event_type(row: dict[str, Any]) -> Any:

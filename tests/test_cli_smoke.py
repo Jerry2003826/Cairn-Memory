@@ -10,10 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from omni import hook
 from omni.ids import project_id_for_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FAKE_GITHUB_TOKEN = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890"
+FAKE_AWS_KEY = "AKIA" + "IOSFODNN7EXAMPLE"
 
 
 def rendered_memory(body: str = "# Project memory\n") -> str:
@@ -186,16 +188,65 @@ def test_init_install_claude_hooks_prints_diff_and_backs_up_project_settings(tmp
     assert result.returncode == 0, result.stderr
     assert "--- .claude/settings.json" in result.stdout
     assert "+++ .claude/settings.json (omni)" in result.stdout
-    assert "omni hook" in result.stdout
+    assert "omni.cli hook" in result.stdout
     assert (claude_dir / "settings.json.omni-bak").read_text(encoding="utf-8") == original
     assert global_settings.read_text(encoding="utf-8") == global_original
 
     updated = json.loads(settings.read_text(encoding="utf-8"))
+    command = updated["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     assert updated["permissions"] == {}
-    assert updated["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "omni hook"
-    assert updated["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "omni hook"
-    assert updated["hooks"]["Stop"][0]["hooks"][0]["command"] == "omni hook"
-    assert updated["hooks"]["SessionEnd"][0]["hooks"][0]["command"] == "omni hook"
+    assert "omni.cli hook" in command
+    assert command != "omni hook"
+    assert updated["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == command
+    assert updated["hooks"]["Stop"][0]["hooks"][0]["command"] == command
+    assert updated["hooks"]["SessionEnd"][0]["hooks"][0]["command"] == command
+
+
+def test_init_install_claude_hooks_fails_closed_on_invalid_project_settings(
+    tmp_path: Path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings = claude_dir / "settings.json"
+    original = "{ invalid json\n"
+    settings.write_text(original, encoding="utf-8")
+
+    result = run_omni(tmp_path, "init", "--install-claude-hooks", "--yes")
+
+    assert result.returncode == 2
+    assert settings.read_text(encoding="utf-8") == original
+    assert "invalid" in result.stderr.lower()
+    assert "omni hook" not in settings.read_text(encoding="utf-8")
+    assert not (claude_dir / "settings.json.omni-bak").exists()
+
+
+def test_init_install_claude_hooks_fails_closed_on_non_object_project_settings(
+    tmp_path: Path,
+) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings = claude_dir / "settings.json"
+    original = "[]\n"
+    settings.write_text(original, encoding="utf-8")
+
+    result = run_omni(tmp_path, "init", "--install-claude-hooks", "--yes")
+
+    assert result.returncode == 2
+    assert settings.read_text(encoding="utf-8") == original
+    assert "json object" in result.stderr.lower()
+    assert not (claude_dir / "settings.json.omni-bak").exists()
+
+
+def test_install_claude_hooks_honors_hook_command_override(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OMNI_HOOK_COMMAND", "custom omni hook")
+
+    result = hook.install_claude_hooks(tmp_path, yes=True)
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8"))
+
+    assert result.ok is True
+    assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "custom omni hook"
 
 
 def test_init_install_claude_hooks_handles_utf8_bom_settings_with_non_utf8_stdout(tmp_path: Path) -> None:
@@ -332,9 +383,9 @@ def test_hook_cli_enqueues_ingest_for_stop_events(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    queue = tmp_path / ".omni" / "spool" / "ingest_queue.jsonl"
-    assert queue.exists()
-    request = json.loads(queue.read_text(encoding="utf-8"))
+    queue_files = sorted((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+    assert len(queue_files) == 1
+    request = json.loads(queue_files[0].read_text(encoding="utf-8"))
     assert request["event"] == "SessionEnd"
     assert request["session_id"] == "s1"
     assert request["transcript_path"] == "transcript.jsonl"
@@ -526,7 +577,7 @@ def test_create_sandbox_script_creates_repo_fixture(tmp_path: Path) -> None:
     assert (target / "package.json").is_file()
     assert (target / "pnpm-lock.yaml").is_file()
     assert (target / "CLAUDE.md").is_file()
-    assert "FAKE_AWS=AKIAIOSFODNN7EXAMPLE" in (target / ".env").read_text(encoding="utf-8")
+    assert f"FAKE_AWS={FAKE_AWS_KEY}" in (target / ".env").read_text(encoding="utf-8")
     assert "OMNI_FAKE_SECRET=hunter2hunter2" in (target / ".env").read_text(encoding="utf-8")
     assert FAKE_GITHUB_TOKEN in (target / "fake_config.py").read_text(encoding="utf-8")
     tracked = subprocess.run(
@@ -556,7 +607,9 @@ def test_create_sandbox_scripts_do_not_embed_complete_fake_github_token() -> Non
         script = (REPO_ROOT / "scripts" / script_name).read_text(encoding="utf-8")
 
         assert FAKE_GITHUB_TOKEN not in script
+        assert FAKE_AWS_KEY not in script
         assert '"ghp_"' in script
+        assert '"AKIA"' in script
 
 
 def test_create_sandbox_powershell_script_creates_repo_fixture(tmp_path: Path) -> None:
@@ -592,7 +645,7 @@ def test_create_sandbox_powershell_script_creates_repo_fixture(tmp_path: Path) -
     assert (target / "package.json").is_file()
     assert (target / "pnpm-lock.yaml").is_file()
     assert (target / "CLAUDE.md").is_file()
-    assert "FAKE_AWS=AKIAIOSFODNN7EXAMPLE" in (target / ".env").read_text(encoding="utf-8")
+    assert f"FAKE_AWS={FAKE_AWS_KEY}" in (target / ".env").read_text(encoding="utf-8")
     assert "OMNI_FAKE_SECRET=hunter2hunter2" in (target / ".env").read_text(encoding="utf-8")
     assert FAKE_GITHUB_TOKEN in (target / "fake_config.py").read_text(encoding="utf-8")
     tracked = subprocess.run(

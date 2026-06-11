@@ -39,17 +39,25 @@ def iter_hook_records(root: Path | str) -> list[HookRecord]:
 
 
 def drain_ingest_queue(root: Path | str) -> list[dict[str, Any]]:
-    path = spool_dir(root) / "ingest_queue.jsonl"
-    if not path.exists():
-        return []
-
+    directory = spool_dir(root)
     requests: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for path in sorted(directory.glob("ingest-*.json")):
         try:
-            parsed = json.loads(line)
+            parsed = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict):
             requests.append(parsed)
-    path.write_text("", encoding="utf-8")
+            path.unlink(missing_ok=True)
+
+    legacy_path = directory / "ingest_queue.jsonl"
+    if legacy_path.exists():
+        for line in legacy_path.read_text(encoding="utf-8").splitlines():
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                requests.append(parsed)
+        legacy_path.write_text("", encoding="utf-8")
     return requests

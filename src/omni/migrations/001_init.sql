@@ -47,8 +47,7 @@ CREATE TABLE events(
   redaction_status TEXT NOT NULL DEFAULT 'clean',
   redaction_ver INTEGER NOT NULL,
   source TEXT NOT NULL,
-  meta JSON,
-  UNIQUE(run_id, seq)
+  meta JSON
 );
 
 CREATE INDEX idx_events_tooluse ON events(tool_use_id);

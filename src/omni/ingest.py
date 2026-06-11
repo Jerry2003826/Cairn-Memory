@@ -174,6 +174,7 @@ def _ingest_one(
     inserted = 0
     for seq, candidate in enumerate(candidates, start=1):
         inserted += _insert_event(conn, run_id, seq, candidate)
+    _renumber_run_events(conn, run_id)
     _update_run_bounds(conn, run_id)
     return inserted
 
@@ -389,6 +390,7 @@ def _insert_event(conn: sqlite3.Connection, run_id: str, seq: int, candidate: Ev
     event_id = _event_id(run_id, candidate)
     meta_json = _redacted_json(candidate.meta)
     before = conn.total_changes
+    next_seq = _next_event_seq(conn, run_id)
     conn.execute(
         """
         INSERT OR IGNORE INTO events(
@@ -399,7 +401,7 @@ def _insert_event(conn: sqlite3.Connection, run_id: str, seq: int, candidate: Ev
         (
             event_id,
             run_id,
-            seq,
+            next_seq,
             candidate.ts,
             candidate.event_type,
             candidate.tool,
@@ -415,6 +417,35 @@ def _insert_event(conn: sqlite3.Connection, run_id: str, seq: int, candidate: Ev
         ),
     )
     return 1 if conn.total_changes > before else 0
+
+
+def _next_event_seq(conn: sqlite3.Connection, run_id: str) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    return int(row[0])
+
+
+def _renumber_run_events(conn: sqlite3.Connection, run_id: str) -> None:
+    rows = conn.execute(
+        """
+        SELECT event_id FROM events
+        WHERE run_id = ?
+        ORDER BY ts, event_type, COALESCE(tool_use_id, ''), event_id
+        """,
+        (run_id,),
+    ).fetchall()
+    for index, row in enumerate(rows, start=1):
+        conn.execute(
+            "UPDATE events SET seq = ? WHERE event_id = ?",
+            (-index, row["event_id"]),
+        )
+    for index, row in enumerate(rows, start=1):
+        conn.execute(
+            "UPDATE events SET seq = ? WHERE event_id = ?",
+            (index, row["event_id"]),
+        )
 
 
 def _update_run_bounds(conn: sqlite3.Connection, run_id: str) -> None:

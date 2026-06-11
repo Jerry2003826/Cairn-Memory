@@ -51,6 +51,15 @@ def test_migration_creates_schema_and_seed_meta(tmp_path: Path) -> None:
         "redaction_ver": "1",
     }
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    event_indexes = conn.execute("PRAGMA index_list(events)").fetchall()
+    for index in event_indexes:
+        if not index["unique"]:
+            continue
+        columns = [
+            row["name"]
+            for row in conn.execute(f"PRAGMA index_info({index['name']})").fetchall()
+        ]
+        assert columns != ["run_id", "seq"]
 
 
 def test_migration_is_idempotent(tmp_path: Path) -> None:
@@ -159,7 +168,7 @@ def test_ingest_transcript_is_idempotent_and_redacts_db_content(
     event = conn.execute("SELECT source, meta, input_ref FROM events").fetchone()
     assert event["source"] == "transcript"
     assert "ingest-secret-value-123" not in event["meta"]
-    assert "REDACTED:env:" in event["meta"]
+    assert "REDACTED:" in event["meta"]
     assert event["input_ref"]
     omni_bytes = b"".join(
         path.read_bytes() for path in (tmp_path / ".omni").rglob("*") if path.is_file()
@@ -234,6 +243,49 @@ def test_ingest_reconciles_hook_and_transcript_by_tool_use_id(tmp_path: Path) ->
     ]
 
 
+def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
+    tmp_path: Path,
+) -> None:
+    hook.capture_hook(
+        b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
+        b'"tool_use_id":"toolu_delayed","tool":"Bash"}',
+        root=tmp_path,
+    )
+
+    hook_only = ingest.ingest(root=tmp_path, run_id="run_delayed")
+    transcript = tmp_path / "delayed.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","timestamp":"2026-06-11T00:00:01Z",'
+        '"id":"toolu_delayed","name":"Bash","exit_code":0}\n',
+        encoding="utf-8",
+    )
+    with_transcript = ingest.ingest(
+        root=tmp_path, run_id="run_delayed", transcript=transcript
+    )
+    repeated = ingest.ingest(root=tmp_path, run_id="run_delayed", transcript=transcript)
+
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        """
+        SELECT seq, event_id, source, tool_use_id
+        FROM events
+        WHERE run_id = 'run_delayed'
+        ORDER BY seq
+        """
+    ).fetchall()
+    show = ingest.run_show(tmp_path, "run_delayed")
+
+    assert hook_only.events_inserted == 1
+    assert with_transcript.events_inserted == 1
+    assert repeated.events_inserted == 0
+    assert [row["seq"] for row in rows] == [1, 2]
+    assert [row["source"] for row in rows] == ["hook", "reconciled"]
+    assert len({row["event_id"] for row in rows}) == 2
+    assert show.count("toolu_delayed") == 0
+    assert "1 | 2026-06-11T00:00:00Z | PostToolUse | Bash |" in show
+    assert "2 | 2026-06-11T00:00:01Z | tool_use | Bash | 0 |" in show
+
+
 def test_ingest_calculates_hook_duration_when_possible(tmp_path: Path) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PreToolUse","timestamp":"2026-06-11T00:00:00Z",'
@@ -276,7 +328,7 @@ def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path)
     )
 
     queued = ingest.ingest(root=tmp_path)
-    queue_path = tmp_path / ".omni" / "spool" / "ingest_queue.jsonl"
+    queue_files = sorted((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
     conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
     conn.execute(
         "INSERT INTO runs(run_id, project_id, snapshot_seq, transcript_path, status) VALUES(?,?,?,?,?)",
@@ -296,8 +348,7 @@ def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path)
         "SELECT COUNT(*) FROM events WHERE run_id = ? AND tool_use_id = ?",
         ("queued_run", "toolu_q"),
     ).fetchone()[0] == 1
-    assert queue_path.exists()
-    assert queue_path.read_text(encoding="utf-8") == ""
+    assert queue_files == []
     assert closed >= 1
     assert dict(stale) == {"status": "closed", "end_reason": "watchdog"}
 
