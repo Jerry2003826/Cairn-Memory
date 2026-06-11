@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -243,6 +244,35 @@ def test_ingest_and_run_show_cli(tmp_path: Path) -> None:
     assert expanded_result.returncode == 0, expanded_result.stderr
     assert '"tool_use_id": "toolu_cli"' in expanded_result.stdout
     assert '"source": "transcript"' in expanded_result.stdout
+
+
+def test_ingest_extracts_static_facts_for_render_cli(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "demo",
+                "packageManager": "pnpm@10.0.0",
+                "scripts": {"test": "node test.js", "build": "node build.js"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+
+    ingest_result = run_omni(tmp_path, "ingest")
+    second_ingest = run_omni(tmp_path, "ingest")
+    render_result = run_omni(tmp_path, "render")
+    memory = (tmp_path / ".omni" / "generated" / "memory.md").read_text(encoding="utf-8")
+    conn = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
+
+    assert ingest_result.returncode == 0, ingest_result.stderr
+    assert second_ingest.returncode == 0, second_ingest.stderr
+    assert render_result.returncode == 0, render_result.stderr
+    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 3
+    assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
+    assert "node package manager: pnpm" in memory
+    assert "default test command: pnpm run test" in memory
+    assert "default build command: pnpm run build" in memory
 
 
 def test_audit_secrets_cli_passes_clean_omni_tree(tmp_path: Path) -> None:

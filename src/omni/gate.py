@@ -50,6 +50,8 @@ def apply_candidates(conn: sqlite3.Connection, candidates: Iterable[FactCandidat
     pending = 0
     for candidate in candidates:
         with_id = ensure_candidate_id(candidate)
+        if _active_fact_exists(conn, with_id):
+            continue
         if _can_auto_commit(conn, with_id):
             auto_committed += insert_fact(conn, with_id)
         else:

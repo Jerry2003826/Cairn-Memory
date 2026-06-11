@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from omni import db
+from omni import gate
 from omni.config import ensure_project_layout
 from omni.ids import project_id_for_path
 from omni.parse import NormalizedEvent, parse_transcript
@@ -75,6 +76,7 @@ def ingest(
                 total_inserted += _ingest_one(conn, base, rid, None, include_hooks=True)
                 run_ids.append(rid)
 
+        gate.extract_static_facts(base, conn)
         conn.commit()
         return IngestResult(
             run_ids=tuple(dict.fromkeys(run_ids)),
