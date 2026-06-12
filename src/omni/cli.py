@@ -324,8 +324,11 @@ def main(argv: list[str] | None = None) -> int:
         from omni import outcome
 
         try:
-            conn = outcome.connect_project(project_root())
-        except FileNotFoundError as exc:
+            if args.outcome_command == "show":
+                conn = outcome.connect_project_readonly(project_root())
+            else:
+                conn = outcome.connect_project(project_root())
+        except (FileNotFoundError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 2
         try:
@@ -359,8 +362,11 @@ def main(argv: list[str] | None = None) -> int:
         from omni import experience
 
         try:
-            conn = experience.connect_project(project_root())
-        except FileNotFoundError as exc:
+            if args.experience_command in ("ls", "show"):
+                conn = experience.connect_project_readonly(project_root())
+            else:
+                conn = experience.connect_project(project_root())
+        except (FileNotFoundError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 2
         try:

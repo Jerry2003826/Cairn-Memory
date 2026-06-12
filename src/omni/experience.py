@@ -48,6 +48,23 @@ def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
+    base = Path(root or Path.cwd()).resolve()
+    db_path = base / ".omni" / "omni.sqlite3"
+    if not db_path.exists():
+        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
+    conn = db.connect_readonly(db_path)
+    version = db.schema_version(conn)
+    if version != db.LATEST_SCHEMA_VERSION:
+        conn.close()
+        raise ValueError(
+            f"OmniMemory schema is outdated (found {version or 'none'}, need "
+            f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
+            "'omni render' to migrate"
+        )
+    return conn
+
+
 def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
     _ensure_run_exists(conn, run_id)
     outcome_row = _outcome_for_run(conn, run_id)

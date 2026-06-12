@@ -26,6 +26,13 @@ def connect(path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def connect_readonly(path: Path | str) -> sqlite3.Connection:
+    db_path = Path(path).resolve()
+    conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def migrate(conn: sqlite3.Connection) -> None:
     current = _current_schema_version(conn)
     if current == LATEST_SCHEMA_VERSION:
@@ -39,6 +46,10 @@ def migrate(conn: sqlite3.Connection) -> None:
 
 def migration_sql(filename: str) -> str:
     return (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+
+
+def schema_version(conn: sqlite3.Connection) -> str | None:
+    return _current_schema_version(conn)
 
 
 def _current_schema_version(conn: sqlite3.Connection) -> str | None:

@@ -75,6 +75,9 @@ Violations require reverting the commit.
    - `omni experience ls`
    - `omni experience show`
 
+   Read-only commands open SQLite in read-only mode and never run
+   migrations; migrations run only inside approved write commands.
+
 4. Never modify user content in `CLAUDE.md` outside the managed region:
 
    ```md

@@ -512,6 +512,51 @@ def test_evidence_contains_eval_and_outcome_summary_without_raw_secrets(
     assert candidate["evidence"]["outcome"]["status"] == "failed"
 
 
+def test_cli_experience_ls_on_outdated_schema_is_read_only_and_exits_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".omni").mkdir()
+    setup = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
+    setup.executescript(db.migration_sql("001_init.sql"))
+    setup.executescript(db.migration_sql("002_outcomes.sql"))
+    setup.executescript(db.migration_sql("003_experience_candidates.sql"))
+    setup.commit()
+    setup.close()
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main(["experience", "ls"])
+    captured = capsys.readouterr()
+    check = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
+    version = check.execute(
+        "SELECT value FROM meta WHERE key = 'schema_version'"
+    ).fetchone()[0]
+    check.close()
+
+    assert code == 2
+    assert "OmniMemory schema is outdated (found 3, need 4)" in captured.err
+    assert "omni render" in captured.err
+    assert captured.out == ""
+    assert version == "3"
+
+
+def test_connect_project_readonly_serves_reads_and_blocks_writes(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    conn.close()
+
+    readonly = experience.connect_project_readonly(tmp_path)
+    try:
+        assert experience.list_candidates(readonly, state="all") == []
+        with pytest.raises(sqlite3.OperationalError):
+            readonly.execute("INSERT INTO meta(key, value) VALUES('probe', '1')")
+    finally:
+        readonly.close()
+
+
+def test_connect_project_readonly_missing_db_raises_file_not_found(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="OmniMemory database is missing"):
+        experience.connect_project_readonly(tmp_path)
+
+
 def _fixture_db(root: Path) -> sqlite3.Connection:
     (root / ".omni").mkdir()
     conn = db.connect(root / ".omni" / "omni.sqlite3")

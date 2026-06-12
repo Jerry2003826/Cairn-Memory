@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from omni import db
 from omni.redact import redact
 
 EXPECTED_PREDICATES = (
@@ -173,9 +174,7 @@ def as_json(value: dict[str, Any]) -> str:
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return db.connect_readonly(db_path)
 
 
 def _active_expected_commands(conn: sqlite3.Connection) -> dict[str, list[str]]:

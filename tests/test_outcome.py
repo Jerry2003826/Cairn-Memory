@@ -249,6 +249,48 @@ def test_memory_effect_omitted_defaults_unknown_when_eval_not_feasible(
     assert result["memory_effect"] == "unknown"
 
 
+def test_cli_outcome_show_on_outdated_schema_is_read_only_and_exits_clearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".omni").mkdir()
+    setup = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
+    setup.executescript(db.migration_sql("001_init.sql"))
+    setup.executescript(db.migration_sql("002_outcomes.sql"))
+    setup.commit()
+    setup.close()
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main(["outcome", "show", "any_run"])
+    captured = capsys.readouterr()
+    check = sqlite3.connect(tmp_path / ".omni" / "omni.sqlite3")
+    version = check.execute(
+        "SELECT value FROM meta WHERE key = 'schema_version'"
+    ).fetchone()[0]
+    check.close()
+
+    assert code == 2
+    assert "OmniMemory schema is outdated (found 2, need 4)" in captured.err
+    assert captured.out == ""
+    assert version == "2"
+
+
+def test_connect_project_readonly_supports_show_and_blocks_writes(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_ro_show")
+    outcome.mark_outcome(conn, "run_ro_show", status="success")
+    conn.close()
+
+    readonly = outcome.connect_project_readonly(tmp_path)
+    try:
+        shown = outcome.show_outcome(readonly, "run_ro_show")
+        with pytest.raises(sqlite3.OperationalError):
+            readonly.execute("INSERT INTO meta(key, value) VALUES('probe', '1')")
+    finally:
+        readonly.close()
+
+    assert shown["status"] == "success"
+
+
 def _fixture_db(root: Path) -> sqlite3.Connection:
     (root / ".omni").mkdir()
     conn = db.connect(root / ".omni" / "omni.sqlite3")
