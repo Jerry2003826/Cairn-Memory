@@ -245,13 +245,21 @@ def _command_instruction(command_kind: str, qualifier: str, object_norm: str) ->
 
 
 def _known_test_command(facts: list[sqlite3.Row]) -> str | None:
-    commands = {
-        str(fact["object_norm"])
+    test_facts = [
+        (str(fact["qualifier"]), _collapse_whitespace(str(fact["object_norm"])))
         for fact in facts
         if fact["predicate"] == "uses_test_command"
-    }
+    ]
+    commands = {command for _qualifier, command in test_facts if command}
     if len(commands) == 1:
         return next(iter(commands))
+    base_commands = {
+        command
+        for qualifier, command in test_facts
+        if command and ":" not in qualifier
+    }
+    if len(base_commands) == 1:
+        return next(iter(base_commands))
     return None
 
 

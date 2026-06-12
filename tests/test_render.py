@@ -490,6 +490,45 @@ def test_fast_path_uses_generic_wording_with_multiple_distinct_test_commands(
     assert "- For validation tasks, run `pytest -q` before broad" not in text
 
 
+def test_fast_path_prefers_base_qualifier_when_node_test_commands_are_scoped(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+    add_fact(
+        conn,
+        predicate="uses_test_command",
+        qualifier="node:e2e",
+        object_norm="pnpm run test:e2e",
+    )
+    add_fact(
+        conn,
+        predicate="uses_test_command",
+        qualifier="node:unit",
+        object_norm="pnpm run test:unit",
+    )
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_scoped_node_test",
+        run_id="run_scoped_node_test",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_scoped_node_test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert (
+        "For validation tasks, run `pnpm run test` before broad "
+        "README/package/deployment rediscovery."
+    ) in text
+
+
 def test_fast_path_substitutes_when_duplicate_test_command_facts_agree(
     tmp_path: Path,
 ) -> None:
