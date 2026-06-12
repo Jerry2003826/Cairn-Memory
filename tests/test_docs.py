@@ -147,3 +147,30 @@ def test_week2_spike_report_contains_required_pending_sections() -> None:
         "G6 robust pass/fail",
     ):
         assert phrase in text
+
+
+def test_week2_go_no_go_doc_defines_gates_and_dogfood_entry() -> None:
+    doc = REPO_ROOT / "docs" / "week2-go-no-go.md"
+
+    text = doc.read_text(encoding="utf-8")
+
+    for gate in ("G1", "G2", "G3", "G4", "G5", "G6", "G7"):
+        assert f"## {gate}:" in text
+
+    for phrase in (
+        "session_id / cwd / timestamp",
+        "command + exit_code + stdout/stderr",
+        "safely archived with redaction",
+        "omni audit secrets",
+        "package manager and test/build commands",
+        "first matching test command equals injected command",
+        "no forbidden rediscovery event occurred before it",
+        "in-process hook capture p95 < 250 ms",
+        "process-level latency is sampled separately",
+        "Dogfood Entry",
+        "G1-G7 pass",
+        "no PENDING HUMAN EVIDENCE cells in sections 2, 3, 11",
+        "no raw secrets in .omni/**",
+        "no uncontrolled modification outside the CLAUDE.md managed region",
+    ):
+        assert phrase in text
