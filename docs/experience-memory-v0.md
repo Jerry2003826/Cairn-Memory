@@ -157,7 +157,11 @@ confidence values out of `memory.md`; it renders concise guidance such as
 validation fast paths instead.
 When an active `uses_test_command` fact exists, validation fast-path notes may
 render the concrete command, for example `pnpm run test`; otherwise they use the
-generic known-verification-command wording.
+generic known-verification-command wording. When several active facts disagree
+on the test command, fast-path notes fall back to the generic wording instead of
+guessing one command. Identical rendered guidance lines are deduplicated, so
+approving the same kind of candidate from multiple runs keeps a single line in
+`memory.md`.
 
 This is still not Soul runtime, failure memory, verify automation, automatic
 memory evolution, LLM extraction, MCP, vector search, dashboard work, or an

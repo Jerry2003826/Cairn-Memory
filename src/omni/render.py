@@ -20,7 +20,7 @@ HEADER_RE = re.compile(
     r"^<!-- omni:generated render_ver=1 sha256=([0-9a-f]{64}) DO NOT EDIT -->\r?\n"
 )
 MAX_BODY_CHARS = 6000
-TRUNCATION_NOTICE = "- Additional facts omitted due to size limit."
+TRUNCATION_NOTICE = "- Additional entries omitted due to size limit."
 Dependency = tuple[str, str]
 
 
@@ -100,10 +100,10 @@ def _active_facts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 def _active_experience_notes(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT note_id, scope, task_type, kind, trigger, body, suggested_action
+        SELECT note_id, scope, task_type, kind, body, suggested_action
         FROM experience_notes
         WHERE status = 'active'
-        ORDER BY task_type, kind, suggested_action, body
+        ORDER BY task_type, kind, suggested_action, body, note_id
         """
     ).fetchall()
 
@@ -120,20 +120,26 @@ def _render_body(
         "Project": [],
     }
 
-    for fact in facts:
-        rendered = _render_fact_line(fact)
-        if rendered is None:
-            continue
-        section, line = rendered
-        sections[section].append((("fact", fact["fact_id"]), line))
+    seen_lines: set[tuple[str, str]] = set()
 
-    test_command = _first_test_command(facts)
-    for note in notes:
-        rendered = _render_experience_note_line(note, test_command)
+    def append_unique(dep: Dependency, rendered: tuple[str, str] | None) -> None:
         if rendered is None:
-            continue
+            return
         section, line = rendered
-        sections[section].append((("experience_note", note["note_id"]), line))
+        if (section, line) in seen_lines:
+            return
+        seen_lines.add((section, line))
+        sections[section].append((dep, line))
+
+    for fact in facts:
+        append_unique(("fact", fact["fact_id"]), _render_fact_line(fact))
+
+    test_command = _known_test_command(facts)
+    for note in notes:
+        append_unique(
+            ("experience_note", note["note_id"]),
+            _render_experience_note_line(note, test_command),
+        )
 
     lines: list[tuple[str, Dependency | None]] = [("# Project memory", None), ("", None)]
     omitted = False
@@ -148,8 +154,13 @@ def _render_body(
     if omitted:
         lines = _with_truncation_notice(lines)
     rendered_lines = _line_texts(lines)
-    body = _redact_text("\n".join(rendered_lines).rstrip() + "\n")
+    joined = "\n".join(rendered_lines).rstrip() + "\n"
+    body = _redact_text(joined)
     redacted_lines = body.rstrip("\n").split("\n")
+    if len(redacted_lines) != len(joined.rstrip("\n").split("\n")):
+        # Redaction changed the line count, so per-line hashes would misalign;
+        # dropping them forces the block dirty instead of recording wrong hashes.
+        return body, {}
     line_hashes = {
         dep: _sha256(redacted_lines[index])
         for index, (_line, dep) in enumerate(lines)
@@ -202,9 +213,9 @@ def _render_experience_note_line(
             "- For validation tasks, prefer the known verification command early.",
         )
 
-    action = str(note["suggested_action"] or "").strip()
+    action = _collapse_whitespace(str(note["suggested_action"] or ""))
     if not action:
-        action = str(note["body"] or "").strip()
+        action = _collapse_whitespace(str(note["body"] or ""))
     if not action:
         return None
     return ("Experience Notes", f"- {action}")
@@ -233,10 +244,14 @@ def _command_instruction(command_kind: str, qualifier: str, object_norm: str) ->
     return f"Use {object_norm} for {label} {command_kind}."
 
 
-def _first_test_command(facts: list[sqlite3.Row]) -> str | None:
-    for fact in facts:
-        if fact["predicate"] == "uses_test_command":
-            return str(fact["object_norm"])
+def _known_test_command(facts: list[sqlite3.Row]) -> str | None:
+    commands = {
+        str(fact["object_norm"])
+        for fact in facts
+        if fact["predicate"] == "uses_test_command"
+    }
+    if len(commands) == 1:
+        return next(iter(commands))
     return None
 
 
@@ -247,7 +262,11 @@ def _verification_command_text(command: str | None) -> str:
 
 
 def _inline_code(value: str) -> str:
-    return f"`{value.replace('`', '')}`"
+    return f"`{_collapse_whitespace(value).replace('`', '')}`"
+
+
+def _collapse_whitespace(value: str) -> str:
+    return " ".join(value.split())
 
 
 def _qualifier_label(qualifier: str) -> str:

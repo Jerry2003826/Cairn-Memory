@@ -230,7 +230,7 @@ def test_render_marks_omitted_facts_when_body_limit_is_reached(
     text = result.path.read_text(encoding="utf-8")
 
     assert result.body == text
-    assert "Additional facts omitted due to size limit." in text
+    assert "Additional entries omitted due to size limit." in text
     assert len(result.body.split("\n", 1)[1]) <= render.MAX_BODY_CHARS
 
 
@@ -386,6 +386,227 @@ def test_fast_path_uses_test_command_when_fact_exists(tmp_path: Path) -> None:
         "For validation tasks, run `pnpm run test` before broad "
         "README/package/deployment rediscovery."
     ) in text
+
+
+def test_same_kind_notes_from_multiple_runs_render_one_guidance_line(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    for suffix in ("a", "b"):
+        add_experience_candidate(
+            conn,
+            exp_cand_id=f"exp_cand_dup_{suffix}",
+            run_id=f"run_dup_{suffix}",
+            kind="rediscovery_waste",
+            claim="Memory context was available, but rediscovery happened.",
+            suggested_action=(
+                "For validation tasks, execute the known verification command before broad "
+                "README/package/deployment rediscovery."
+            ),
+        )
+        experience.approve_candidate(conn, f"exp_cand_dup_{suffix}")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+    bullet_lines = [line for line in text.splitlines() if line.startswith("- ")]
+
+    assert (
+        text.count(
+            "- For validation tasks, run the known verification command before broad "
+            "README/package/deployment rediscovery."
+        )
+        == 1
+    )
+    assert len(bullet_lines) == len(set(bullet_lines))
+
+
+def test_fast_path_and_rediscovery_waste_notes_render_distinct_lines(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_mix_waste",
+        run_id="run_mix_waste",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_mix_fast",
+        run_id="run_mix_fast",
+        kind="fast_path",
+    )
+    experience.approve_candidate(conn, "exp_cand_mix_waste")
+    experience.approve_candidate(conn, "exp_cand_mix_fast")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert (
+        text.count("- For validation tasks, prefer the known verification command early.")
+        == 1
+    )
+    assert (
+        text.count(
+            "- For validation tasks, run the known verification command before broad "
+            "README/package/deployment rediscovery."
+        )
+        == 1
+    )
+
+
+def test_fast_path_uses_generic_wording_with_multiple_distinct_test_commands(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+    add_fact(conn, predicate="uses_test_command", qualifier="python", object_norm="pytest -q")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_multi_test",
+        run_id="run_multi_test",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_multi_test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert (
+        "For validation tasks, run the known verification command before broad "
+        "README/package/deployment rediscovery."
+    ) in text
+    assert "- For validation tasks, run `pnpm run test` before broad" not in text
+    assert "- For validation tasks, run `pytest -q` before broad" not in text
+
+
+def test_fast_path_substitutes_when_duplicate_test_command_facts_agree(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+    add_fact(
+        conn, predicate="uses_test_command", qualifier="node:web", object_norm="pnpm run test"
+    )
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_agree_test",
+        run_id="run_agree_test",
+        kind="fast_path",
+    )
+    experience.approve_candidate(conn, "exp_cand_agree_test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "- For validation tasks, prefer running `pnpm run test` early." in text
+
+
+def test_active_note_with_secret_text_renders_redacted(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    raw_secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    conn.execute(
+        """
+        INSERT INTO experience_notes(
+          note_id, source_cand_id, scope, task_type, kind, trigger,
+          body, suggested_action, trust, status, evidence, created_seq,
+          retired_seq, superseded_by, created_at, updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "note_secret_render",
+            None,
+            "project",
+            "docs",
+            "project_workflow",
+            None,
+            f"never print {raw_secret}",
+            f"never print {raw_secret}",
+            2,
+            "active",
+            "{}",
+            1,
+            None,
+            None,
+            "2026-06-13T00:00:00+00:00",
+            "2026-06-13T00:00:00+00:00",
+        ),
+    )
+    conn.commit()
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert raw_secret not in text
+    assert "REDACTED:github_token:" in text
+    assert result.body == text
+
+
+def test_note_fallback_collapses_embedded_newlines(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO experience_notes(
+          note_id, source_cand_id, scope, task_type, kind, trigger,
+          body, suggested_action, trust, status, evidence, created_seq,
+          retired_seq, superseded_by, created_at, updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "note_multiline",
+            None,
+            "project",
+            "docs",
+            "project_workflow",
+            None,
+            "body text",
+            "line one\n## Injected\nline two",
+            2,
+            "active",
+            "{}",
+            1,
+            None,
+            None,
+            "2026-06-13T00:00:00+00:00",
+            "2026-06-13T00:00:00+00:00",
+        ),
+    )
+    conn.commit()
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "- line one ## Injected line two" in text
+    assert "\n## Injected" not in text
+
+
+def test_render_cli_includes_approved_experience_note(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_cli_note",
+        run_id="run_cli_note",
+        kind="fast_path",
+    )
+    conn.close()
+
+    approve = run_omni(tmp_path, "experience", "approve", "exp_cand_cli_note")
+    written = run_omni(tmp_path, "render")
+    text = (tmp_path / ".omni" / "generated" / "memory.md").read_text(encoding="utf-8")
+
+    assert approve.returncode == 0, approve.stderr
+    assert written.returncode == 0, written.stderr
+    assert "For validation tasks, prefer the known verification command early." in text
 
 
 def test_fast_path_uses_generic_known_verification_command_without_fact(
