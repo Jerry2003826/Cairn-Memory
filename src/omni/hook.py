@@ -203,6 +203,8 @@ def _event_from_payload(payload: bytes) -> dict[str, object]:
 
 def _event_for_enqueue(payload: bytes) -> dict[str, object]:
     if len(payload) > MAX_HOOK_EVENT_PARSE_BYTES:
+        if b'"Stop"' not in payload and b'"SessionEnd"' not in payload:
+            return {}
         event = _top_level_json_string_fields(
             payload,
             {"hook_event_name", "session_id", "transcript_path"},

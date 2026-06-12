@@ -65,6 +65,26 @@ def test_capture_hook_skips_raw_event_parse_for_oversized_payload(
     assert not list((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
 
 
+def test_oversized_non_stop_payload_skips_enqueue_field_scan(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def fail_field_scan(_payload: bytes, _keys: set[str]) -> dict[str, str]:
+        raise AssertionError("non-Stop oversized payload should not scan JSON fields")
+
+    monkeypatch.setattr(hook, "_top_level_json_string_fields", fail_field_scan)
+    payload = (
+        b'{"hook_event_name":"PostToolUse","tool_response":{"stdout":"'
+        + b"x" * (2 * 1024 * 1024)
+        + b'"}}'
+    )
+
+    result = hook.capture_hook(payload, root=tmp_path)
+
+    assert result.ok is True
+    assert result.spool_path is not None
+    assert not list((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+
+
 @pytest.mark.parametrize("event_name", ["SessionEnd", "Stop"])
 def test_oversized_ingest_event_still_writes_request_file(
     tmp_path: Path, monkeypatch, event_name: str
