@@ -12,6 +12,15 @@ creates a random `proj_` id. After the file exists, the file wins over git
 remote origin so moving the repo path or changing the remote later does not
 silently change `project_id`.
 
+Decision: CLI commands, including `omni init`, discover the project root by
+walking upward to the nearest existing `.omni/` or `.git`.
+
+Rationale: running Omni from a package subdirectory should operate on the
+repository's single local `.omni/` tree instead of silently creating nested
+state. Users with `$HOME` or another parent directory managed as a git repo
+should run `omni init` from the intended project root if no closer `.git` or
+`.omni/` exists.
+
 ## Week-1 spool and status limits
 
 Decision: Week-1 writes one ingest request file per hook stop event instead of

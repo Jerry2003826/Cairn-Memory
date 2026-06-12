@@ -56,7 +56,6 @@ def render_project(
     path = base / GENERATED_PATH
     facts = _active_facts(conn)
     body, line_hashes = _render_body(facts)
-    body = _redact_text(body)
     text = _with_header(body)
     rendered_diff = _diff(path, text)
 
@@ -108,7 +107,7 @@ def _render_body(facts: list[sqlite3.Row]) -> tuple[str, dict[str, str]]:
         if rendered is None:
             continue
         section, line = rendered
-        sections[section].append((fact["fact_id"], _redact_text(line)))
+        sections[section].append((fact["fact_id"], line))
 
     lines: list[tuple[str, str | None]] = [("# Project memory", None), ("", None)]
     omitted = False
@@ -123,12 +122,14 @@ def _render_body(facts: list[sqlite3.Row]) -> tuple[str, dict[str, str]]:
     if omitted:
         lines = _with_truncation_notice(lines)
     rendered_lines = _line_texts(lines)
+    body = _redact_text("\n".join(rendered_lines).rstrip() + "\n")
+    redacted_lines = body.rstrip("\n").split("\n")
     line_hashes = {
-        fact_id: _sha256(line)
-        for line, fact_id in lines
-        if fact_id is not None
+        fact_id: _sha256(redacted_lines[index])
+        for index, (_line, fact_id) in enumerate(lines)
+        if fact_id is not None and index < len(redacted_lines)
     }
-    return "\n".join(rendered_lines).rstrip() + "\n", line_hashes
+    return body, line_hashes
 
 
 def _render_fact_line(fact: sqlite3.Row) -> tuple[str, str] | None:

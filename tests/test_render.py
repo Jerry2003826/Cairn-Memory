@@ -207,4 +207,5 @@ def test_render_redacts_fact_values_before_writing_generated_memory(tmp_path: Pa
 
     assert raw_secret not in text
     assert "REDACTED:github_token:" in text
+    assert "REDACTED:secret_assignment:" not in text
     assert result.body == text

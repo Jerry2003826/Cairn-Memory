@@ -17,7 +17,7 @@ from pathlib import Path
 
 from omni.redact import RedactionResult, is_skiplisted_path, redact, redact_minimal
 
-LEGACY_HOOK_COMMAND = "omni hook"
+DEFAULT_HOOK_COMMAND = "omni hook"
 HOOK_COMMAND_ENV = "OMNI_HOOK_COMMAND"
 INGEST_EVENTS = {"Stop", "SessionEnd"}
 AUDIT_PASSED_MARKER = Path(".omni") / "audit" / "secrets.passed"
@@ -237,6 +237,8 @@ def _top_level_json_string_fields(payload: bytes, keys: set[str]) -> dict[str, s
                         value = _decode_json_string(raw_value)
                         if value is not None:
                             fields[key] = value
+                            if len(fields) == len(keys):
+                                return fields
                         index = value_end
                         continue
             index = next_index
@@ -572,7 +574,7 @@ def _hook_command() -> str:
     override = os.environ.get(HOOK_COMMAND_ENV)
     if override:
         return override
-    return LEGACY_HOOK_COMMAND
+    return DEFAULT_HOOK_COMMAND
 
 
 def _hook_group(event_name: str, command: str) -> dict[str, object]:
@@ -617,12 +619,6 @@ def _upgrade_omni_hooks(groups: list[object], command: str) -> tuple[list[object
                     found = True
                     group_has_omni = True
                 continue
-            if handler_command == command:
-                if not found:
-                    new_handlers.append(handler)
-                    found = True
-                    group_has_omni = True
-                continue
             new_handlers.append(handler)
 
         new_group = dict(group)
@@ -635,6 +631,6 @@ def _upgrade_omni_hooks(groups: list[object], command: str) -> tuple[list[object
 def _is_omni_hook_command(value: object, command: str) -> bool:
     if not isinstance(value, str):
         return False
-    if value in {command, LEGACY_HOOK_COMMAND}:
+    if value in {command, DEFAULT_HOOK_COMMAND}:
         return True
     return re.search(r"(^|\s)-m\s+omni\.cli\s+hook(\s|$)", value) is not None

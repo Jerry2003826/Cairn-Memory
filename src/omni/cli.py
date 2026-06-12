@@ -157,13 +157,13 @@ def main(argv: list[str] | None = None) -> int:
                     print(str(exc), file=sys.stderr)
                     return 2
                 except (KeyError, ValueError) as exc:
-                    print(str(exc), file=sys.stderr)
+                    print(_review_error_message(exc), file=sys.stderr)
                     return 2
             elif args.review_command == "reject":
                 try:
                     result = review.reject(conn, args.cand_id)
                 except (KeyError, ValueError) as exc:
-                    print(str(exc), file=sys.stderr)
+                    print(_review_error_message(exc), file=sys.stderr)
                     return 2
             else:
                 result = review.interactive(conn)
@@ -212,6 +212,12 @@ def _print_diff(diff: str) -> None:
     encoding = sys.stdout.encoding or "utf-8"
     safe_diff = diff.encode(encoding, errors="replace").decode(encoding, errors="replace")
     print(safe_diff, end="")
+
+
+def _review_error_message(exc: KeyError | ValueError) -> str:
+    if isinstance(exc, KeyError) and exc.args:
+        return f"unknown candidate: {exc.args[0]}"
+    return str(exc)
 
 
 def _hide_subcommands(subparsers: argparse._SubParsersAction, names: set[str]) -> None:

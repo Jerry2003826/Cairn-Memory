@@ -170,6 +170,23 @@ def test_large_payload_withholds_partial_multiline_private_key() -> None:
     assert b"MII" + b"A" * 20 not in result.data
 
 
+def test_large_payload_withholds_suffix_partial_multiline_private_key() -> None:
+    body_line = b"MII" + b"B" * 61
+    pem = (
+        b"-----BEGIN RSA PRIVATE KEY-----\n"
+        + b"\n".join(body_line for _ in range(5000))
+        + b"\n-----END RSA PRIVATE KEY-----\n"
+    )
+    payload = b"A" * (1024 * 1024) + pem + b"tail"
+
+    result = redact_mod.redact(payload)
+
+    assert result.status == "truncated"
+    assert "pem_private_key" in result.detectors
+    assert b"END RSA PRIVATE KEY" not in result.data
+    assert b"MII" + b"B" * 20 not in result.data
+
+
 def test_large_single_line_payload_keeps_nonempty_safe_truncation_sample() -> None:
     payload = b'{"tool_response":"' + b"A" * (2 * 1024 * 1024) + b'"}'
 

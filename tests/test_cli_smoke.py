@@ -508,7 +508,7 @@ def test_review_cli_reports_missing_candidate_without_traceback(tmp_path: Path) 
     result = run_omni(tmp_path, "review", "approve", "missing-candidate")
 
     assert result.returncode == 2
-    assert "missing-candidate" in result.stderr
+    assert result.stderr.strip() == "unknown candidate: missing-candidate"
     assert "Traceback" not in result.stderr
 
 

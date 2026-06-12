@@ -227,6 +227,35 @@ def test_capture_hook_withholds_oversized_payload_when_skiplisted_path_is_late(
     assert payload["error"] == "skiplisted_path_withheld"
 
 
+def test_top_level_json_string_field_scan_stops_after_requested_keys(monkeypatch) -> None:
+    original = hook._read_json_string
+
+    def tracked_read(payload: bytes, start: int):
+        raw = payload[start + 1 : start + 8]
+        if raw.startswith(b"padding"):
+            raise AssertionError("field scan should stop before trailing padding")
+        return original(payload, start)
+
+    monkeypatch.setattr(hook, "_read_json_string", tracked_read)
+    payload = (
+        b'{"hook_event_name":"Stop","session_id":"session-1",'
+        b'"transcript_path":"/tmp/transcript.jsonl","padding":"'
+        + b"x" * hook.MAX_HOOK_EVENT_PARSE_BYTES
+        + b'"}'
+    )
+
+    fields = hook._top_level_json_string_fields(
+        payload,
+        {"hook_event_name", "session_id", "transcript_path"},
+    )
+
+    assert fields == {
+        "hook_event_name": "Stop",
+        "session_id": "session-1",
+        "transcript_path": "/tmp/transcript.jsonl",
+    }
+
+
 def test_capture_hook_withholds_skiplisted_write_input_content(
     tmp_path: Path,
 ) -> None:
