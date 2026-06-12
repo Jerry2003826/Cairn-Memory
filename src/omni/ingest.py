@@ -96,7 +96,14 @@ def ingest(
                     run_ids.append(rid)
             else:
                 if run_id is not None:
-                    inserted, hook_paths = _ingest_one(conn, base, run_id, None, include_hooks=True)
+                    inserted, hook_paths = _ingest_one(
+                        conn,
+                        base,
+                        run_id,
+                        None,
+                        include_hooks=True,
+                        session_id=run_id,
+                    )
                     total_inserted += inserted
                     consumed_hook_paths.update(hook_paths)
                     run_ids.append(run_id)

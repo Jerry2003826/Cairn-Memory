@@ -90,8 +90,10 @@ Decision: empty-queue `omni ingest` without a run id does not consume live
 
 Rationale: live hook records are only authoritative after a Stop/SessionEnd
 ingest request scopes them to a session. A manual fallback can still be run with
-an explicit run id, but the default path should not steal hooks before the real
-session request arrives.
+an explicit run id, but it only consumes hook records whose payload
+`session_id` equals that run id; records without that `session_id` remain in
+spool for the real scoped request or a correctly scoped recovery. The default
+path should not steal hooks before the real session request arrives.
 
 Decision: installed Claude hooks use the portable command `omni hook` by
 default. `OMNI_HOOK_COMMAND` remains the explicit escape hatch for local

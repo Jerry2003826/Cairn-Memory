@@ -337,7 +337,7 @@ def test_ingest_preserves_distinct_event_types_with_same_tool_use_id(
 ) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
-        b'"tool_use_id":"toolu_multi","tool":"Bash"}',
+        b'"session_id":"run_multi","tool_use_id":"toolu_multi","tool":"Bash"}',
         root=tmp_path,
     )
     hook_only = ingest.ingest(root=tmp_path, run_id="run_multi")
@@ -440,7 +440,7 @@ def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
 ) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
-        b'"tool_use_id":"toolu_delayed","tool":"Bash"}',
+        b'"session_id":"run_delayed","tool_use_id":"toolu_delayed","tool":"Bash"}',
         root=tmp_path,
     )
 
@@ -481,12 +481,12 @@ def test_ingest_later_transcript_event_is_not_dropped_after_hook_only_ingest(
 def test_ingest_calculates_hook_duration_when_possible(tmp_path: Path) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PreToolUse","timestamp":"2026-06-11T00:00:00Z",'
-        b'"tool_use_id":"toolu_2","tool":"Bash"}',
+        b'"session_id":"run_hooks","tool_use_id":"toolu_2","tool":"Bash"}',
         root=tmp_path,
     )
     hook.capture_hook(
         b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:02Z",'
-        b'"tool_use_id":"toolu_2","tool":"Bash","exit_code":0}',
+        b'"session_id":"run_hooks","tool_use_id":"toolu_2","tool":"Bash","exit_code":0}',
         root=tmp_path,
     )
 
@@ -507,7 +507,7 @@ def test_successful_ingest_moves_consumed_hook_spool_files_to_processed(
 ) -> None:
     hook.capture_hook(
         b'{"hook_event_name":"PostToolUse","timestamp":"2026-06-11T00:00:00Z",'
-        b'"tool_use_id":"toolu_spool","tool":"Bash"}',
+        b'"session_id":"run_spool","tool_use_id":"toolu_spool","tool":"Bash"}',
         root=tmp_path,
     )
 
@@ -540,6 +540,36 @@ def test_empty_queue_ingest_without_run_id_does_not_consume_live_hook_spool(
     assert hook_file.exists()
     assert not list((tmp_path / ".omni" / "spool" / "processed").glob("hook-*.jsonl"))
     assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
+
+
+def test_explicit_hook_recovery_scopes_hook_events_to_run_id(tmp_path: Path) -> None:
+    for session_id, tool_use_id in (("session_a", "toolu_a"), ("session_b", "toolu_b")):
+        hook.capture_hook(
+            json.dumps(
+                {
+                    "hook_event_name": "PostToolUse",
+                    "session_id": session_id,
+                    "timestamp": "2026-06-11T00:00:00Z",
+                    "tool_use_id": tool_use_id,
+                    "tool": "Bash",
+                }
+            ).encode("utf-8"),
+            root=tmp_path,
+        )
+
+    result = ingest.ingest(root=tmp_path, run_id="session_a")
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    rows = conn.execute(
+        "SELECT run_id, tool_use_id FROM events ORDER BY tool_use_id"
+    ).fetchall()
+
+    assert result.run_ids == ("session_a",)
+    assert result.events_inserted == 1
+    assert [(row["run_id"], row["tool_use_id"]) for row in rows] == [
+        ("session_a", "toolu_a")
+    ]
+    assert len(list((tmp_path / ".omni" / "spool").glob("hook-*.jsonl"))) == 1
+    assert len(list((tmp_path / ".omni" / "spool" / "processed").glob("hook-*.jsonl"))) == 1
 
 
 def test_manual_transcript_ingest_does_not_consume_unrelated_queued_hook_spool(
