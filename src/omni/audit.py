@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from omni.config import ensure_project_layout
-from omni.redact import redact, redact_path
+from omni.redact import is_skiplisted_path, redact, redact_path
+
+
+_STREAM_SCAN_CHUNK_BYTES = 512 * 1024
+_STREAM_SCAN_OVERLAP_BYTES = 4096
 
 
 @dataclass(frozen=True)
@@ -125,12 +129,49 @@ def _omni_leaks(
             continue
         if path.relative_to(omni_dir) == Path("audit") / "secrets.passed":
             continue
-        payload = path.read_bytes()
-        literal_leak = any(literal in payload for literal in planted_literals)
-        result = redact_path(path, allow_values=allow_values)
-        if literal_leak or result.status != "clean":
+        if _path_has_leak(path, allow_values, planted_literals):
             leaks.append(path)
     return leaks
+
+
+def _path_has_leak(
+    path: Path,
+    allow_values: set[str],
+    planted_literals: tuple[bytes, ...],
+) -> bool:
+    if _path_contains_literal(path, planted_literals):
+        return True
+    if is_skiplisted_path(path):
+        return True
+    if path.stat().st_size <= _STREAM_SCAN_CHUNK_BYTES:
+        return redact_path(path, allow_values=allow_values).status != "clean"
+    return _path_has_stream_redaction(path, allow_values)
+
+
+def _path_contains_literal(path: Path, literals: tuple[bytes, ...]) -> bool:
+    if not literals:
+        return False
+    overlap = max(len(literal) for literal in literals) - 1
+    tail = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(_STREAM_SCAN_CHUNK_BYTES):
+            window = tail + chunk
+            if any(literal in window for literal in literals):
+                return True
+            tail = window[-overlap:] if overlap > 0 else b""
+    return False
+
+
+def _path_has_stream_redaction(path: Path, allow_values: set[str]) -> bool:
+    tail = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(_STREAM_SCAN_CHUNK_BYTES):
+            window = tail + chunk
+            result = redact(window, allow_values=allow_values)
+            if result.status != "clean":
+                return True
+            tail = window[-_STREAM_SCAN_OVERLAP_BYTES:]
+    return False
 
 
 def _positive_fixture_literals(fixtures_root: Path, allow_values: set[str]) -> tuple[bytes, ...]:

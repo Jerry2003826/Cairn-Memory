@@ -53,6 +53,34 @@ def test_audit_secrets_fails_on_planted_omni_secret(tmp_path: Path) -> None:
     assert not (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
 
 
+def test_audit_accepts_large_clean_sqlite_db(tmp_path: Path) -> None:
+    db_path = tmp_path / ".omni" / "omni.sqlite3"
+    db_path.parent.mkdir(parents=True)
+    db_path.write_bytes(b"SQLite format 3\x00" + (b"safe row payload\n" * 80_000))
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is True
+    assert result.omni_leaks == []
+
+
+def test_audit_fails_on_large_omni_file_secret_after_first_megabyte(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / ".omni" / "omni.sqlite3"
+    db_path.parent.mkdir(parents=True)
+    db_path.write_bytes(
+        b"SQLite format 3\x00"
+        + (b"safe row payload\n" * 80_000)
+        + b"token=ghp_abcdefghijklmnopqrstuvwxyz1234567890\n"
+    )
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is False
+    assert result.omni_leaks == [db_path]
+
+
 def test_audit_fails_on_positive_fixture_literal_even_if_redactor_misses(
     tmp_path: Path, monkeypatch
 ) -> None:
