@@ -388,6 +388,8 @@ def test_dogfood_acceptance_pack_covers_real_project_loop_and_record_template() 
     for phrase in (
         "Stage Dogfood Acceptance - 2026-06-14",
         "does not add a new Claude Code run",
+        "<DOGFOOD_PROJECT>",
+        "<PYTHON_SCRIPTS>\\omni.exe",
         "fcdefb4a-2d39-46ed-ab1e-a1cae466e861",
         "87722242-c373-4713-abe9-4288edc71982",
         "memory_effect: failed_to_help",
@@ -402,6 +404,8 @@ def test_dogfood_acceptance_pack_covers_real_project_loop_and_record_template() 
         "not a universal proof",
     ):
         assert phrase in stage_text
+    assert "C:\\Users" not in stage_text
+    assert "Jiarui" not in stage_text
 
 
 def test_minimal_linux_ci_workflow_runs_pytest_on_311_and_312() -> None:

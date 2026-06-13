@@ -49,7 +49,7 @@ main / origin/main: de6b4ecb106da8a1961f381a8789dab00d41fc4c
 Target project:
 
 ```text
-C:\Users\Jiarui Li\Documents\OmniDogfood\unihack3-13
+<DOGFOOD_PROJECT>
 target git HEAD: 8ba1c9fc896ed4da9d17a1c537573d0bb9daa870
 target branch: main...origin/main
 ```
@@ -67,7 +67,7 @@ prompt: Please validate this project and tell me whether the current setup works
 OmniMemory checkout:
 
 ```text
-where omni: C:\Users\Jiarui Li\scoop\apps\python\current\Scripts\omni.exe
+where omni: <PYTHON_SCRIPTS>\omni.exe
 omni audit secrets: ok=true
 ```
 
