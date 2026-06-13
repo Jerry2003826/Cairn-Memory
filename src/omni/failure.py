@@ -25,7 +25,6 @@ INPUT_CONTAINER_KEYS = ("tool_input", "input", "parameters", "args")
 OUTPUT_CONTAINER_KEYS = ("tool_response", "toolUseResult")
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 WINDOWS_ABS_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/][^\s\"']+")
-UNIX_ABS_PATH_RE = re.compile(r"(?<!\w)/(?:[^\s\"']+/)+[^\s\"']+")
 
 
 def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
@@ -350,10 +349,46 @@ def _event_exit_code(event: sqlite3.Row, meta: dict[str, Any]) -> int | None:
     if event["exit_code"] is not None:
         return int(event["exit_code"])
     for value in _nested_strings(meta):
-        match = re.search(r"\b(?:exit(?:ed)?(?:\s+code)?|exit_code)\s*[:=]?\s*(-?\d+)\b", value, re.I)
-        if match:
-            return int(match.group(1))
+        exit_code = _parse_exit_code_text(value)
+        if exit_code is not None:
+            return exit_code
     return None
+
+
+def _parse_exit_code_text(value: str) -> int | None:
+    lowered = value.lower()
+    for marker in ("exit_code", "exit code", "exited code", "exited", "exit"):
+        start = lowered.find(marker)
+        if start == -1:
+            continue
+        exit_code = _integer_after_marker(value, start + len(marker))
+        if exit_code is not None:
+            return exit_code
+    return None
+
+
+def _integer_after_marker(value: str, start: int) -> int | None:
+    index = _skip_exit_code_separator(value, start)
+    sign = 1
+    if index < len(value) and value[index] == "-":
+        sign = -1
+        index += 1
+    end = index
+    while end < len(value) and value[end].isdigit():
+        end += 1
+    if end == index:
+        return None
+    return sign * int(value[index:end])
+
+
+def _skip_exit_code_separator(value: str, index: int) -> int:
+    while index < len(value) and value[index].isspace():
+        index += 1
+    if index < len(value) and value[index] in {":", "="}:
+        index += 1
+    while index < len(value) and value[index].isspace():
+        index += 1
+    return index
 
 
 def _first_error_line(meta: dict[str, Any]) -> str | None:
@@ -386,8 +421,41 @@ def _first_meaningful_line(value: Any) -> str | None:
 def _normalize_error_line(value: str) -> str:
     normalized = _collapse_whitespace(ANSI_RE.sub("", value))
     normalized = WINDOWS_ABS_PATH_RE.sub("<path>", normalized)
-    normalized = UNIX_ABS_PATH_RE.sub("<path>", normalized)
+    normalized = _mask_unix_abs_paths(normalized)
     return _safe_text(normalized, MAX_ERROR_CHARS) or "unknown failure"
+
+
+def _mask_unix_abs_paths(value: str) -> str:
+    masked: list[str] = []
+    index = 0
+    while index < len(value):
+        if _starts_unix_abs_path(value, index):
+            end = _path_end(value, index)
+            path = value[index:end]
+            if path.count("/") >= 2:
+                masked.append("<path>")
+                index = end
+                continue
+        masked.append(value[index])
+        index += 1
+    return "".join(masked)
+
+
+def _starts_unix_abs_path(value: str, index: int) -> bool:
+    if value[index] != "/":
+        return False
+    return index == 0 or not value[index - 1].isalnum()
+
+
+def _path_end(value: str, start: int) -> int:
+    end = start
+    while end < len(value) and not _is_path_boundary(value[end]):
+        end += 1
+    return end
+
+
+def _is_path_boundary(char: str) -> bool:
+    return char.isspace() or char in {"'", '"'}
 
 
 def _signature_hash(

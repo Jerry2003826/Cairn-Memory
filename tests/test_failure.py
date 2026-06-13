@@ -80,6 +80,23 @@ def test_post_tool_use_failure_creates_candidate(tmp_path: Path) -> None:
     assert "meta" not in candidate["evidence"]
 
 
+def test_unix_path_is_redacted_in_error_signature(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_unix_path")
+    _insert_event(
+        conn,
+        "run_unix_path",
+        1,
+        event_type="PostToolUseFailure",
+        tool="Read",
+        meta={"error": "ENOENT: no such file or directory, open /repo/app/missing.txt"},
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_unix_path")
+
+    assert candidate["error_signature"] == "ENOENT: no such file or directory, open <path>"
+
+
 def test_bash_nonzero_exit_creates_command_failed_candidate(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_bash_fail")
@@ -101,6 +118,26 @@ def test_bash_nonzero_exit_creates_command_failed_candidate(tmp_path: Path) -> N
     assert candidate["command_norm"] == "pnpm run test"
     assert candidate["exit_code"] == 7
     assert candidate["error_signature"] == "FAIL tests/foo.test.ts"
+
+
+def test_exit_code_is_extracted_from_text_without_event_exit_code(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_exit_text")
+    _insert_event(
+        conn,
+        "run_exit_text",
+        1,
+        tool="Bash",
+        meta={
+            "tool_input": {"command": "pnpm run build"},
+            "tool_response": {"stderr": "Build failed\nExit code: 2"},
+        },
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_exit_text")
+
+    assert candidate["failure_kind"] == "command_failed"
+    assert candidate["exit_code"] == 2
 
 
 def test_successful_bash_event_does_not_create_candidate(tmp_path: Path) -> None:
