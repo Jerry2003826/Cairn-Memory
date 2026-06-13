@@ -1,18 +1,19 @@
-# OmniMemory Dogfood Acceptance Pack v0
+# OmniMemory Failure Lifecycle UX v0
 
 ## Goal
 
-Current phase: OmniMemory Dogfood Acceptance Pack v0.
+Current phase: OmniMemory Failure Lifecycle UX v0.
 
 Build ONE closed loop:
 
 Claude Code run → redacted trace → deterministic facts → generated memory block → measurably changed behavior in the next run.
 
-Dogfood Acceptance Pack v0 keeps the v0.2-v0.4 loop intact and turns real
-project validation into a repeatable evidence package. This phase may add
-runbooks, evidence templates, and docs tests for real dogfood acceptance. It
-must not add runtime features, tables, migrations, automatic success inference,
-automatic failure memory, or automatic memory evolution.
+Failure Lifecycle UX v0 keeps the v0.2-v0.4 loop intact and improves the
+reviewed failure-pattern controls after real dogfood showed active Known
+Failures can affect behavior. This phase may improve `omni failure pattern
+ls/show/retire` readability and audit clarity. It must not add supersede,
+reactivation, new tables, migrations, automatic success inference, automatic
+failure memory, or automatic memory evolution.
 
 ## Non-goals, hard this week
 
