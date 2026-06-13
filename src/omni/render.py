@@ -317,18 +317,21 @@ def _known_test_command(facts: list[sqlite3.Row]) -> str | None:
 def _rediscovery_waste_fast_path_line(command: str | None) -> str:
     if command:
         return (
-            f"- For validation tasks, first action: run {_inline_code(command)}. Do not "
-            "run broad file scans such as `Glob **`, `ls`, `find`, `tree`, or "
+            f"- For validation tasks, the first shell command must be {_inline_code(command)}. "
+            f"Do not run `pnpm run build` or `pnpm run lint` before {_inline_code(command)}. "
+            "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, or "
             "`rg --files` before this command. Do not inspect package scripts, README, "
             "deployment docs, or environment files first unless the command fails or the "
-            "user explicitly asks for configuration-first exploration."
+            "user explicitly asks for configuration-first exploration. After tests pass, "
+            "run build and lint if broader validation is needed."
         )
     return (
-        "- For validation tasks, first action: run the known verification command. Do not "
-        "run broad file scans such as `Glob **`, `ls`, `find`, `tree`, or `rg --files` "
-        "before trying it. Do not inspect package scripts, README, deployment docs, or "
-        "environment files first unless it fails or the user explicitly asks for "
-        "configuration-first exploration."
+        "- For validation tasks, the first shell command must be the known verification "
+        "command. Do not run build, lint, broad file scans such as `Glob **`, `ls`, "
+        "`find`, `tree`, or `rg --files` before trying it. Do not inspect package "
+        "scripts, README, deployment docs, or environment files first unless it fails or "
+        "the user explicitly asks for configuration-first exploration. After tests pass, "
+        "run build and lint if broader validation is needed."
     )
 
 
