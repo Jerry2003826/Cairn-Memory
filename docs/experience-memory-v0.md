@@ -261,10 +261,14 @@ Key evidence:
   when explicit memory reads were not observable.
 - Known Failures rendering was validated with a real failed command path and a
   later warm run that avoided the old failed path.
+- The latest comparable dogfood check reported `improvement=true`,
+  `command_adopted=true`, and rediscovery reduced from 10 events to 1. It is
+  still a `PARTIAL` behavior proof because the warm run performed one broad scan
+  before the first expected command.
 - Verify v0 selected `pnpm run test` in unihack and passed with exit code 0.
 - `omni outcome mark-from-verify 0caab82c-8ae8-40b9-9b51-a0b10a94ae8e
-  --task-type validation --memory-effect neutral` wrote an outcome with
-  `tests_status=passed`, `status=unknown`, `final_command=pnpm run test`, and
+  --task-type validation` wrote an outcome with `tests_status=passed`,
+  `status=unknown`, `memory_effect=neutral`, `final_command=pnpm run test`, and
   verify-sourced evidence that excluded stdout and stderr excerpts.
 - `omni audit secrets` passed after the mark-from-verify write.
 
