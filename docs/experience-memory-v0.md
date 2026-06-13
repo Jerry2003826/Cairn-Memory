@@ -193,6 +193,9 @@ project structure before trying it unless it fails or the user explicitly asks
 for configuration-first exploration. A single-run `memory_effect` may still be `neutral` when Claude Code
 memory import is not observable as an explicit `Read` event; cold/warm dogfood
 comparison is the stronger behavior metric.
+The later v0.2 closeout smoke is a separate evidence point: the latest
+comparable warm run reduced rediscovery from 10 events to 1, but still remained
+`PARTIAL` because one broad scan happened before the first expected command.
 
 This is still not Soul runtime, failure memory, verify automation, automatic
 memory evolution, LLM extraction, MCP, vector search, dashboard work, or an

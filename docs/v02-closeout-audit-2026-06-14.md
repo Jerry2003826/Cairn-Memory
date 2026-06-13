@@ -118,6 +118,9 @@ All commands exited 0. The SQLite hash stayed unchanged:
 
 In an empty temporary directory, read-only commands did not create `.omni`.
 Commands that require an existing database exited non-zero as expected.
+Other read-only commands, including `parse` and individual `show` variants, are
+covered by the test suite and fixture smoke rather than this real unihack hash
+guard.
 
 ## Fixture Coverage
 
