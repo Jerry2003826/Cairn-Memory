@@ -193,6 +193,9 @@ project structure before trying it unless it fails or the user explicitly asks
 for configuration-first exploration. A single-run `memory_effect` may still be `neutral` when Claude Code
 memory import is not observable as an explicit `Read` event; cold/warm dogfood
 comparison is the stronger behavior metric.
+The later v0.2 closeout smoke is a separate evidence point: the latest
+comparable warm run reduced rediscovery from 10 events to 1, but still remained
+`PARTIAL` because one broad scan happened before the first expected command.
 
 This is still not Soul runtime, failure memory, verify automation, automatic
 memory evolution, LLM extraction, MCP, vector search, dashboard work, or an
@@ -256,15 +259,19 @@ Key evidence:
 
 - Old negative run: `fcdefb4a-2d39-46ed-ab1e-a1cae466e861` evaluated as
   `failed_to_help`.
-- Experience notes reduced rediscovery and caused expected command adoption in
-  later warm runs, with single-run `memory_effect` still sometimes `neutral`
-  when explicit memory reads were not observable.
+- Experience notes reduced rediscovery and were associated with expected
+  command adoption in later warm runs, with single-run `memory_effect` still
+  sometimes `neutral` when explicit memory reads were not observable.
 - Known Failures rendering was validated with a real failed command path and a
   later warm run that avoided the old failed path.
+- The latest comparable dogfood check reported `improvement=true`,
+  `command_adopted=true`, and rediscovery reduced from 10 events to 1. It is
+  still a `PARTIAL` behavior proof because the warm run performed one broad scan
+  before the first expected command.
 - Verify v0 selected `pnpm run test` in unihack and passed with exit code 0.
 - `omni outcome mark-from-verify 0caab82c-8ae8-40b9-9b51-a0b10a94ae8e
-  --task-type validation --memory-effect neutral` wrote an outcome with
-  `tests_status=passed`, `status=unknown`, `final_command=pnpm run test`, and
+  --task-type validation` wrote an outcome with `tests_status=passed`,
+  `status=unknown`, `memory_effect=neutral`, `final_command=pnpm run test`, and
   verify-sourced evidence that excluded stdout and stderr excerpts.
 - `omni audit secrets` passed after the mark-from-verify write.
 
