@@ -190,6 +190,20 @@ def test_verify_preflight_reports_invalid_parse_for_unclosed_quotes(tmp_path: Pa
     assert result["reason"].startswith("could not parse verification command:")
 
 
+def test_verify_preflight_reports_invalid_parse_for_bad_executable_path(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python\0 test.py")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_invalid_command"
+    assert result["stdout_excerpt"] == ""
+    assert result["stderr_excerpt"] == ""
+
+
 def test_verify_preflight_selects_explicit_qualifier(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     base_script = _script(tmp_path, "base_verify.py", "raise SystemExit(9)\n")
@@ -226,6 +240,21 @@ def test_verify_preflight_matches_long_qualifier_before_display_truncation(
     assert result["command"] == command
     assert result["qualifier"].endswith("...[truncated]")
     assert result["stdout_excerpt"] == "long qualifier"
+
+
+def test_verify_preflight_qualifier_does_not_collapse_internal_whitespace(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(tmp_path, "spaced_qualifier.py", "raise SystemExit(9)\n")
+    _insert_fact(conn, _python_command(script), qualifier="node  web")
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="node web")
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "qualifier_not_found"
+    assert result["command"] is None
+    assert result["stdout_excerpt"] == ""
 
 
 def test_verify_preflight_reports_unknown_for_missing_qualifier(tmp_path: Path) -> None:
@@ -578,6 +607,26 @@ def test_cli_verify_unknown_command_returns_two(
     assert output["status"] == "unknown"
     assert output["reason_code"] == "no_active_test_command"
     assert output["reason"] == "no active uses_test_command facts"
+
+
+def test_cli_verify_invalid_command_still_outputs_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python\0 test.py")
+    conn.close()
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main(["verify"])
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+
+    assert code == 2
+    assert captured.err == ""
+    assert output["status"] == "unknown"
+    assert output["reason_code"] == "parse_error_invalid_command"
 
 
 def test_cli_verify_missing_db_does_not_create_omni(

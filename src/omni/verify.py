@@ -242,7 +242,7 @@ def _select_verification_command(
         }
 
     if qualifier is not None:
-        normalized_qualifier = _normalize_command(qualifier)
+        normalized_qualifier = _normalize_qualifier(qualifier)
         display_qualifier = _safe_text(normalized_qualifier, MAX_COMMAND_CHARS)
         qualified_candidates = [
             candidate
@@ -348,7 +348,7 @@ def _command_candidates(rows: list[sqlite3.Row]) -> list[dict[str, str]]:
     seen: set[tuple[str, str]] = set()
     for row in rows:
         command = _normalize_command(str(row["object_norm"]))
-        qualifier = _normalize_command(str(row["qualifier"] or "default"))
+        qualifier = _normalize_qualifier(str(row["qualifier"] or "default"))
         if not command:
             continue
         key = (qualifier, command)
@@ -447,6 +447,13 @@ def _run_process(
         exit_code = None
         _terminate_process_tree(process)
         process.wait()
+    except BaseException:
+        _terminate_process_tree(process)
+        try:
+            process.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        raise
 
     for thread in threads:
         thread.join(timeout=1)
@@ -507,7 +514,13 @@ def _command_args(command: str, root_path: Path) -> list[str]:
             "parse_error_empty_command",
             "could not parse verification command: empty command",
         )
-    resolved = _resolve_executable(args[0], root_path)
+    try:
+        resolved = _resolve_executable(args[0], root_path)
+    except (OSError, ValueError) as exc:
+        raise VerifyCommandError(
+            "parse_error_invalid_command",
+            f"could not parse verification command: invalid executable path: {exc}",
+        ) from exc
     if _is_windows_batch_file(resolved) and _has_windows_batch_meta(command):
         raise VerifyCommandError(
             "parse_error_batch_metacharacter",
@@ -667,6 +680,10 @@ def _has_windows_batch_meta(command: str) -> bool:
 
 def _normalize_command(command: str) -> str:
     return " ".join(command.strip().split())
+
+
+def _normalize_qualifier(qualifier: str) -> str:
+    return qualifier.strip()
 
 
 def _safe_output_with_flag(value: str | bytes) -> tuple[str, bool]:

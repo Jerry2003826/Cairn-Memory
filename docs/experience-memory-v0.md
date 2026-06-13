@@ -268,9 +268,11 @@ omni outcome mark-from-verify <run_id> --qualifier <qualifier>
 ```
 
 `--qualifier` is an exact match against active project-level
-`uses_test_command` facts. It does not accept arbitrary commands, does not add a
-new scope or subject selector, and does not write OmniMemory state. Missing or
-ambiguous qualifiers return `status=unknown` without executing a command.
+`uses_test_command` facts after trimming surrounding whitespace; internal
+whitespace remains significant. It does not accept arbitrary commands, does not
+add a new scope or subject selector, and does not write OmniMemory state.
+Missing or ambiguous qualifiers return `status=unknown` without executing a
+command.
 
 Verify JSON now includes a machine-readable `reason_code`, `selection_mode`,
 `selection_reason`, and stdout/stderr truncation booleans. Existing fields such
