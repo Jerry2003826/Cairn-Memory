@@ -124,6 +124,99 @@ def test_verify_preflight_rejects_attached_shell_operator_commands(tmp_path: Pat
     )
 
 
+def test_verify_preflight_rejects_or_shell_operator_commands(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "echo before || echo fallback")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason"] == (
+        "could not parse verification command: shell operators are not supported"
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_filter"),
+    [
+        ('pytest -k "api|cli;smoke"', "api|cli;smoke"),
+        ('pytest -k "|"', "|"),
+        ('pytest -k ";"', ";"),
+        ('pytest -k "&&"', "&&"),
+    ],
+)
+def test_verify_command_args_allows_quoted_operator_characters_in_arguments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    expected_filter: str,
+) -> None:
+    def fake_which(executable: str, path: str | None = None) -> str | None:
+        return "C:\\Tools\\pytest.exe" if executable == "pytest" else None
+
+    monkeypatch.setattr(verify.shutil, "which", fake_which)
+
+    assert verify._command_args(command, tmp_path) == [
+        "C:\\Tools\\pytest.exe",
+        "-k",
+        expected_filter,
+    ]
+
+
+def test_verify_command_args_preserves_unquoted_parentheses_in_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_which(executable: str, path: str | None = None) -> str | None:
+        return "C:\\Tools\\python.exe" if executable == "python" else None
+
+    monkeypatch.setattr(verify.shutil, "which", fake_which)
+
+    assert verify._command_args("python run(lint).py", tmp_path) == [
+        "C:\\Tools\\python.exe",
+        "run(lint).py",
+    ]
+
+
+def test_verify_command_args_preserves_hash_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_which(executable: str, path: str | None = None) -> str | None:
+        return "C:\\Tools\\pytest.exe" if executable == "pytest" else None
+
+    monkeypatch.setattr(verify.shutil, "which", fake_which)
+
+    assert verify._command_args("pytest -k issue#123", tmp_path) == [
+        "C:\\Tools\\pytest.exe",
+        "-k",
+        "issue#123",
+    ]
+
+
+def test_verify_command_args_rejects_shell_interpreter_wrappers(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="could not parse verification command: shell interpreter wrappers",
+    ):
+        verify._command_args('bash -c "echo before && echo after"', tmp_path)
+
+
+def test_verify_command_args_does_not_reject_non_command_shell_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_which(executable: str, path: str | None = None) -> str | None:
+        return "C:\\Tools\\sh.exe" if executable == "sh" else None
+
+    monkeypatch.setattr(verify.shutil, "which", fake_which)
+
+    assert verify._command_args("sh -cluster script.sh", tmp_path) == [
+        "C:\\Tools\\sh.exe",
+        "-cluster",
+        "script.sh",
+    ]
+
+
 def test_verify_preflight_decodes_invalid_bytes_lossily(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     script = _script(

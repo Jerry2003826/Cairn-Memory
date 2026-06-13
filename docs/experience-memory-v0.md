@@ -225,6 +225,11 @@ active project-level `uses_test_command` fact, executes that command from the
 project root, and prints redacted JSON with the command, exit code, duration,
 bounded stdout/stderr excerpts, timeout state, and a simple
 `passed`/`failed`/`unknown` status.
+It executes commands without a shell. Verify scans for unquoted shell operators
+such as `&&`, `||`, `;`, and `|` before tokenizing the stored command; quoted
+operator-like characters inside normal arguments remain allowed.
+Shell interpreter wrappers such as `bash -c` or `cmd /c` are unsupported because
+they would reintroduce shell semantics inside an argument.
 
 This is intentionally not automatic success detection. It does not mark
 outcomes, extract failure candidates, create experience candidates, render
