@@ -23,9 +23,22 @@ MAX_OUTPUT_CHARS = 4000
 MAX_CAPTURE_BYTES = 64 * 1024
 READ_CHUNK_BYTES = 4096
 MAX_CANDIDATE_COMMANDS = 10
-SHELL_OPERATOR_TOKENS = ("&&", "||", ";", "|")
 WINDOWS_BATCH_EXTENSIONS = (".bat", ".cmd")
 WINDOWS_BATCH_META_CHARS = ("&", "<", ">", "^", "%", "!")
+SHELL_WRAPPER_EXECUTABLES = {
+    "bash",
+    "cmd",
+    "cmd.exe",
+    "dash",
+    "ksh",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+    "sh",
+    "zsh",
+}
+SHELL_WRAPPER_COMMAND_FLAGS = {"-c", "/c", "-command", "-encodedcommand"}
 
 
 def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
@@ -326,10 +339,8 @@ def _read_limited(stream: Any, buffer: bytearray) -> None:
 
 
 def _command_args(command: str, root_path: Path) -> list[str]:
-    if any(operator in command for operator in SHELL_OPERATOR_TOKENS):
-        raise ValueError("could not parse verification command: shell operators are not supported")
     try:
-        args = shlex.split(command, posix=True)
+        args = _split_command(command)
     except ValueError as exc:
         raise ValueError(f"could not parse verification command: {exc}") from exc
     if not args:
@@ -342,6 +353,68 @@ def _command_args(command: str, root_path: Path) -> list[str]:
         )
     args[0] = resolved
     return args
+
+
+def _split_command(command: str) -> list[str]:
+    if _has_unquoted_shell_operator(command):
+        raise ValueError("shell operators are not supported")
+    args = shlex.split(command, posix=True, comments=False)
+    if _uses_shell_command_wrapper(args):
+        raise ValueError("shell interpreter wrappers are not supported")
+    return args
+
+
+def _has_unquoted_shell_operator(command: str) -> bool:
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(command):
+        char = command[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in {";", "|"}:
+            return True
+        elif char == "&" and index + 1 < len(command) and command[index + 1] == "&":
+            return True
+        index += 1
+    return False
+
+
+def _uses_shell_command_wrapper(args: list[str]) -> bool:
+    if not args:
+        return False
+    executable = _executable_name(args[0])
+    if executable not in SHELL_WRAPPER_EXECUTABLES:
+        return False
+    return any(_is_shell_command_flag(arg) for arg in args[1:])
+
+
+def _executable_name(value: str) -> str:
+    return value.replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+def _is_shell_command_flag(value: str) -> bool:
+    normalized = value.lower()
+    if normalized in SHELL_WRAPPER_COMMAND_FLAGS:
+        return True
+    return (
+        normalized.startswith("-")
+        and not normalized.startswith("--")
+        and normalized.endswith("c")
+    )
 
 
 def _resolve_executable(executable: str, root_path: Path) -> str:
