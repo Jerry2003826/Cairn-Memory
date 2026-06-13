@@ -719,11 +719,13 @@ def test_fast_path_uses_test_command_when_fact_exists(tmp_path: Path) -> None:
 
     assert text.index("## Fast Path") < text.index("## Commands")
     assert (
-        "For validation tasks, first action: run `pnpm run test`. Do not run broad "
-        "file scans such as `Glob **`, `ls`, `find`, `tree`, or `rg --files` "
-        "before this command. Do not inspect package scripts, README, deployment "
-        "docs, or environment files first unless the command fails or the user "
-        "explicitly asks for configuration-first exploration."
+        "For validation tasks, the first shell command must be `pnpm run test`. "
+        "Do not run build or lint before this command. Do not run broad file scans "
+        "such as `Glob **`, `ls`, `find`, `tree`, or `rg --files` before this "
+        "command. Do not inspect package scripts, README, deployment docs, or "
+        "environment files first unless the command fails or the user explicitly "
+        "asks for configuration-first exploration. After tests pass, run build and "
+        "lint if broader validation is needed."
     ) in text
 
 
@@ -748,11 +750,159 @@ def test_rediscovery_waste_fast_path_blocks_broad_scans_before_command(
     result = render.render_project(conn, tmp_path)
     text = result.path.read_text(encoding="utf-8")
 
-    assert "For validation tasks, first action: run `pnpm run test`." in text
+    assert "For validation tasks, the first shell command must be `pnpm run test`." in text
     assert (
         "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, "
         "or `rg --files` before this command."
     ) in text
+
+
+def test_rediscovery_waste_fast_path_requires_test_before_build_or_lint(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm run test")
+    add_fact(conn, predicate="uses_build_command", qualifier="node", object_norm="pnpm run build")
+    add_fact(conn, predicate="uses_lint_command", qualifier="node", object_norm="pnpm run lint")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_test_before_build_lint",
+        run_id="run_test_before_build_lint",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_test_before_build_lint")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "For validation tasks, the first shell command must be `pnpm run test`." in text
+    assert "Do not run `pnpm run build` or `pnpm run lint` before `pnpm run test`." in text
+    assert (
+        "After tests pass, run `pnpm run build` and `pnpm run lint` "
+        "if broader validation is needed."
+    ) in text
+
+
+def test_rediscovery_waste_fast_path_uses_active_build_lint_facts(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm test")
+    add_fact(conn, predicate="uses_build_command", qualifier="node", object_norm="pnpm run build:ci")
+    add_fact(conn, predicate="uses_lint_command", qualifier="node", object_norm="pnpm run lint:ci")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_custom_build_lint",
+        run_id="run_custom_build_lint",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_custom_build_lint")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "Do not run `pnpm run build:ci` or `pnpm run lint:ci` before `pnpm test`." in text
+    assert (
+        "After tests pass, run `pnpm run build:ci` and `pnpm run lint:ci` "
+        "if broader validation is needed."
+    ) in text
+    assert "Do not run `pnpm run build` or `pnpm run lint` before `pnpm test`." not in text
+
+
+def test_rediscovery_waste_fast_path_uses_single_post_test_fact_in_followup(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm test")
+    add_fact(conn, predicate="uses_build_command", qualifier="node", object_norm="pnpm run build:ci")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_single_post_test",
+        run_id="run_single_post_test",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_single_post_test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert (
+        "Do not run `pnpm run build:ci` or any other build/lint command "
+        "before `pnpm test`."
+    ) in text
+    assert "After tests pass, run `pnpm run build:ci` if broader validation is needed." in text
+    assert "After tests pass, run build and lint if broader validation is needed." not in text
+
+
+def test_rediscovery_waste_fast_path_blocks_build_when_only_lint_fact_exists(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="node", object_norm="pnpm test")
+    add_fact(conn, predicate="uses_lint_command", qualifier="node", object_norm="pnpm run lint:ci")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_single_lint_post_test",
+        run_id="run_single_lint_post_test",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_single_lint_post_test")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert (
+        "Do not run `pnpm run lint:ci` or any other build/lint command "
+        "before `pnpm test`."
+    ) in text
+    assert "After tests pass, run `pnpm run lint:ci` if broader validation is needed." in text
+
+
+def test_rediscovery_waste_fast_path_uses_generic_build_lint_for_non_pnpm_command(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    add_fact(conn, predicate="uses_test_command", qualifier="python", object_norm="pytest -q")
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_python_test_first",
+        run_id="run_python_test_first",
+        kind="rediscovery_waste",
+        claim="Memory context was available, but rediscovery happened.",
+        suggested_action=(
+            "For validation tasks, execute the known verification command before broad "
+            "README/package/deployment rediscovery."
+        ),
+    )
+    experience.approve_candidate(conn, "exp_cand_python_test_first")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "For validation tasks, the first shell command must be `pytest -q`." in text
+    assert "Do not run build or lint before this command." in text
+    assert "`pnpm run build`" not in text
+    assert "`pnpm run lint`" not in text
 
 
 def test_same_kind_notes_from_multiple_runs_render_one_guidance_line(
@@ -779,11 +929,13 @@ def test_same_kind_notes_from_multiple_runs_render_one_guidance_line(
 
     assert (
         text.count(
-            "- For validation tasks, first action: run the known verification command. "
-            "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, "
-            "or `rg --files` before trying it. Do not inspect package scripts, README, "
-            "deployment docs, or environment files first unless it fails or the user "
-            "explicitly asks for configuration-first exploration."
+            "- For validation tasks, the first shell command must be the known "
+            "verification command. Do not run build, lint, broad file scans such as "
+            "`Glob **`, `ls`, `find`, `tree`, or `rg --files` before trying it. Do "
+            "not inspect package scripts, README, deployment docs, or environment "
+            "files first unless it fails or the user explicitly asks for "
+            "configuration-first exploration. After tests pass, run build and lint "
+            "if broader validation is needed."
         )
         == 1
     )
@@ -823,11 +975,13 @@ def test_fast_path_and_rediscovery_waste_notes_render_distinct_lines(
     )
     assert (
         text.count(
-            "- For validation tasks, first action: run the known verification command. "
-            "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, "
-            "or `rg --files` before trying it. Do not inspect package scripts, README, "
-            "deployment docs, or environment files first unless it fails or the user "
-            "explicitly asks for configuration-first exploration."
+            "- For validation tasks, the first shell command must be the known "
+            "verification command. Do not run build, lint, broad file scans such as "
+            "`Glob **`, `ls`, `find`, `tree`, or `rg --files` before trying it. Do "
+            "not inspect package scripts, README, deployment docs, or environment "
+            "files first unless it fails or the user explicitly asks for "
+            "configuration-first exploration. After tests pass, run build and lint "
+            "if broader validation is needed."
         )
         == 1
     )
@@ -856,14 +1010,15 @@ def test_fast_path_uses_generic_wording_with_multiple_distinct_test_commands(
     text = result.path.read_text(encoding="utf-8")
 
     assert (
-        "For validation tasks, first action: run the known verification command. "
-        "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, "
-        "or `rg --files` before trying it. Do not inspect package scripts, README, "
-        "deployment docs, or environment files first unless it fails or the user "
-        "explicitly asks for configuration-first exploration."
+        "For validation tasks, the first shell command must be the known verification "
+        "command. Do not run build, lint, broad file scans such as `Glob **`, `ls`, "
+        "`find`, `tree`, or `rg --files` before trying it. Do not inspect package "
+        "scripts, README, deployment docs, or environment files first unless it fails "
+        "or the user explicitly asks for configuration-first exploration. After tests "
+        "pass, run build and lint if broader validation is needed."
     ) in text
-    assert "- For validation tasks, first action: run `pnpm run test`." not in text
-    assert "- For validation tasks, first action: run `pytest -q`." not in text
+    assert "- For validation tasks, the first shell command must be `pnpm run test`." not in text
+    assert "- For validation tasks, the first shell command must be `pytest -q`." not in text
 
 
 def test_fast_path_prefers_base_qualifier_when_node_test_commands_are_scoped(
@@ -900,11 +1055,13 @@ def test_fast_path_prefers_base_qualifier_when_node_test_commands_are_scoped(
     text = result.path.read_text(encoding="utf-8")
 
     assert (
-        "For validation tasks, first action: run `pnpm run test`. Do not run broad "
-        "file scans such as `Glob **`, `ls`, `find`, `tree`, or `rg --files` "
-        "before this command. Do not inspect package scripts, README, deployment "
-        "docs, or environment files first unless the command fails or the user "
-        "explicitly asks for configuration-first exploration."
+        "For validation tasks, the first shell command must be `pnpm run test`. "
+        "Do not run build or lint before this command. Do not run broad file scans "
+        "such as `Glob **`, `ls`, `find`, `tree`, or `rg --files` before this "
+        "command. Do not inspect package scripts, README, deployment docs, or "
+        "environment files first unless the command fails or the user explicitly "
+        "asks for configuration-first exploration. After tests pass, run build and "
+        "lint if broader validation is needed."
     ) in text
 
 
@@ -1114,9 +1271,10 @@ def test_fast_path_uses_generic_known_verification_command_without_fact(
     text = result.path.read_text(encoding="utf-8")
 
     assert (
-        "For validation tasks, first action: run the known verification command. "
-        "Do not run broad file scans such as `Glob **`, `ls`, `find`, `tree`, "
-        "or `rg --files` before trying it. Do not inspect package scripts, README, "
-        "deployment docs, or environment files first unless it fails or the user "
-        "explicitly asks for configuration-first exploration."
+        "For validation tasks, the first shell command must be the known verification "
+        "command. Do not run build, lint, broad file scans such as `Glob **`, `ls`, "
+        "`find`, `tree`, or `rg --files` before trying it. Do not inspect package "
+        "scripts, README, deployment docs, or environment files first unless it fails "
+        "or the user explicitly asks for configuration-first exploration. After tests "
+        "pass, run build and lint if broader validation is needed."
     ) in text
