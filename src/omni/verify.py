@@ -24,6 +24,7 @@ MAX_OUTPUT_CHARS = 4000
 MAX_CAPTURE_BYTES = 64 * 1024
 READ_CHUNK_BYTES = 4096
 MAX_CANDIDATE_COMMANDS = 10
+SELECTION_REASON_SELECTED = "selected active uses_test_command fact"
 WINDOWS_BATCH_EXTENSIONS = (".bat", ".cmd")
 WINDOWS_BATCH_META_CHARS = ("&", "<", ">", "^", "%", "!")
 ENV_WRAPPER_EXECUTABLES = {"env", "env.exe"}
@@ -304,7 +305,7 @@ def _select_verification_command(
             base_commands[0],
             candidates,
             selection_mode="auto",
-            selection_reason="selected active uses_test_command fact",
+            selection_reason=SELECTION_REASON_SELECTED,
         )
 
     all_commands = _unique_commands(candidates)
@@ -314,7 +315,7 @@ def _select_verification_command(
             all_commands[0],
             candidates,
             selection_mode="auto",
-            selection_reason="selected active uses_test_command fact",
+            selection_reason=SELECTION_REASON_SELECTED,
         )
 
     return {
@@ -381,7 +382,7 @@ def _selected(
     return {
         "status": "selected",
         "reason_code": "selected",
-        "reason": "selected active uses_test_command fact",
+        "reason": SELECTION_REASON_SELECTED,
         "selection_mode": selection_mode,
         "selection_reason": selection_reason,
         "qualifier": selected["qualifier"],
@@ -502,6 +503,7 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
 
 
 def _command_args(command: str, root_path: Path) -> list[str]:
+    _reject_embedded_null(command)
     try:
         args = _split_command(command)
     except VerifyCommandError as exc:
@@ -514,6 +516,8 @@ def _command_args(command: str, root_path: Path) -> list[str]:
             "parse_error_empty_command",
             "could not parse verification command: empty command",
         )
+    for arg in args:
+        _reject_embedded_null(arg)
     try:
         resolved = _resolve_executable(args[0], root_path)
     except (OSError, ValueError) as exc:
@@ -521,6 +525,7 @@ def _command_args(command: str, root_path: Path) -> list[str]:
             "parse_error_invalid_command",
             f"could not parse verification command: invalid executable path: {exc}",
         ) from exc
+    _reject_embedded_null(resolved)
     if _is_windows_batch_file(resolved) and _has_windows_batch_meta(command):
         raise VerifyCommandError(
             "parse_error_batch_metacharacter",
@@ -529,6 +534,14 @@ def _command_args(command: str, root_path: Path) -> list[str]:
         )
     args[0] = resolved
     return args
+
+
+def _reject_embedded_null(value: str) -> None:
+    if "\x00" in value:
+        raise VerifyCommandError(
+            "parse_error_invalid_command",
+            "could not parse verification command: embedded null byte",
+        )
 
 
 def _split_command(command: str) -> list[str]:
