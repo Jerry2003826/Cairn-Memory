@@ -619,6 +619,108 @@ def test_approve_recovers_when_note_appears_concurrently(
     assert _active_note_count(conn, candidate["exp_cand_id"]) == 1
 
 
+def test_reject_loses_race_to_concurrent_approve_and_keeps_active_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_outcome(
+        conn,
+        "run_reject_race",
+        status="success",
+        tests_status="passed",
+        memory_effect="helped",
+        task_type="validation",
+    )
+    _fake_eval(monkeypatch, memory_effect="helped")
+    [candidate] = experience.extract_candidates(conn, "run_reject_race")
+    real_now = experience._now
+    flipped = {"done": False}
+
+    def approving_now() -> str:
+        # Simulate another process approving between reject's state check and
+        # its state update.
+        if not flipped["done"]:
+            flipped["done"] = True
+            other = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+            try:
+                experience.approve_candidate(other, candidate["exp_cand_id"])
+            finally:
+                other.close()
+        return real_now()
+
+    monkeypatch.setattr(experience, "_now", approving_now)
+
+    with pytest.raises(ValueError, match="approved candidate cannot be rejected in v0"):
+        experience.reject_candidate(conn, candidate["exp_cand_id"])
+
+    assert experience.show_candidate(conn, candidate["exp_cand_id"])["state"] == "approved"
+    assert _active_note_count(conn, candidate["exp_cand_id"]) == 1
+
+
+def test_approve_loses_race_to_concurrent_reject_and_creates_no_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_outcome(
+        conn,
+        "run_approve_race",
+        status="success",
+        tests_status="passed",
+        memory_effect="helped",
+        task_type="validation",
+    )
+    _fake_eval(monkeypatch, memory_effect="helped")
+    [candidate] = experience.extract_candidates(conn, "run_approve_race")
+    real_lookup = experience._active_note_id_for_candidate
+    flipped = {"done": False}
+
+    def rejecting_lookup(conn_arg: sqlite3.Connection, exp_cand_id: str) -> str | None:
+        # Simulate another process rejecting between approve's state check and
+        # its note insert + state update.
+        if not flipped["done"]:
+            flipped["done"] = True
+            other = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+            try:
+                experience.reject_candidate(other, exp_cand_id)
+            finally:
+                other.close()
+            return None
+        return real_lookup(conn_arg, exp_cand_id)
+
+    monkeypatch.setattr(experience, "_active_note_id_for_candidate", rejecting_lookup)
+
+    with pytest.raises(ValueError, match="rejected candidate cannot be approved in v0"):
+        experience.approve_candidate(conn, candidate["exp_cand_id"])
+
+    assert experience.show_candidate(conn, candidate["exp_cand_id"])["state"] == "rejected"
+    assert _active_note_count(conn, candidate["exp_cand_id"]) == 0
+
+
+def test_extract_insert_guard_blocks_duplicates_when_precheck_misses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_outcome(
+        conn,
+        "run_insert_guard",
+        status="success",
+        tests_status="passed",
+        memory_effect="helped",
+        task_type="validation",
+    )
+    _fake_eval(monkeypatch, memory_effect="helped")
+    [first] = experience.extract_candidates(conn, "run_insert_guard")
+    # Simulate a concurrent extract that passed _candidate_exists before the
+    # first writer committed.
+    monkeypatch.setattr(experience, "_candidate_exists", lambda *_args: False)
+
+    second = experience.extract_candidates(conn, "run_insert_guard")
+
+    assert second == []
+    candidates = experience.list_candidates(conn, state="all")
+    assert [item["exp_cand_id"] for item in candidates] == [first["exp_cand_id"]]
+
+
 def test_approve_rejects_unknown_candidate_kind(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_weird_kind")

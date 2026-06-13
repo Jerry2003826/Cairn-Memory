@@ -30,6 +30,9 @@ def connect_readonly(path: Path | str) -> sqlite3.Connection:
     db_path = Path(path).resolve()
     conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    # Without a busy timeout a read can fail immediately with SQLITE_BUSY while
+    # an approved write command is committing.
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 

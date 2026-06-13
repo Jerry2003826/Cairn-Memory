@@ -290,14 +290,17 @@ def _fact_id(candidate: FactCandidate) -> str:
 
 
 def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    current = int(row["value"]) if row else 0
-    next_value = current + 1
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES('commit_seq', ?)",
-        (str(next_value),),
+    # Increment in place so the read and the write happen under one write lock;
+    # a separate read-then-write pair can hand the same sequence number to two
+    # concurrent writers.
+    updated = conn.execute(
+        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
     )
-    return next_value
+    if updated.rowcount == 0:
+        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
+        return 1
+    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
+    return int(row["value"])
 
 
 def _now() -> str:

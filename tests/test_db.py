@@ -45,6 +45,18 @@ def test_connect_sets_required_pragmas(tmp_path: Path) -> None:
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
 
+def test_connect_readonly_sets_busy_timeout(tmp_path: Path) -> None:
+    setup = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(setup)
+    setup.close()
+
+    readonly = db.connect_readonly(tmp_path / ".omni" / "omni.sqlite3")
+    try:
+        assert readonly.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    finally:
+        readonly.close()
+
+
 def test_migration_creates_schema_and_seed_meta(tmp_path: Path) -> None:
     conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
 

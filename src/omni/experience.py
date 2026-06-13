@@ -81,13 +81,20 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
     now = _now()
     exp_cand_id = new_id("exp_cand")
     evidence = _evidence_for(run_id, outcome_row, eval_result)
-    conn.execute(
+    # The NOT EXISTS guard re-checks (run_id, kind) inside the write statement so
+    # two concurrent extracts cannot both pass _candidate_exists and insert
+    # duplicate candidates for the same run.
+    inserted = conn.execute(
         """
         INSERT INTO experience_candidates(
           exp_cand_id, run_id, outcome_id, task_type, kind, trigger,
           claim, suggested_action, evidence, state, created_at,
           reviewed_at, review_note
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        )
+        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
+        WHERE NOT EXISTS(
+          SELECT 1 FROM experience_candidates WHERE run_id = ? AND kind = ?
+        )
         """,
         (
             exp_cand_id,
@@ -103,9 +110,13 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
             now,
             None,
             None,
+            run_id,
+            spec["kind"],
         ),
     )
     conn.commit()
+    if inserted.rowcount == 0:
+        return []
     return [show_candidate(conn, exp_cand_id)]
 
 
@@ -172,14 +183,19 @@ def approve_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, A
             note_id = _active_note_id_for_candidate(conn, exp_cand_id)
             if note_id is None:
                 raise
-    conn.execute(
+    updated = conn.execute(
         """
         UPDATE experience_candidates
         SET state = 'approved', reviewed_at = ?
-        WHERE exp_cand_id = ?
+        WHERE exp_cand_id = ? AND state != 'rejected'
         """,
         (_now(), exp_cand_id),
     )
+    if updated.rowcount == 0:
+        # A concurrent reviewer rejected this candidate after our state check;
+        # discard the uncommitted note instead of resurrecting the candidate.
+        conn.rollback()
+        raise ValueError(f"rejected candidate cannot be approved in v0: {exp_cand_id}")
     conn.commit()
     result = show_candidate(conn, exp_cand_id)
     result["note_id"] = note_id
@@ -198,7 +214,29 @@ def reject_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, An
     if candidate["state"] == "rejected":
         return show_candidate(conn, exp_cand_id)
     _validate_choice("state", candidate["state"], STATE_VALUES)
-    return _set_candidate_state(conn, exp_cand_id, "rejected")
+    updated = conn.execute(
+        """
+        UPDATE experience_candidates
+        SET state = 'rejected', reviewed_at = ?
+        WHERE exp_cand_id = ? AND state = 'pending'
+        """,
+        (_now(), exp_cand_id),
+    )
+    if updated.rowcount == 0:
+        # Another writer changed the state between our check and this update;
+        # re-apply the v0 transition rules against the committed state.
+        conn.rollback()
+        current = conn.execute(
+            "SELECT state FROM experience_candidates WHERE exp_cand_id = ?",
+            (exp_cand_id,),
+        ).fetchone()
+        if current is not None and current["state"] == "approved":
+            raise ValueError(
+                f"approved candidate cannot be rejected in v0: {exp_cand_id}"
+            )
+        return show_candidate(conn, exp_cand_id)
+    conn.commit()
+    return show_candidate(conn, exp_cand_id)
 
 
 def as_json(value: dict[str, Any]) -> str:
@@ -306,28 +344,6 @@ def _candidate_exists(conn: sqlite3.Connection, run_id: str, kind: str) -> bool:
     return row is not None
 
 
-def _set_candidate_state(
-    conn: sqlite3.Connection, exp_cand_id: str, state: str
-) -> dict[str, Any]:
-    _validate_choice("state", state, STATE_VALUES)
-    existing = conn.execute(
-        "SELECT 1 FROM experience_candidates WHERE exp_cand_id = ?",
-        (exp_cand_id,),
-    ).fetchone()
-    if existing is None:
-        raise ValueError(f"unknown experience candidate: {exp_cand_id}")
-    conn.execute(
-        """
-        UPDATE experience_candidates
-        SET state = ?, reviewed_at = ?
-        WHERE exp_cand_id = ?
-        """,
-        (state, _now(), exp_cand_id),
-    )
-    conn.commit()
-    return show_candidate(conn, exp_cand_id)
-
-
 def _active_note_id_for_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> str | None:
     row = conn.execute(
         """
@@ -374,14 +390,17 @@ def _create_experience_note(conn: sqlite3.Connection, candidate: sqlite3.Row) ->
 
 
 def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    current = int(row["value"]) if row else 0
-    next_value = current + 1
-    conn.execute(
-        "INSERT OR REPLACE INTO meta(key, value) VALUES('commit_seq', ?)",
-        (str(next_value),),
+    # Increment in place so the read and the write happen under one write lock;
+    # a separate read-then-write pair can hand the same sequence number to two
+    # concurrent writers.
+    updated = conn.execute(
+        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
     )
-    return next_value
+    if updated.rowcount == 0:
+        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
+        return 1
+    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
+    return int(row["value"])
 
 
 def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:

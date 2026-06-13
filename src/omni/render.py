@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -69,7 +70,7 @@ def render_project(
 
     dirty = _update_block_state(conn, body, line_hashes)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    _replace_file_text(path, text)
     conn.commit()
     return RenderResult(path=path, body=text, diff=rendered_diff, wrote=True, dirty=dirty)
 
@@ -146,7 +147,10 @@ def _render_body(
     for section in ("Commands", "Fast Path", "Experience Notes", "Boundaries", "Project"):
         lines.append((f"## {section}", None))
         for dep, line in sections[section]:
-            if _body_length(_line_texts(lines)) + len(line) + 1 > MAX_BODY_CHARS:
+            # Once the budget is hit, stop content lines in every later section
+            # too; otherwise a short low-priority line could render while a
+            # higher-priority line was dropped.
+            if omitted or _body_length(_line_texts(lines)) + len(line) + 1 > MAX_BODY_CHARS:
                 omitted = True
                 break
             lines.append((line, dep))
@@ -294,7 +298,12 @@ def _qualifier_label(qualifier: str) -> str:
 
 
 def _manual_edit_detected(path: Path) -> bool:
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # A non-UTF-8 file cannot be omni-generated; treat it as a manual edit
+        # instead of crashing so --force can recover.
+        return True
     match = HEADER_RE.match(text)
     if not match:
         return True
@@ -346,8 +355,22 @@ def _update_block_state(
     return dirty
 
 
+def _replace_file_text(path: Path, text: str) -> None:
+    # Write through a temp file and atomically replace so an interrupted render
+    # cannot leave a half-written memory.md behind for readers or later renders.
+    tmp_path = path.with_name(path.name + ".omni-tmp")
+    try:
+        tmp_path.write_text(text, encoding="utf-8")
+        os.replace(tmp_path, path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _diff(path: Path, rendered: str) -> str:
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    try:
+        current = path.read_text(encoding="utf-8") if path.exists() else ""
+    except UnicodeDecodeError:
+        current = ""
     return "".join(
         difflib.unified_diff(
             current.splitlines(keepends=True),
@@ -365,7 +388,7 @@ def _body_length(lines: list[str]) -> int:
 
 
 def _line_texts(lines: list[tuple[str, Dependency | None]]) -> list[str]:
-    return [line for line, _fact_id in lines]
+    return [line for line, _dep in lines]
 
 
 def _with_truncation_notice(

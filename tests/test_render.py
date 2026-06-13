@@ -306,16 +306,24 @@ def test_approved_experience_note_renders_without_internal_metadata(tmp_path: Pa
 
     result = render.render_project(conn, tmp_path)
     text = result.path.read_text(encoding="utf-8")
+    note = conn.execute(
+        "SELECT created_at, updated_at FROM experience_notes WHERE note_id = ?",
+        (approved["note_id"],),
+    ).fetchone()
 
     assert "## Fast Path" in text
     assert "For validation tasks, prefer the known verification command early." in text
     assert "run_approved_render" not in text
     assert "exp_cand_approved_render" not in text
     assert approved["note_id"] not in text
+    assert "outcome_render" not in text
     assert "evidence" not in text.lower()
     assert "created_at" not in text.lower()
     assert "updated_at" not in text.lower()
     assert "confidence" not in text.lower()
+    assert "2026-06-13T00:00:00+00:00" not in text
+    assert note["created_at"] not in text
+    assert note["updated_at"] not in text
 
 
 def test_approved_experience_note_render_is_byte_stable(tmp_path: Path) -> None:
@@ -627,6 +635,74 @@ def test_note_fallback_collapses_embedded_newlines(tmp_path: Path) -> None:
 
     assert "- line one ## Injected line two" in text
     assert "\n## Injected" not in text
+
+
+def test_render_writes_memory_through_temp_file_replace(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    original_write_text = Path.write_text
+
+    def fail_direct_memory_write(self: Path, data, *args, **kwargs):
+        if self.name == "memory.md" and "generated" in self.parts:
+            raise AssertionError("memory.md content must be replaced from a temp file")
+        return original_write_text(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_direct_memory_write)
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert result.wrote
+    assert text.startswith("<!-- omni:generated render_ver=1 sha256=")
+    assert not list(result.path.parent.glob("*.omni-tmp"))
+
+
+def test_render_corrupt_generated_memory_raises_manual_edit_error(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    result = render.render_project(conn, tmp_path)
+    result.path.write_bytes(b"\xff\xfe broken \x00 bytes")
+
+    with pytest.raises(render.ManualEditError):
+        render.render_project(conn, tmp_path)
+
+    forced = render.render_project(conn, tmp_path, force=True)
+    text = forced.path.read_text(encoding="utf-8")
+    assert text.startswith("<!-- omni:generated render_ver=1 sha256=")
+    assert "Use pnpm run test for Node tests." in text
+
+
+def test_render_truncation_does_not_promote_lower_priority_lines(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conn = connect(tmp_path)
+    monkeypatch.setattr(render, "MAX_BODY_CHARS", 220)
+    add_fact(
+        conn,
+        predicate="uses_test_command",
+        qualifier="node",
+        object_norm="pnpm run test -- --reporter verbose --bail --maxWorkers 4",
+    )
+    add_experience_candidate(
+        conn,
+        exp_cand_id="exp_cand_trunc_priority",
+        run_id="run_trunc_priority",
+        kind="fast_path",
+    )
+    experience.approve_candidate(conn, "exp_cand_trunc_priority")
+    add_fact(conn, predicate="boundary_rule", qualifier="default", object_norm="x")
+
+    result = render.render_project(conn, tmp_path)
+    text = result.path.read_text(encoding="utf-8")
+
+    assert "for Node tests." in text
+    assert "Additional entries omitted due to size limit." in text
+    # The Fast Path line was dropped for size; the lower-priority boundary line
+    # must not take its place.
+    assert "prefer running" not in text
+    assert "boundary rule: x" not in text
 
 
 def test_render_cli_includes_approved_experience_note(tmp_path: Path) -> None:
