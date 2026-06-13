@@ -274,6 +274,7 @@ def test_verify_preflight_reports_unknown_for_missing_qualifier(tmp_path: Path) 
 
 def test_verify_preflight_reports_unknown_for_ambiguous_qualifier(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "echo unrelated", qualifier="python")
     _insert_fact(conn, "echo web unit", qualifier="node:web")
     _insert_fact(conn, "echo web e2e", qualifier="node:web")
 
@@ -284,6 +285,10 @@ def test_verify_preflight_reports_unknown_for_ambiguous_qualifier(tmp_path: Path
     assert result["selection_mode"] == "qualifier"
     assert result["reason"] == "ambiguous active uses_test_command facts for qualifier node:web"
     assert result["command"] is None
+    assert result["candidate_commands"] == [
+        {"qualifier": "node:web", "command": "echo web e2e"},
+        {"qualifier": "node:web", "command": "echo web unit"},
+    ]
 
 
 @pytest.mark.parametrize(
@@ -421,6 +426,22 @@ def test_verify_preflight_bounds_large_output_while_running(tmp_path: Path) -> N
     assert result["stderr_truncated"] is False
     assert len(result["stdout_excerpt"]) <= verify.MAX_OUTPUT_CHARS
     assert result["stdout_excerpt"].endswith("...[truncated]")
+
+
+def test_verify_preflight_reports_capture_limit_truncation(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(
+        tmp_path,
+        "capture_limit_verify.py",
+        "import sys\nsys.stdout.buffer.write(b' ' * 200000)\n",
+    )
+    _insert_fact(conn, _python_command(script))
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "passed"
+    assert result["stdout_truncated"] is True
+    assert result["stdout_excerpt"] == ""
 
 
 def test_verify_preflight_reports_timeout_with_reason_code(tmp_path: Path) -> None:

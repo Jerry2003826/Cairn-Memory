@@ -146,8 +146,10 @@ def run_preflight(
     duration_ms = _duration_ms(started)
     timed_out = bool(completed["timed_out"])
     exit_code = completed["exit_code"]
-    stdout_excerpt, stdout_truncated = _safe_output_with_flag(completed["stdout"])
-    stderr_excerpt, stderr_truncated = _safe_output_with_flag(completed["stderr"])
+    stdout_excerpt, stdout_text_truncated = _safe_output_with_flag(completed["stdout"])
+    stderr_excerpt, stderr_text_truncated = _safe_output_with_flag(completed["stderr"])
+    stdout_truncated = stdout_text_truncated or bool(completed["stdout_capture_truncated"])
+    stderr_truncated = stderr_text_truncated or bool(completed["stderr_capture_truncated"])
     if timed_out:
         result.update(
             {
@@ -279,6 +281,7 @@ def _select_verification_command(
                 selection_mode="qualifier",
                 selection_reason=selection_reason,
             )
+        qualified_limited, qualified_omitted = _limit_candidates(qualified_candidates)
         return {
             "status": "ambiguous",
             "reason_code": "ambiguous_qualifier",
@@ -291,8 +294,8 @@ def _select_verification_command(
                 "ambiguous active uses_test_command facts for qualifier "
                 f"{display_qualifier}"
             ),
-            "candidate_commands": limited,
-            "candidate_commands_omitted": omitted,
+            "candidate_commands": qualified_limited,
+            "candidate_commands_omitted": qualified_omitted,
         }
 
     base_candidates = [
@@ -425,6 +428,8 @@ def _run_process(
 ) -> dict[str, Any]:
     stdout = bytearray()
     stderr = bytearray()
+    stdout_capture_truncated = [False]
+    stderr_capture_truncated = [False]
     process = subprocess.Popen(
         command_args,
         cwd=root_path,
@@ -433,8 +438,16 @@ def _run_process(
         start_new_session=os.name != "nt",
     )
     threads = [
-        threading.Thread(target=_read_limited, args=(process.stdout, stdout), daemon=True),
-        threading.Thread(target=_read_limited, args=(process.stderr, stderr), daemon=True),
+        threading.Thread(
+            target=_read_limited,
+            args=(process.stdout, stdout, stdout_capture_truncated),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_read_limited,
+            args=(process.stderr, stderr, stderr_capture_truncated),
+            daemon=True,
+        ),
     ]
     for thread in threads:
         thread.start()
@@ -464,10 +477,12 @@ def _run_process(
         "timed_out": timed_out,
         "stdout": bytes(stdout),
         "stderr": bytes(stderr),
+        "stdout_capture_truncated": stdout_capture_truncated[0],
+        "stderr_capture_truncated": stderr_capture_truncated[0],
     }
 
 
-def _read_limited(stream: Any, buffer: bytearray) -> None:
+def _read_limited(stream: Any, buffer: bytearray, truncated: list[bool]) -> None:
     if stream is None:
         return
     try:
@@ -475,6 +490,8 @@ def _read_limited(stream: Any, buffer: bytearray) -> None:
             remaining = MAX_CAPTURE_BYTES - len(buffer)
             if remaining > 0:
                 buffer.extend(chunk[:remaining])
+            if len(chunk) > max(remaining, 0):
+                truncated[0] = True
     finally:
         stream.close()
 
