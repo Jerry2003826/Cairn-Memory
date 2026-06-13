@@ -22,6 +22,9 @@ def test_verify_preflight_runs_selected_test_command(tmp_path: Path) -> None:
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "passed"
+    assert result["reason_code"] == "passed"
+    assert result["selection_mode"] == "auto"
+    assert result["selection_reason"] == "selected active uses_test_command fact"
     assert result["command"] == command
     assert result["qualifier"] == "node"
     assert result["exit_code"] == 0
@@ -42,9 +45,43 @@ def test_verify_preflight_reports_failed_command(tmp_path: Path) -> None:
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "failed"
+    assert result["reason_code"] == "failed_exit_code"
     assert result["exit_code"] == 7
     assert result["stderr_excerpt"] == "bad stderr"
     assert result["reason"] == "verification command failed with exit code 7"
+
+
+def test_verify_preflight_reports_start_failed_with_reason_code(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "definitely_missing_omni_verify_runner_zzzzz")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "failed"
+    assert result["reason_code"] == "start_failed"
+    assert result["exit_code"] is None
+    assert result["timed_out"] is False
+    assert result["reason"] == "verification command could not be started"
+
+
+def test_verify_preflight_start_failed_reports_truncated_stderr_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python test.py")
+
+    def raise_large_os_error(*args: object, **kwargs: object) -> dict[str, object]:
+        raise OSError("x" * (verify.MAX_OUTPUT_CHARS + 200))
+
+    monkeypatch.setattr(verify, "_run_process", raise_large_os_error)
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "failed"
+    assert result["reason_code"] == "start_failed"
+    assert result["stderr_truncated"] is True
+    assert result["stderr_excerpt"].endswith("...[truncated]")
 
 
 def test_verify_preflight_prefers_unscoped_qualifier_over_scoped_commands(
@@ -75,6 +112,8 @@ def test_verify_preflight_reports_unknown_for_ambiguous_test_commands(
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "unknown"
+    assert result["reason_code"] == "ambiguous_active_test_command"
+    assert result["selection_mode"] == "auto"
     assert result["reason"] == "ambiguous active uses_test_command facts"
     assert result["command"] is None
     assert result["candidate_commands"] == [
@@ -94,8 +133,21 @@ def test_verify_preflight_reports_unknown_without_active_test_command(
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "unknown"
+    assert result["reason_code"] == "no_active_test_command"
     assert result["reason"] == "no active uses_test_command facts"
     assert result["candidate_commands"] == []
+
+
+def test_verify_preflight_reports_qualifier_mode_for_empty_qualifier_without_facts(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="")
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "no_active_test_command"
+    assert result["selection_mode"] == "qualifier"
 
 
 def test_verify_preflight_does_not_execute_shell_operator_commands(tmp_path: Path) -> None:
@@ -105,6 +157,7 @@ def test_verify_preflight_does_not_execute_shell_operator_commands(tmp_path: Pat
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_shell_operator"
     assert result["stdout_excerpt"] == ""
     assert result["reason"] == (
         "could not parse verification command: shell operators are not supported"
@@ -119,6 +172,7 @@ def test_verify_preflight_rejects_attached_shell_operator_commands(tmp_path: Pat
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_shell_operator"
     assert result["reason"] == (
         "could not parse verification command: shell operators are not supported"
     )
@@ -131,9 +185,122 @@ def test_verify_preflight_rejects_or_shell_operator_commands(tmp_path: Path) -> 
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_shell_operator"
     assert result["reason"] == (
         "could not parse verification command: shell operators are not supported"
     )
+
+
+def test_verify_preflight_reports_invalid_parse_for_unclosed_quotes(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, 'python "unterminated')
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_invalid_command"
+    assert result["reason"].startswith("could not parse verification command:")
+
+
+def test_verify_preflight_reports_invalid_parse_for_bad_executable_path(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python\0 test.py")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_invalid_command"
+    assert result["stdout_excerpt"] == ""
+    assert result["stderr_excerpt"] == ""
+
+
+def test_verify_preflight_selects_explicit_qualifier(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    base_script = _script(tmp_path, "base_verify.py", "raise SystemExit(9)\n")
+    web_script = _script(tmp_path, "web_verify.py", "print('web')\n")
+    _insert_fact(conn, _python_command(base_script), qualifier="node")
+    web_command = _python_command(web_script)
+    _insert_fact(conn, web_command, qualifier="node:web")
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="node:web")
+
+    assert result["status"] == "passed"
+    assert result["reason_code"] == "passed"
+    assert result["selection_mode"] == "qualifier"
+    assert result["selection_reason"] == "selected active uses_test_command fact for qualifier node:web"
+    assert result["qualifier"] == "node:web"
+    assert result["command"] == web_command
+    assert result["stdout_excerpt"] == "web"
+
+
+def test_verify_preflight_matches_long_qualifier_before_display_truncation(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(tmp_path, "long_qualifier.py", "print('long qualifier')\n")
+    qualifier = "node:" + ("very-long-scope-" * 30)
+    command = _python_command(script)
+    _insert_fact(conn, command, qualifier=qualifier)
+
+    result = verify.run_preflight(conn, tmp_path, qualifier=qualifier)
+
+    assert result["status"] == "passed"
+    assert result["reason_code"] == "passed"
+    assert result["selection_mode"] == "qualifier"
+    assert result["command"] == command
+    assert result["qualifier"].endswith("...[truncated]")
+    assert result["stdout_excerpt"] == "long qualifier"
+
+
+def test_verify_preflight_qualifier_does_not_collapse_internal_whitespace(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(tmp_path, "spaced_qualifier.py", "raise SystemExit(9)\n")
+    _insert_fact(conn, _python_command(script), qualifier="node  web")
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="node web")
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "qualifier_not_found"
+    assert result["command"] is None
+    assert result["stdout_excerpt"] == ""
+
+
+def test_verify_preflight_reports_unknown_for_missing_qualifier(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(tmp_path, "not_run.py", "raise SystemExit(9)\n")
+    _insert_fact(conn, _python_command(script), qualifier="node")
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="python")
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "qualifier_not_found"
+    assert result["selection_mode"] == "qualifier"
+    assert result["reason"] == "no active uses_test_command fact for qualifier python"
+    assert result["command"] is None
+    assert result["stdout_excerpt"] == ""
+
+
+def test_verify_preflight_reports_unknown_for_ambiguous_qualifier(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "echo unrelated", qualifier="python")
+    _insert_fact(conn, "echo web unit", qualifier="node:web")
+    _insert_fact(conn, "echo web e2e", qualifier="node:web")
+
+    result = verify.run_preflight(conn, tmp_path, qualifier="node:web")
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "ambiguous_qualifier"
+    assert result["selection_mode"] == "qualifier"
+    assert result["reason"] == "ambiguous active uses_test_command facts for qualifier node:web"
+    assert result["command"] is None
+    assert result["candidate_commands"] == [
+        {"qualifier": "node:web", "command": "echo web e2e"},
+        {"qualifier": "node:web", "command": "echo web unit"},
+    ]
 
 
 @pytest.mark.parametrize(
@@ -207,6 +374,10 @@ def test_verify_command_args_preserves_hash_arguments(
         'env bash -c "echo before && echo after"',
         'env FOO=bar bash -c "echo before && echo after"',
         '/usr/bin/env pwsh -Command "echo before && echo after"',
+        'env -S "bash -c echo before"',
+        'env --split-string "sh -c echo before"',
+        'env --split-string="bash -c echo before"',
+        'env -Sbash -c echo before',
     ],
 )
 def test_verify_command_args_rejects_shell_interpreter_wrappers(
@@ -267,8 +438,72 @@ def test_verify_preflight_bounds_large_output_while_running(tmp_path: Path) -> N
     result = verify.run_preflight(conn, tmp_path)
 
     assert result["status"] == "passed"
+    assert result["stdout_truncated"] is True
+    assert result["stderr_truncated"] is False
     assert len(result["stdout_excerpt"]) <= verify.MAX_OUTPUT_CHARS
     assert result["stdout_excerpt"].endswith("...[truncated]")
+
+
+def test_verify_preflight_reports_capture_limit_truncation(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(
+        tmp_path,
+        "capture_limit_verify.py",
+        "import sys\nsys.stdout.buffer.write(b' ' * 200000)\n",
+    )
+    _insert_fact(conn, _python_command(script))
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "passed"
+    assert result["stdout_truncated"] is True
+    assert result["stdout_excerpt"] == ""
+
+
+def test_terminate_process_tree_kills_direct_posix_process_if_group_kill_misses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int, int | None]] = []
+
+    class FakeProcess:
+        pid = 1234
+
+        def poll(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            calls.append(("kill", self.pid, None))
+
+    def fake_killpg(pid: int, sig: int) -> None:
+        calls.append(("killpg", pid, sig))
+
+    monkeypatch.setattr(verify.os, "name", "posix")
+    monkeypatch.setattr(verify.os, "killpg", fake_killpg, raising=False)
+    monkeypatch.setattr(verify.signal, "SIGKILL", 9, raising=False)
+
+    verify._terminate_process_tree(FakeProcess())  # type: ignore[arg-type]
+
+    assert calls == [
+        ("killpg", 1234, 9),
+        ("kill", 1234, None),
+    ]
+
+
+def test_verify_preflight_reports_timeout_with_reason_code(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    script = _script(
+        tmp_path,
+        "timeout_verify.py",
+        "import time\nprint('started')\ntime.sleep(10)\n",
+    )
+    _insert_fact(conn, _python_command(script))
+
+    result = verify.run_preflight(conn, tmp_path, timeout_seconds=1)
+
+    assert result["status"] == "failed"
+    assert result["reason_code"] == "timed_out"
+    assert result["timed_out"] is True
+    assert result["exit_code"] is None
 
 
 def test_verify_command_args_resolves_path_executable(
@@ -343,6 +578,20 @@ def test_verify_json_redacts_stdout_and_stderr(tmp_path: Path, monkeypatch: pyte
     assert "REDACTED:" in encoded
 
 
+def test_verify_json_many_candidates_remains_stable_json(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    for index in range(30):
+        _insert_fact(conn, f"echo test-{index}", qualifier=f"node:{index}")
+
+    encoded = verify.as_json(verify.run_preflight(conn, tmp_path))
+    decoded = json.loads(encoded)
+
+    assert decoded["status"] == "unknown"
+    assert decoded["reason_code"] == "ambiguous_active_test_command"
+    assert decoded["candidate_commands_omitted"] == 20
+    assert decoded.get("error") != "payload_truncated"
+
+
 def test_cli_verify_outputs_json_and_returns_command_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -361,7 +610,30 @@ def test_cli_verify_outputs_json_and_returns_command_status(
     assert code == 0
     assert captured.err == ""
     assert output["status"] == "passed"
+    assert output["reason_code"] == "passed"
     assert output["stdout_excerpt"] == "cli ok"
+
+
+def test_cli_verify_uses_explicit_qualifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conn = _fixture_db(tmp_path)
+    base_script = _script(tmp_path, "cli_base.py", "raise SystemExit(9)\n")
+    web_script = _script(tmp_path, "cli_web.py", "print('cli web')\n")
+    _insert_fact(conn, _python_command(base_script), qualifier="node")
+    _insert_fact(conn, _python_command(web_script), qualifier="node:web")
+    conn.close()
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main(["verify", "--qualifier", "node:web"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert output["qualifier"] == "node:web"
+    assert output["selection_mode"] == "qualifier"
+    assert output["stdout_excerpt"] == "cli web"
 
 
 def test_cli_verify_failed_command_returns_one(
@@ -399,7 +671,28 @@ def test_cli_verify_unknown_command_returns_two(
     assert code == 2
     assert captured.err == ""
     assert output["status"] == "unknown"
+    assert output["reason_code"] == "no_active_test_command"
     assert output["reason"] == "no active uses_test_command facts"
+
+
+def test_cli_verify_invalid_command_still_outputs_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python\0 test.py")
+    conn.close()
+    monkeypatch.chdir(tmp_path)
+
+    code = cli.main(["verify"])
+    captured = capsys.readouterr()
+    output = json.loads(captured.out)
+
+    assert code == 2
+    assert captured.err == ""
+    assert output["status"] == "unknown"
+    assert output["reason_code"] == "parse_error_invalid_command"
 
 
 def test_cli_verify_missing_db_does_not_create_omni(
