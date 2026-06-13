@@ -383,8 +383,8 @@ def test_mark_outcome_from_verify_unknown_run_does_not_execute_verify(
 def test_mark_outcome_from_verify_redacts_evidence_and_omits_output_excerpts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    secret = "verify-outcome-token-123456"
-    monkeypatch.setenv("OMNI_OUTCOME_VERIFY_SECRET", secret)
+    canary = "verify-outcome-sentinel-123456"
+    monkeypatch.setenv("OMNI_OUTCOME_VERIFY_SECRET", canary)
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_verify_secret")
 
@@ -396,12 +396,12 @@ def test_mark_outcome_from_verify_redacts_evidence_and_omits_output_excerpts(
     ) -> dict[str, object]:
         return {
             "status": "failed",
-            "command": f"curl -H 'Authorization: Bearer {secret}'",
+            "command": f"curl -H 'X-Canary: {canary}'",
             "exit_code": 22,
             "timed_out": False,
-            "reason": f"failed with {secret}",
-            "stdout_excerpt": f"stdout {secret}",
-            "stderr_excerpt": f"stderr {secret}",
+            "reason": f"failed with {canary}",
+            "stdout_excerpt": f"stdout {canary}",
+            "stderr_excerpt": f"stderr {canary}",
         }
 
     monkeypatch.setattr(
@@ -418,9 +418,9 @@ def test_mark_outcome_from_verify_redacts_evidence_and_omits_output_excerpts(
     evidence = json.loads(row["evidence"])
     encoded = outcome.as_json(result)
 
-    assert secret not in row["final_command"]
-    assert secret not in row["evidence"]
-    assert secret not in encoded
+    assert canary not in row["final_command"]
+    assert canary not in row["evidence"]
+    assert canary not in encoded
     assert "REDACTED:" in row["final_command"]
     assert "REDACTED:" in row["evidence"]
     assert "stdout_excerpt" not in evidence["verify"]
