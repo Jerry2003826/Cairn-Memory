@@ -89,12 +89,20 @@ only pattern lifecycle writer in v0. It changes an active pattern's `status` to
 `retired`, sets `retired_seq` and `updated_at`, and leaves the source failure
 candidate approved with its original `pattern_id`.
 
+`ls`, `show`, and `retire` include a `lifecycle` summary so the JSON output is
+auditable without reading renderer internals. Active patterns report
+`renders=true`, `can_retire=true`, `can_reactivate=false`, and
+`supersede_supported=false`. Retired patterns report `renders=false`,
+`can_retire=false`, `can_reactivate=false`, and `supersede_supported=false`.
+
 Retiring an already-retired pattern is idempotent. Unknown pattern ids return a
 clear error and a non-zero CLI exit. Retired patterns do not render into
 `.omni/generated/memory.md`.
 
 Pattern Lifecycle v0 does not implement supersede, reactivation, automatic
-trust changes, verification, or note/pattern evolution.
+trust changes, verification, or note/pattern evolution. Approving a candidate
+whose linked pattern was retired returns a clear error; v0 does not silently
+reactivate retired patterns.
 
 ## Known Failures Renderer v0
 

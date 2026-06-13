@@ -746,7 +746,30 @@ def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:
 def _pattern_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
     result["evidence"] = _decode_json_object(result["evidence"])
+    result["lifecycle"] = _pattern_lifecycle(result["status"])
     return result
+
+
+def _pattern_lifecycle(status: str) -> dict[str, Any]:
+    _validate_choice("status", status, PATTERN_STATUS_VALUES)
+    if status == "active":
+        return {
+            "renders": True,
+            "can_retire": True,
+            "can_reactivate": False,
+            "supersede_supported": False,
+            "message": "active pattern renders into memory.md; retire it to stop rendering",
+        }
+    return {
+        "renders": False,
+        "can_retire": False,
+        "can_reactivate": False,
+        "supersede_supported": False,
+        "message": (
+            "retired pattern does not render into memory.md; "
+            "v0 does not reactivate retired patterns"
+        ),
+    }
 
 
 def _input_metadata(value: Any) -> Any:

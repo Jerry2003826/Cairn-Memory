@@ -524,9 +524,26 @@ def test_list_show_and_retire_failure_pattern(tmp_path: Path) -> None:
     assert active_patterns == [shown]
     assert shown["pattern_id"] == pattern_id
     assert shown["status"] == "active"
+    assert shown["lifecycle"] == {
+        "renders": True,
+        "can_retire": True,
+        "can_reactivate": False,
+        "supersede_supported": False,
+        "message": "active pattern renders into memory.md; retire it to stop rendering",
+    }
     assert shown["evidence"]["run_id"] == "run_pattern_lifecycle"
     assert retired["pattern_id"] == pattern_id
     assert retired["status"] == "retired"
+    assert retired["lifecycle"] == {
+        "renders": False,
+        "can_retire": False,
+        "can_reactivate": False,
+        "supersede_supported": False,
+        "message": (
+            "retired pattern does not render into memory.md; "
+            "v0 does not reactivate retired patterns"
+        ),
+    }
     assert retired["retired_seq"] is not None
     assert retired["created_at"] == shown["created_at"]
     assert retired["updated_at"] >= shown["updated_at"]
@@ -810,15 +827,31 @@ def test_cli_failure_pattern_ls_show_retire_work(
     assert ls_code == 0
     assert listed["patterns"][0]["pattern_id"] == approved["pattern_id"]
     assert listed["patterns"][0]["status"] == "active"
+    assert listed["patterns"][0]["lifecycle"]["renders"] is True
+    assert listed["patterns"][0]["lifecycle"]["can_retire"] is True
     assert show_code == 0
     assert shown["pattern_id"] == approved["pattern_id"]
+    assert shown["lifecycle"]["message"] == (
+        "active pattern renders into memory.md; retire it to stop rendering"
+    )
     assert retire_code == 0
     assert retired["status"] == "retired"
+    assert retired["lifecycle"] == {
+        "renders": False,
+        "can_retire": False,
+        "can_reactivate": False,
+        "supersede_supported": False,
+        "message": (
+            "retired pattern does not render into memory.md; "
+            "v0 does not reactivate retired patterns"
+        ),
+    }
     assert retired["retired_seq"] is not None
     assert active_code == 0
     assert active == {"patterns": []}
     assert retired_ls_code == 0
     assert retired_ls["patterns"][0]["pattern_id"] == approved["pattern_id"]
+    assert retired_ls["patterns"][0]["lifecycle"]["renders"] is False
 
 
 def test_cli_failure_approve_retired_pattern_exits_2_with_clear_error(
