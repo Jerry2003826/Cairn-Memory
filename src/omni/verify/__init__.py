@@ -1,0 +1,79 @@
+"""Read-only verification preflight for known project commands."""
+
+from __future__ import annotations
+
+import os
+import signal
+import shutil
+import sqlite3
+from pathlib import Path
+
+from omni.dbaccess import connect_project_readonly_verify
+from omni.verify import deps
+from omni.verify.command_safety import (
+    REASON_CODE_PARSE_ERROR_BATCH_METACHARACTER,
+    REASON_CODE_PARSE_ERROR_EMPTY_COMMAND,
+    REASON_CODE_PARSE_ERROR_INVALID_COMMAND,
+    REASON_CODE_PARSE_ERROR_SHELL_OPERATOR,
+    REASON_CODE_PARSE_ERROR_SHELL_WRAPPER,
+    VerifyCommandError,
+    _command_args,
+)
+from omni.verify.process import (
+    DEFAULT_TIMEOUT_SECONDS,
+    REASON_CODE_FAILED_EXIT_CODE,
+    REASON_CODE_PASSED,
+    REASON_CODE_START_FAILED,
+    REASON_CODE_TIMED_OUT,
+    _run_process,
+    _terminate_process_tree,
+    run_preflight,
+)
+from omni.verify.selection import (
+    DISAMBIGUATION_HINT,
+    PROFILE_PREDICATES,
+    PROFILE_VALUES,
+    REASON_CODE_AMBIGUOUS_ACTIVE_TEST_COMMAND,
+    REASON_CODE_AMBIGUOUS_QUALIFIER,
+    REASON_CODE_NO_ACTIVE_TEST_COMMAND,
+    REASON_CODE_QUALIFIER_NOT_FOUND,
+    REASON_CODE_SELECTED,
+    REASON_CODE_UNKNOWN,
+    VERIFY_PREDICATE,
+)
+from omni.verify.text import MAX_OUTPUT_CHARS, as_json
+
+os = deps.os
+signal = deps.signal
+shutil = deps.shutil
+
+__all__ = [
+    "DEFAULT_TIMEOUT_SECONDS",
+    "DISAMBIGUATION_HINT",
+    "PROFILE_PREDICATES",
+    "PROFILE_VALUES",
+    "REASON_CODE_AMBIGUOUS_ACTIVE_TEST_COMMAND",
+    "REASON_CODE_AMBIGUOUS_QUALIFIER",
+    "REASON_CODE_FAILED_EXIT_CODE",
+    "REASON_CODE_NO_ACTIVE_TEST_COMMAND",
+    "REASON_CODE_PARSE_ERROR_BATCH_METACHARACTER",
+    "REASON_CODE_PARSE_ERROR_EMPTY_COMMAND",
+    "REASON_CODE_PARSE_ERROR_INVALID_COMMAND",
+    "REASON_CODE_PARSE_ERROR_SHELL_OPERATOR",
+    "REASON_CODE_PARSE_ERROR_SHELL_WRAPPER",
+    "REASON_CODE_PASSED",
+    "REASON_CODE_QUALIFIER_NOT_FOUND",
+    "REASON_CODE_SELECTED",
+    "REASON_CODE_START_FAILED",
+    "REASON_CODE_TIMED_OUT",
+    "REASON_CODE_UNKNOWN",
+    "VERIFY_PREDICATE",
+    "VerifyCommandError",
+    "as_json",
+    "connect_project_readonly",
+    "run_preflight",
+]
+
+
+def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
+    return connect_project_readonly_verify(root)
