@@ -633,7 +633,7 @@ def test_reject_loses_race_to_concurrent_approve_and_keeps_active_note(
     )
     _fake_eval(monkeypatch, memory_effect="helped")
     [candidate] = experience.extract_candidates(conn, "run_reject_race")
-    real_now = experience._now
+    real_now = experience.now_iso
     flipped = {"done": False}
 
     def approving_now() -> str:
@@ -648,7 +648,7 @@ def test_reject_loses_race_to_concurrent_approve_and_keeps_active_note(
                 other.close()
         return real_now()
 
-    monkeypatch.setattr(experience, "_now", approving_now)
+    monkeypatch.setattr(experience, "now_iso", approving_now)
 
     with pytest.raises(ValueError, match="approved candidate cannot be rejected in v0"):
         experience.reject_candidate(conn, candidate["exp_cand_id"])

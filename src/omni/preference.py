@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from omni import db
 from omni import eval as behavior_eval
+from omni._common import now_iso, validate_choice
+from omni.dbaccess import connect_project, connect_project_readonly
 from omni.ids import new_id
-from omni.redact import redact
+from omni.jsonio import redact_mapping_str, redact_text
 
 KIND_VALUES = {"prefers", "avoids", "boundary"}
 STATE_VALUES = {"pending", "approved", "rejected"}
@@ -20,33 +19,6 @@ LIST_STATE_VALUES = STATE_VALUES | {"all"}
 NOTE_STATUS_VALUES = {"active", "retired"}
 LIST_NOTE_STATUS_VALUES = NOTE_STATUS_VALUES | {"all"}
 BOUNDARY_PREDICATE_PREFIXES = ("prefers_", "avoids_", "boundary_")
-
-
-def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect(db_path)
-    db.migrate(conn)
-    return conn
-
-
-def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, need "
-            f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
-            "'omni render' to migrate"
-        )
-    return conn
 
 
 def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
@@ -71,7 +43,7 @@ def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         if spec is None:
             continue
         pref_cand_id = new_id("pref_cand")
-        now = _now()
+        now = now_iso()
         conn.execute(
             """
             INSERT INTO preference_candidates(
@@ -87,9 +59,9 @@ def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 spec["kind"],
                 row["predicate"],
                 row["qualifier"],
-                _redact_text(spec["body"]),
-                _redact_text(spec["suggested_action"]),
-                _redact_json({"source_cand_id": row["cand_id"], "claim": row["claim"]}),
+                redact_text(spec["body"]),
+                redact_text(spec["suggested_action"]),
+                redact_mapping_str({"source_cand_id": row["cand_id"], "claim": row["claim"]}),
                 "pending",
                 now,
                 None,
@@ -102,7 +74,7 @@ def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def list_candidates(conn: sqlite3.Connection, state: str = "pending") -> list[dict[str, Any]]:
-    _validate_choice("state", state, LIST_STATE_VALUES)
+    validate_choice("state", state, LIST_STATE_VALUES)
     if state == "all":
         rows = conn.execute(
             """
@@ -152,7 +124,7 @@ def approve_candidate(
         candidate,
         suggested_action=suggested_action or candidate["suggested_action"],
     )
-    now = _now()
+    now = now_iso()
     conn.execute(
         """
         UPDATE preference_candidates
@@ -171,7 +143,7 @@ def reject_candidate(conn: sqlite3.Connection, pref_cand_id: str) -> dict[str, A
         raise ValueError(f"approved preference candidate cannot be rejected: {pref_cand_id}")
     if candidate["state"] == "rejected":
         return candidate
-    now = _now()
+    now = now_iso()
     conn.execute(
         """
         UPDATE preference_candidates
@@ -185,7 +157,7 @@ def reject_candidate(conn: sqlite3.Connection, pref_cand_id: str) -> dict[str, A
 
 
 def list_notes(conn: sqlite3.Connection, status: str = "active") -> list[dict[str, Any]]:
-    _validate_choice("status", status, LIST_NOTE_STATUS_VALUES)
+    validate_choice("status", status, LIST_NOTE_STATUS_VALUES)
     if status == "all":
         rows = conn.execute(
             """
@@ -233,7 +205,7 @@ def retire_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
         raise ValueError(f"unknown preference note: {note_id}")
     if row["status"] == "retired":
         return show_note(conn, note_id)
-    now = _now()
+    now = now_iso()
     conn.execute(
         """
         UPDATE preference_notes
@@ -290,7 +262,7 @@ def _create_preference_note(
     *,
     suggested_action: str,
 ) -> str:
-    now = _now()
+    now = now_iso()
     note_id = new_id("pref_note")
     conn.execute(
         """
@@ -305,9 +277,9 @@ def _create_preference_note(
             candidate["scope"],
             candidate["kind"],
             candidate["body"],
-            _redact_text(suggested_action),
+            redact_text(suggested_action),
             "active",
-            _redact_json({"pref_cand_id": candidate["pref_cand_id"]}),
+            redact_mapping_str({"pref_cand_id": candidate["pref_cand_id"]}),
             _next_commit_seq(conn),
             None,
             now,
@@ -333,25 +305,6 @@ def _next_commit_seq(conn: sqlite3.Connection) -> int:
         (str(next_seq),),
     )
     return next_seq
-
-
-def _validate_choice(field: str, value: str, allowed: set[str]) -> None:
-    if value not in allowed:
-        allowed_text = ", ".join(sorted(allowed))
-        raise ValueError(f"invalid {field}: {value!r}; expected one of: {allowed_text}")
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
-
-def _redact_text(value: str) -> str:
-    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
-
-
-def _redact_json(value: dict[str, Any]) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return redact(encoded).data.decode("utf-8", errors="replace")
 
 
 def _decode_evidence(raw: str | None) -> dict[str, Any]:

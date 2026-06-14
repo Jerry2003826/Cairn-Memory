@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from omni._common import now_iso
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -125,7 +125,7 @@ def stage_candidate(conn: sqlite3.Connection, candidate: FactCandidate) -> FactC
             with_id.origin,
             "pending",
             with_id.conflict_with,
-            _now(),
+            now_iso(),
         ),
     )
     return with_id
@@ -169,7 +169,7 @@ def insert_fact(conn: sqlite3.Connection, candidate: FactCandidate) -> int:
             None,
             None,
             None,
-            _now(),
+            now_iso(),
             json.dumps(with_id.evidence, sort_keys=True, separators=(",", ":")),
         ),
     )
@@ -301,7 +301,3 @@ def _next_commit_seq(conn: sqlite3.Connection) -> int:
         return 1
     row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
     return int(row["value"])
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

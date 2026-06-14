@@ -7,14 +7,13 @@ import json
 import re
 import shlex
 import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from omni import db
 from omni import eval as behavior_eval
+from omni._common import now_iso, validate_choice
+from omni.dbaccess import connect_project, connect_project_readonly
 from omni.ids import new_id
-from omni.redact import redact
+from omni.jsonio import redact_mapping_str, redact_text
 
 STATE_VALUES = {"pending", "approved", "rejected"}
 LIST_STATE_VALUES = STATE_VALUES | {"all"}
@@ -34,33 +33,6 @@ ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 WINDOWS_ABS_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/][^\s\"']+")
 
 
-def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect(db_path)
-    db.migrate(conn)
-    return conn
-
-
-def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, need "
-            f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
-            "'omni failure extract' to migrate"
-        )
-    return conn
-
-
 def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
     _ensure_run_exists(conn, run_id)
     created: list[dict[str, Any]] = []
@@ -76,7 +48,7 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
 
 
 def list_candidates(conn: sqlite3.Connection, state: str = "pending") -> list[dict[str, Any]]:
-    _validate_choice("state", state, LIST_STATE_VALUES)
+    validate_choice("state", state, LIST_STATE_VALUES)
     if state == "all":
         rows = conn.execute(
             """
@@ -109,7 +81,7 @@ def show_candidate(conn: sqlite3.Connection, failure_cand_id: str) -> dict[str, 
 
 
 def list_patterns(conn: sqlite3.Connection, status: str = "active") -> list[dict[str, Any]]:
-    _validate_choice("status", status, LIST_PATTERN_STATUS_VALUES)
+    validate_choice("status", status, LIST_PATTERN_STATUS_VALUES)
     if status == "all":
         rows = conn.execute(
             """
@@ -141,7 +113,7 @@ def retire_pattern(conn: sqlite3.Connection, pattern_id: str) -> dict[str, Any]:
         conn.execute("BEGIN")
         pattern = _pattern_row(conn, pattern_id)
         status = pattern["status"]
-        _validate_choice("status", status, PATTERN_STATUS_VALUES)
+        validate_choice("status", status, PATTERN_STATUS_VALUES)
         if status == "retired":
             conn.commit()
             return show_pattern(conn, pattern_id)
@@ -152,7 +124,7 @@ def retire_pattern(conn: sqlite3.Connection, pattern_id: str) -> dict[str, Any]:
             SET status = 'retired', retired_seq = ?, updated_at = ?
             WHERE pattern_id = ? AND status = 'active'
             """,
-            (_next_commit_seq(conn), _now(), pattern_id),
+            (_next_commit_seq(conn), now_iso(), pattern_id),
         )
         if updated.rowcount != 1:
             raise ValueError(f"failure pattern could not be retired: {pattern_id}")
@@ -177,7 +149,7 @@ def approve_candidate(
         conn.execute("BEGIN")
         candidate = _candidate_row(conn, failure_cand_id)
         state = candidate["state"]
-        _validate_choice("state", state, STATE_VALUES)
+        validate_choice("state", state, STATE_VALUES)
         if state == "rejected":
             raise ValueError(
                 f"rejected failure candidate cannot be approved in v0: {failure_cand_id}"
@@ -206,7 +178,7 @@ def approve_candidate(
                 pattern_id = ?
             WHERE failure_cand_id = ? AND state = 'pending'
             """,
-            (_now(), pattern_id, failure_cand_id),
+            (now_iso(), pattern_id, failure_cand_id),
         )
         if updated.rowcount != 1:
             raise ValueError(f"failure candidate could not be approved: {failure_cand_id}")
@@ -231,14 +203,14 @@ def reject_candidate(conn: sqlite3.Connection, failure_cand_id: str) -> dict[str
         raise ValueError(
             f"approved failure candidate cannot be rejected in v0: {failure_cand_id}"
         )
-    _validate_choice("state", row["state"], STATE_VALUES)
+    validate_choice("state", row["state"], STATE_VALUES)
     conn.execute(
         """
         UPDATE failure_candidates
         SET state = 'rejected', reviewed_at = ?
         WHERE failure_cand_id = ? AND state = 'pending'
         """,
-        (_now(), failure_cand_id),
+        (now_iso(), failure_cand_id),
     )
     conn.commit()
     return show_candidate(conn, failure_cand_id)
@@ -378,7 +350,7 @@ def _insert_candidate(
     conn: sqlite3.Connection, spec: dict[str, Any]
 ) -> dict[str, Any] | None:
     failure_cand_id = new_id("failure_cand")
-    now = _now()
+    now = now_iso()
     inserted = conn.execute(
         """
         INSERT OR IGNORE INTO failure_candidates(
@@ -394,14 +366,14 @@ def _insert_candidate(
             spec["event_id"],
             spec["tool_use_id"],
             spec["tool"],
-            _redact_text(spec["command_norm"]),
+            redact_text(spec["command_norm"]),
             spec["exit_code"],
             spec["failure_kind"],
-            _redact_text(spec["error_signature"]),
+            redact_text(spec["error_signature"]),
             spec["error_signature_hash"],
-            _redact_text(spec["stderr_excerpt"]),
+            redact_text(spec["stderr_excerpt"]),
             spec["artifact_ref"],
-            _redact_json(spec["evidence"]),
+            redact_mapping_str(spec["evidence"]),
             "pending",
             now,
             None,
@@ -478,7 +450,7 @@ def _create_failure_pattern(
     suggested_action: str,
 ) -> str:
     pattern_id = new_id("failure_pattern")
-    now = _now()
+    now = now_iso()
     conn.execute(
         """
         INSERT INTO failure_patterns(
@@ -492,7 +464,7 @@ def _create_failure_pattern(
             pattern_id,
             candidate["failure_cand_id"],
             "project",
-            _redact_text(candidate["command_norm"]),
+            redact_text(candidate["command_norm"]),
             candidate["failure_kind"],
             candidate["error_signature"],
             candidate["error_signature_hash"],
@@ -500,7 +472,7 @@ def _create_failure_pattern(
             suggested_action,
             2,
             "active",
-            _redact_json(_pattern_evidence(candidate)),
+            redact_mapping_str(_pattern_evidence(candidate)),
             _next_commit_seq(conn),
             None,
             None,
@@ -540,7 +512,7 @@ def _candidate_spec(event: sqlite3.Row) -> dict[str, Any] | None:
         failure_kind = "unknown_failure"
     error_signature = _normalize_error_line(error_line)
     # Legacy column name: this stores a redacted signature, not raw stderr.
-    stderr_excerpt = _safe_text(_redact_text(error_signature), MAX_EXCERPT_CHARS)
+    stderr_excerpt = _safe_text(redact_text(error_signature), MAX_EXCERPT_CHARS)
     signature_hash = _signature_hash(command_norm, exit_code, error_signature)
     evidence = {
         "run_id": event["run_id"],
@@ -757,7 +729,7 @@ def _pattern_from_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _pattern_lifecycle(status: str) -> dict[str, Any]:
-    _validate_choice("status", status, PATTERN_STATUS_VALUES)
+    validate_choice("status", status, PATTERN_STATUS_VALUES)
     if status == "active":
         return {
             "renders": True,
@@ -890,21 +862,10 @@ def _decode_json_object(value: str) -> dict[str, Any]:
     return decoded if isinstance(decoded, dict) else {"decode_error": "non_object"}
 
 
-def _redact_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
-
-
 def _required_redacted_text(name: str, value: str | None) -> str:
     if value is None or not value.strip():
         raise ValueError(f"{name} is required")
-    return _safe_text(_redact_text(value.strip()), MAX_REVIEW_TEXT_CHARS)
-
-
-def _redact_json(value: dict[str, Any]) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return redact(encoded).data.decode("utf-8", errors="replace")
+    return _safe_text(redact_text(value.strip()), MAX_REVIEW_TEXT_CHARS)
 
 
 def _safe_text(value: str | None, max_chars: int) -> str:
@@ -920,12 +881,6 @@ def _collapse_whitespace(value: str) -> str:
     return " ".join(value.strip().split())
 
 
-def _validate_choice(name: str, value: str, allowed: set[str]) -> None:
-    if value not in allowed:
-        allowed_text = ", ".join(sorted(allowed))
-        raise ValueError(f"invalid {name}: {value}; expected one of: {allowed_text}")
-
-
 def _next_commit_seq(conn: sqlite3.Connection) -> int:
     # Increment in place so the read and write happen under one write lock.
     updated = conn.execute(
@@ -936,7 +891,3 @@ def _next_commit_seq(conn: sqlite3.Connection) -> int:
         return 1
     row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
     return int(row["value"])
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

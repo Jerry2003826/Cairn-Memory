@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from omni import db
 from omni import eval as behavior_eval
 from omni import verify
+from omni._common import now_iso, validate_choice
+from omni.dbaccess import connect_project, connect_project_readonly, root_from_connection
 from omni.ids import new_id
+from omni.jsonio import redact_text
 from omni.redact import redact
 from omni.verify import (
     REASON_CODE_FAILED_EXIT_CODE,
@@ -23,33 +24,6 @@ STATUS_VALUES = {"success", "failed", "unknown"}
 TESTS_STATUS_VALUES = {"passed", "failed", "not_run", "unknown"}
 MEMORY_EFFECT_VALUES = {"helped", "neutral", "failed_to_help", "unknown"}
 TASK_TYPE_VALUES = {"validation", "bugfix", "docs", "refactor", "exploration", "unknown"}
-
-
-def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect(db_path)
-    db.migrate(conn)
-    return conn
-
-
-def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, need "
-            f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
-            "'omni render' to migrate"
-        )
-    return conn
 
 
 def mark_outcome(
@@ -66,18 +40,18 @@ def mark_outcome(
     evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _ensure_run_exists(conn, run_id)
-    _validate_choice("status", status, STATUS_VALUES)
-    _validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
-    _validate_choice("task_type", task_type, TASK_TYPE_VALUES)
+    validate_choice("status", status, STATUS_VALUES)
+    validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
+    validate_choice("task_type", task_type, TASK_TYPE_VALUES)
     if memory_effect is None:
         memory_effect = _memory_effect_from_eval(conn, run_id)
-    _validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
+    validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
 
     existing = conn.execute(
         "SELECT outcome_id, created_at FROM outcomes WHERE run_id = ?",
         (run_id,),
     ).fetchone()
-    now = _now()
+    now = now_iso()
     evidence_json = _evidence_json(evidence or {"source": "user", "run_id": run_id})
     values = {
         "run_id": run_id,
@@ -85,9 +59,9 @@ def mark_outcome(
         "status": status,
         "tests_status": tests_status,
         "memory_effect": memory_effect,
-        "task_summary": _redact_text(task_summary),
-        "final_command": _redact_text(final_command),
-        "note": _redact_text(note),
+        "task_summary": redact_text(task_summary),
+        "final_command": redact_text(final_command),
+        "note": redact_text(note),
         "evidence": evidence_json,
         "updated_at": now,
     }
@@ -163,10 +137,10 @@ def mark_outcome_from_verify(
     profile: str | None = None,
 ) -> dict[str, Any]:
     _ensure_run_exists(conn, run_id)
-    _validate_choice("status", status, STATUS_VALUES)
-    _validate_choice("task_type", task_type, TASK_TYPE_VALUES)
+    validate_choice("status", status, STATUS_VALUES)
+    validate_choice("task_type", task_type, TASK_TYPE_VALUES)
     if memory_effect is not None:
-        _validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
+        validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
     if profile is not None and profile not in verify.PROFILE_VALUES:
         allowed = ", ".join(sorted(verify.PROFILE_VALUES))
         raise ValueError(f"invalid profile: {profile!r}; expected one of: {allowed}")
@@ -227,16 +201,16 @@ def list_outcomes(
 
     filters: dict[str, str] = {}
     if task_type is not None:
-        _validate_choice("task_type", task_type, TASK_TYPE_VALUES)
+        validate_choice("task_type", task_type, TASK_TYPE_VALUES)
         filters["task_type"] = task_type
     if status is not None:
-        _validate_choice("status", status, STATUS_VALUES)
+        validate_choice("status", status, STATUS_VALUES)
         filters["status"] = status
     if tests_status is not None:
-        _validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
+        validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
         filters["tests_status"] = tests_status
     if memory_effect is not None:
-        _validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
+        validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
         filters["memory_effect"] = memory_effect
 
     where_clauses: list[str] = []
@@ -309,28 +283,16 @@ def _ensure_run_exists(conn: sqlite3.Connection, run_id: str) -> None:
         raise ValueError(f"unknown run: {run_id}")
 
 
-def _validate_choice(name: str, value: str, allowed: set[str]) -> None:
-    if value not in allowed:
-        allowed_text = ", ".join(sorted(allowed))
-        raise ValueError(f"invalid {name}: {value}; expected one of: {allowed_text}")
-
-
-def _redact_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
-
-
 def _redact_json(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _redact_json(child) for key, child in value.items()}
     if isinstance(value, list):
         return [_redact_json(child) for child in value]
     if isinstance(value, str):
-        return _redact_text(value)
+        return redact_text(value)
     if value is None or isinstance(value, (bool, int, float)):
         return value
-    return _redact_text(str(value))
+    return redact_text(str(value))
 
 
 def _evidence_json(value: dict[str, Any]) -> str:
@@ -351,7 +313,7 @@ def _decode_evidence(value: str) -> dict[str, Any]:
 
 
 def _memory_effect_from_eval(conn: sqlite3.Connection, run_id: str) -> str:
-    root = _root_from_connection(conn)
+    root = root_from_connection(conn)
     if root is None:
         return "unknown"
     try:
@@ -360,21 +322,6 @@ def _memory_effect_from_eval(conn: sqlite3.Connection, run_id: str) -> str:
         return "unknown"
     effect = result.get("memory_effect")
     return effect if isinstance(effect, str) and effect in MEMORY_EFFECT_VALUES else "unknown"
-
-
-def _root_from_connection(conn: sqlite3.Connection) -> Path | None:
-    rows = conn.execute("PRAGMA database_list").fetchall()
-    for row in rows:
-        if row["name"] != "main" or not row["file"]:
-            continue
-        db_path = Path(row["file"]).resolve()
-        if db_path.parent.name == ".omni":
-            return db_path.parent.parent
-    return None
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _tests_status_from_verify(verify_result: dict[str, Any]) -> str:

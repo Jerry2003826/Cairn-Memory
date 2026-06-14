@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from omni import db
+from omni.jsonio import dump_json
 from omni.redact import redact
 
 EXPECTED_PREDICATES = (
@@ -211,12 +212,7 @@ def review_dogfood(
 
 
 def as_json(value: dict[str, Any]) -> str:
-    sanitized = _sanitize_for_json(value)
-    encoded = json.dumps(sanitized, indent=2, sort_keys=True).encode("utf-8")
-    defended = redact(encoded).data.decode("utf-8", errors="replace")
-    if _is_redaction_wrapper(defended):
-        return encoded.decode("utf-8", errors="replace") + "\n"
-    return defended + "\n"
+    return dump_json(value, string_sanitizer=lambda s: _safe_string(s, MAX_DETAIL_CHARS))
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
@@ -702,27 +698,6 @@ def _safe_string(value: str, max_chars: int) -> str:
     if len(redacted) <= max_chars:
         return redacted
     return redacted[: max_chars - 14].rstrip() + "...[truncated]"
-
-
-def _sanitize_for_json(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {str(key): _sanitize_for_json(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_sanitize_for_json(child) for child in value]
-    if isinstance(value, str):
-        return _safe_string(value, MAX_DETAIL_CHARS)
-    return value
-
-
-def _is_redaction_wrapper(value: str) -> bool:
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return True
-    return isinstance(decoded, dict) and decoded.get("error") in {
-        "payload_truncated",
-        "redaction_failed",
-    }
 
 
 def _limit_observed_commands(
