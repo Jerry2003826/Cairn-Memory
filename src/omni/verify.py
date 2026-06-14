@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import signal
 import shlex
@@ -14,7 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from omni import db
+from omni.dbaccess import connect_project_readonly_verify
+from omni.jsonio import dump_json
 from omni.redact import redact
 
 VERIFY_PREDICATE = "uses_test_command"
@@ -108,19 +108,7 @@ class VerifyCommandError(ValueError):
 
 
 def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database not found: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, "
-            f"need {db.LATEST_SCHEMA_VERSION})"
-        )
-    return conn
+    return connect_project_readonly_verify(root)
 
 
 def run_preflight(
@@ -247,12 +235,7 @@ def run_preflight(
 
 
 def as_json(value: dict[str, Any]) -> str:
-    sanitized = _sanitize_for_json(value)
-    encoded = json.dumps(sanitized, indent=2, sort_keys=True).encode("utf-8")
-    defended = redact(encoded).data.decode("utf-8", errors="replace")
-    if _is_redaction_wrapper(defended):
-        return encoded.decode("utf-8", errors="replace") + "\n"
-    return defended + "\n"
+    return dump_json(value, string_sanitizer=lambda s: _safe_text(s, MAX_OUTPUT_CHARS))
 
 
 def _resolve_predicate(profile: str | None) -> str:
@@ -876,24 +859,3 @@ def _to_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
-
-
-def _sanitize_for_json(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {str(key): _sanitize_for_json(child) for key, child in value.items()}
-    if isinstance(value, list):
-        return [_sanitize_for_json(child) for child in value]
-    if isinstance(value, str):
-        return _safe_text(value, MAX_OUTPUT_CHARS)
-    return value
-
-
-def _is_redaction_wrapper(value: str) -> bool:
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return True
-    return isinstance(decoded, dict) and decoded.get("error") in {
-        "payload_truncated",
-        "redaction_failed",
-    }

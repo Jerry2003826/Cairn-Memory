@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from omni import db
-from omni.redact import redact
+from omni.dbaccess import connect_project as _db_connect_project
+from omni.jsonio import redact_text
 
 RENDER_VER = 1
 BLOCK_ID = "project_memory"
@@ -41,10 +41,7 @@ class ManualEditError(RuntimeError):
 
 
 def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    conn = db.connect(base / ".omni" / "omni.sqlite3")
-    db.migrate(conn)
-    return conn
+    return _db_connect_project(root, create_if_missing=True)
 
 
 def render_project(
@@ -234,7 +231,7 @@ def _render_body(
         lines = _with_truncation_notice(lines)
     rendered_lines = _line_texts(lines)
     joined = "\n".join(rendered_lines).rstrip() + "\n"
-    body = _redact_text(joined)
+    body = redact_text(joined)
     redacted_lines = body.rstrip("\n").split("\n")
     if len(redacted_lines) != len(joined.rstrip("\n").split("\n")):
         # Redaction changed the line count, so per-line hashes would misalign;
@@ -370,10 +367,6 @@ def _render_failure_pattern_line(pattern: sqlite3.Row) -> tuple[str, str] | None
 
 def _with_header(body: str) -> str:
     return f"<!-- omni:generated render_ver={RENDER_VER} sha256={_sha256(body)} DO NOT EDIT -->\n{body}"
-
-
-def _redact_text(value: str) -> str:
-    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
 
 
 def _command_instruction(command_kind: str, qualifier: str, object_norm: str) -> str:

@@ -91,7 +91,7 @@ def test_mark_outcome_idempotent_update_preserves_created_at_and_updates_updated
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_update")
     times = iter(("2026-06-13T00:00:00+00:00", "2026-06-13T00:01:00+00:00"))
-    monkeypatch.setattr(outcome, "_now", lambda: next(times))
+    monkeypatch.setattr(outcome, "now_iso", lambda: next(times))
 
     first = outcome.mark_outcome(conn, "run_update", status="failed")
     second = outcome.mark_outcome(conn, "run_update", status="success", tests_status="passed")

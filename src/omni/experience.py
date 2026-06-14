@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from omni import db
 from omni import eval as behavior_eval
+from omni._common import now_iso, validate_choice
+from omni.dbaccess import connect_project, connect_project_readonly, root_from_connection
 from omni.ids import new_id
-from omni.redact import redact
+from omni.jsonio import redact_mapping_str, redact_text
 
 KIND_VALUES = {
     "fast_path",
@@ -41,33 +41,6 @@ FAST_PATH_ACTION = (
 )
 
 
-def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect(db_path)
-    db.migrate(conn)
-    return conn
-
-
-def connect_project_readonly(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    db_path = base / ".omni" / "omni.sqlite3"
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, need "
-            f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
-            "'omni render' to migrate"
-        )
-    return conn
-
-
 def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
     _ensure_run_exists(conn, run_id)
     outcome_row = _outcome_for_run(conn, run_id)
@@ -80,7 +53,7 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
     if _candidate_exists(conn, run_id, spec["kind"]):
         return []
 
-    now = _now()
+    now = now_iso()
     exp_cand_id = new_id("exp_cand")
     evidence = _evidence_for(run_id, outcome_row, eval_result)
     # The NOT EXISTS guard re-checks (run_id, kind) inside the write statement so
@@ -104,10 +77,10 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
             outcome_row["outcome_id"],
             outcome_row["task_type"],
             spec["kind"],
-            _redact_text(spec["trigger"]),
-            _redact_text(spec["claim"]),
-            _redact_text(spec["suggested_action"]),
-            _redact_json(evidence),
+            redact_text(spec["trigger"]),
+            redact_text(spec["claim"]),
+            redact_text(spec["suggested_action"]),
+            redact_mapping_str(evidence),
             "pending",
             now,
             None,
@@ -123,7 +96,7 @@ def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, 
 
 
 def list_candidates(conn: sqlite3.Connection, state: str = "pending") -> list[dict[str, Any]]:
-    _validate_choice("state", state, LIST_STATE_VALUES)
+    validate_choice("state", state, LIST_STATE_VALUES)
     if state == "all":
         rows = conn.execute(
             """
@@ -173,8 +146,8 @@ def approve_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, A
     if candidate["state"] == "rejected":
         raise ValueError(f"rejected candidate cannot be approved in v0: {exp_cand_id}")
 
-    _validate_choice("state", candidate["state"], STATE_VALUES)
-    _validate_choice("kind", candidate["kind"], KIND_VALUES)
+    validate_choice("state", candidate["state"], STATE_VALUES)
+    validate_choice("kind", candidate["kind"], KIND_VALUES)
     if note_id is None:
         try:
             note_id = _create_experience_note(conn, candidate)
@@ -191,7 +164,7 @@ def approve_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, A
         SET state = 'approved', reviewed_at = ?
         WHERE exp_cand_id = ? AND state != 'rejected'
         """,
-        (_now(), exp_cand_id),
+        (now_iso(), exp_cand_id),
     )
     if updated.rowcount == 0:
         # A concurrent reviewer rejected this candidate after our state check;
@@ -215,14 +188,14 @@ def reject_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, An
         raise ValueError(f"approved candidate cannot be rejected in v0: {exp_cand_id}")
     if candidate["state"] == "rejected":
         return show_candidate(conn, exp_cand_id)
-    _validate_choice("state", candidate["state"], STATE_VALUES)
+    validate_choice("state", candidate["state"], STATE_VALUES)
     updated = conn.execute(
         """
         UPDATE experience_candidates
         SET state = 'rejected', reviewed_at = ?
         WHERE exp_cand_id = ? AND state = 'pending'
         """,
-        (_now(), exp_cand_id),
+        (now_iso(), exp_cand_id),
     )
     if updated.rowcount == 0:
         # Another writer changed the state between our check and this update;
@@ -242,7 +215,7 @@ def reject_candidate(conn: sqlite3.Connection, exp_cand_id: str) -> dict[str, An
 
 
 def list_notes(conn: sqlite3.Connection, status: str = "active") -> list[dict[str, Any]]:
-    _validate_choice("status", status, LIST_NOTE_STATUS_VALUES)
+    validate_choice("status", status, LIST_NOTE_STATUS_VALUES)
     if status == "all":
         rows = conn.execute(
             """
@@ -273,7 +246,7 @@ def retire_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
         conn.execute("BEGIN")
         note = _note_row(conn, note_id)
         status = note["status"]
-        _validate_choice("status", status, NOTE_STATUS_VALUES)
+        validate_choice("status", status, NOTE_STATUS_VALUES)
         if status == "retired":
             # Idempotent: a retired note stays retired and the source candidate is
             # never touched.
@@ -286,7 +259,7 @@ def retire_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
             SET status = 'retired', retired_seq = ?, updated_at = ?
             WHERE note_id = ? AND status = 'active'
             """,
-            (_next_commit_seq(conn), _now(), note_id),
+            (_next_commit_seq(conn), now_iso(), note_id),
         )
         if updated.rowcount != 1:
             raise ValueError(f"experience note could not be retired: {note_id}")
@@ -377,7 +350,7 @@ def _ensure_run_exists(conn: sqlite3.Connection, run_id: str) -> None:
 
 
 def _evaluate_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
-    root = _root_from_connection(conn)
+    root = root_from_connection(conn)
     if root is None:
         return {"memory_effect": "unknown", "reason": "insufficient evidence"}
     try:
@@ -416,7 +389,7 @@ def _active_note_id_for_candidate(conn: sqlite3.Connection, exp_cand_id: str) ->
 
 
 def _create_experience_note(conn: sqlite3.Connection, candidate: sqlite3.Row) -> str:
-    now = _now()
+    now = now_iso()
     note_id = new_id("note")
     conn.execute(
         """
@@ -432,12 +405,12 @@ def _create_experience_note(conn: sqlite3.Connection, candidate: sqlite3.Row) ->
             "project",
             candidate["task_type"],
             candidate["kind"],
-            _redact_text(candidate["trigger"]),
-            _redact_text(candidate["claim"]),
-            _redact_text(candidate["suggested_action"]),
+            redact_text(candidate["trigger"]),
+            redact_text(candidate["claim"]),
+            redact_text(candidate["suggested_action"]),
             2,
             "active",
-            _redact_json(_decode_json_object(candidate["evidence"])),
+            redact_mapping_str(_decode_json_object(candidate["evidence"])),
             _next_commit_seq(conn),
             None,
             None,
@@ -486,7 +459,7 @@ def _note_from_row(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def _note_lifecycle(status: str) -> dict[str, Any]:
-    _validate_choice("status", status, NOTE_STATUS_VALUES)
+    validate_choice("status", status, NOTE_STATUS_VALUES)
     if status == "active":
         return {
             "renders": True,
@@ -507,41 +480,9 @@ def _note_lifecycle(status: str) -> dict[str, Any]:
     }
 
 
-def _redact_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
-
-
-def _redact_json(value: dict[str, Any]) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return redact(encoded).data.decode("utf-8", errors="replace")
-
-
 def _decode_json_object(value: str) -> dict[str, Any]:
     try:
         decoded = json.loads(value)
     except json.JSONDecodeError:
         return {"decode_error": "invalid_json"}
     return decoded if isinstance(decoded, dict) else {"decode_error": "non_object"}
-
-
-def _validate_choice(name: str, value: str, allowed: set[str]) -> None:
-    if value not in allowed:
-        allowed_text = ", ".join(sorted(allowed))
-        raise ValueError(f"invalid {name}: {value}; expected one of: {allowed_text}")
-
-
-def _root_from_connection(conn: sqlite3.Connection) -> Path | None:
-    rows = conn.execute("PRAGMA database_list").fetchall()
-    for row in rows:
-        if row["name"] != "main" or not row["file"]:
-            continue
-        db_path = Path(row["file"]).resolve()
-        if db_path.parent.name == ".omni":
-            return db_path.parent.parent
-    return None
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Callable
 from pathlib import Path
 
-from omni import db
+from omni._common import now_iso
+from omni.dbaccess import connect_project as _db_connect_project
 from omni import gate
 
 
@@ -42,10 +42,7 @@ class ReviewSummary:
 
 
 def connect_project(root: Path | str | None = None) -> sqlite3.Connection:
-    base = Path(root or Path.cwd()).resolve()
-    conn = db.connect(base / ".omni" / "omni.sqlite3")
-    db.migrate(conn)
-    return conn
+    return _db_connect_project(root, create_if_missing=True)
 
 
 def approve(conn: sqlite3.Connection, cand_id: str) -> ReviewResult:
@@ -65,7 +62,7 @@ def approve(conn: sqlite3.Connection, cand_id: str) -> ReviewResult:
         raise
     conn.execute(
         "UPDATE fact_candidates SET state = ?, reviewed_at = ?, review_note = NULL WHERE cand_id = ?",
-        ("approved", _now(), cand_id),
+        ("approved", now_iso(), cand_id),
     )
     conn.commit()
     return ReviewResult(cand_id=cand_id, state="approved")
@@ -84,12 +81,12 @@ def reject(conn: sqlite3.Connection, cand_id: str) -> ReviewResult:
             candidate.predicate,
             candidate.qualifier,
             candidate.object_norm,
-            _now(),
+            now_iso(),
         ),
     )
     conn.execute(
         "UPDATE fact_candidates SET state = ?, reviewed_at = ? WHERE cand_id = ?",
-        ("rejected", _now(), cand_id),
+        ("rejected", now_iso(), cand_id),
     )
     conn.commit()
     return ReviewResult(cand_id=cand_id, state="rejected")
@@ -177,7 +174,3 @@ def _candidate_from_row(row: sqlite3.Row) -> gate.FactCandidate:
         evidence=json.loads(row["evidence"]),
         conflict_with=row["conflict_with"],
     )
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
