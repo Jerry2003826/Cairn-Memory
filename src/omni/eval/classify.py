@@ -1,13 +1,26 @@
-"""Read-only behavior evaluation for ingested runs."""
+"""Run classification, rediscovery detection, and dogfood evaluation."""
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from omni import db
+from omni.eval.command_match import (
+    _contains_path,
+    _has_unresolved_directory_change_prefix,
+    _matches_any_expected_command,
+    _normalize_command,
+    _path_in_text,
+    _target_detail,
+)
+from omni.eval.meta import (
+    _decode_meta,
+    _input_metadata,
+    _nested_command,
+    _nested_strings,
+)
 from omni.jsonio import dump_json
 from omni.redact import redact
 
@@ -32,20 +45,6 @@ MAX_OBSERVED_COMMANDS = 100
 MAX_REDISCOVERY_EVENTS = 100
 MAX_COMMAND_CHARS = 200
 MAX_DETAIL_CHARS = 200
-INPUT_KEYS = {"args", "input", "parameters", "tool_input"}
-INPUT_WRAPPER_KEYS = {"hook"}
-INPUT_FIELD_KEYS = {
-    "cmd",
-    "command",
-    "filepath",
-    "file_path",
-    "path",
-    "pattern",
-}
-INPUT_KEY_LOOKUP = {key.lower() for key in INPUT_KEYS}
-INPUT_WRAPPER_KEY_LOOKUP = {key.lower() for key in INPUT_WRAPPER_KEYS}
-INPUT_FIELD_KEY_LOOKUP = {key.lower() for key in INPUT_FIELD_KEYS}
-PACKAGE_MANAGERS = {"bun", "npm", "pnpm", "yarn"}
 
 
 def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
@@ -372,16 +371,6 @@ def _mentions_path(event: dict[str, Any], target: str) -> bool:
     return _contains_path(_nested_strings(input_meta), target)
 
 
-def _contains_path(values: Any, target: str) -> bool:
-    return any(_path_in_text(value, target) for value in values)
-
-
-def _path_in_text(value: str, target: str) -> bool:
-    normalized_value = value.replace("\\", "/").lower()
-    normalized_target = target.replace("\\", "/").lower()
-    return normalized_target in normalized_value
-
-
 def _broad_scan_detail(
     event: dict[str, Any],
     command: Any | None,
@@ -471,215 +460,6 @@ def _classify(
             "task intent unknown",
         )
     return ("unknown", "insufficient evidence")
-
-
-def _decode_meta(meta_json: str | None) -> dict[str, Any]:
-    if not meta_json:
-        return {}
-    try:
-        decoded = json.loads(meta_json)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return decoded if isinstance(decoded, dict) else {}
-
-
-def _nested_command(value: Any) -> Any:
-    if isinstance(value, dict):
-        for key in ("command", "cmd"):
-            if key in value:
-                return value[key]
-        for key in ("input", "tool_input", "parameters", "args"):
-            found = _nested_command(value.get(key))
-            if found is not None:
-                return found
-        for child in value.values():
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    if isinstance(value, list):
-        for child in value:
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    return None
-
-
-def _input_metadata(value: Any) -> Any:
-    if not isinstance(value, dict):
-        return {}
-    collected: list[Any] = []
-    _collect_input_metadata(value, collected)
-    for key, child in value.items():
-        if key.lower() in INPUT_WRAPPER_KEY_LOOKUP:
-            _collect_input_metadata(child, collected)
-    return collected
-
-
-def _collect_input_metadata(value: Any, collected: list[Any]) -> None:
-    if not isinstance(value, dict):
-        return
-    for key, child in value.items():
-        if not _is_input_container_key(key):
-            continue
-        fields = _input_container_fields(child)
-        if _has_content(fields):
-            collected.append(fields)
-
-
-def _input_container_fields(value: Any) -> Any:
-    if isinstance(value, dict):
-        return [
-            {key: child}
-            for key, child in value.items()
-            if _is_input_field_key(key)
-        ]
-    if isinstance(value, list):
-        return [
-            nested
-            for child in value
-            if _has_content(nested := _input_container_fields(child))
-        ]
-    return {}
-
-
-def _is_input_container_key(key: str) -> bool:
-    return key.lower() in INPUT_KEY_LOOKUP
-
-
-def _is_input_field_key(key: str) -> bool:
-    return key.lower() in INPUT_FIELD_KEY_LOOKUP
-
-
-def _has_content(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, (dict, list, tuple, set, str, bytes)):
-        return bool(value)
-    return True
-
-
-def _nested_strings(value: Any) -> list[str]:
-    strings: list[str] = []
-    if isinstance(value, dict):
-        for child in value.values():
-            strings.extend(_nested_strings(child))
-    elif isinstance(value, list):
-        for child in value:
-            strings.extend(_nested_strings(child))
-    elif isinstance(value, str):
-        strings.append(value)
-    return strings
-
-
-def _normalize_command(command: str, *, project_root: Path | None = None) -> str:
-    return _strip_leading_directory_changes(
-        " ".join(command.strip().split()), project_root=project_root
-    )
-
-
-def _strip_leading_directory_changes(
-    command: str, *, project_root: Path | None = None
-) -> str:
-    current = command
-    while "&&" in current:
-        head, tail = current.split("&&", 1)
-        target = _directory_change_target(head)
-        if target is None:
-            break
-        if project_root is None or not _directory_target_exists(target, project_root):
-            break
-        current = tail.strip()
-    return current
-
-
-def _directory_change_target(command: str) -> str | None:
-    stripped = command.strip()
-    if not stripped:
-        return None
-    parts = stripped.split(maxsplit=1)
-    if len(parts) != 2:
-        return None
-    verb, remainder = parts[0].lower(), parts[1].strip()
-    if verb not in {"cd", "chdir", "pushd"}:
-        return None
-    if verb in {"cd", "chdir"} and remainder.lower().startswith("/d "):
-        remainder = remainder[3:].strip()
-    if not remainder:
-        return None
-    if remainder[0] in {"'", '"'}:
-        quote = remainder[0]
-        end = remainder.find(quote, 1)
-        if end == -1:
-            return None
-        return remainder[1:end]
-    return remainder.split(maxsplit=1)[0]
-
-
-def _directory_target_exists(target: str, project_root: Path) -> bool:
-    if not target or any(marker in target for marker in ("$", "%", "`")):
-        return False
-    try:
-        candidate = Path(target)
-        if not candidate.is_absolute():
-            candidate = project_root / candidate
-        return candidate.is_dir()
-    except (OSError, ValueError):
-        return False
-
-
-def _has_unresolved_directory_change_prefix(command: str, project_root: Path) -> bool:
-    collapsed = " ".join(command.strip().split())
-    if "&&" not in collapsed:
-        return False
-    head, _tail = collapsed.split("&&", 1)
-    target = _directory_change_target(head)
-    return target is not None and not _directory_target_exists(target, project_root)
-
-
-def _matches_any_expected_command(observed: str, expected_commands: list[str]) -> bool:
-    return any(_matches_expected_command(observed, expected) for expected in expected_commands)
-
-
-def _matches_expected_command(observed: str, expected: str) -> bool:
-    observed_norm = _normalize_command(observed)
-    expected_norm = _normalize_command(expected)
-    if _matches_command_prefix(observed_norm, expected_norm):
-        return True
-    observed_canonical = _canonical_pm_run_command(observed_norm)
-    expected_canonical = _canonical_pm_run_command(expected_norm)
-    return _matches_command_prefix(observed_canonical, expected_canonical)
-
-
-def _matches_command_prefix(observed: str, expected: str) -> bool:
-    return observed == expected or observed.startswith(f"{expected} ")
-
-
-def _canonical_pm_run_command(command: str) -> str:
-    tokens = command.split()
-    if len(tokens) < 2 or tokens[0] not in PACKAGE_MANAGERS:
-        return command
-    if len(tokens) >= 3 and tokens[1] == "run":
-        return command
-    script = tokens[1]
-    rest = " ".join(tokens[2:])
-    canonical = f"{tokens[0]} run {script}"
-    return f"{canonical} {rest}" if rest else canonical
-
-
-def _target_detail(value: str, target: str) -> str:
-    if _looks_like_path(value, target):
-        return f"path: {_normalize_command(value)}"
-    if target == "LS":
-        return "directory listing"
-    return f"matched: {target}"
-
-
-def _looks_like_path(value: str, target: str) -> bool:
-    if "\n" in value or "\r" in value:
-        return False
-    normalized = value.replace("\\", "/").strip().lower()
-    normalized_target = target.replace("\\", "/").lower()
-    return normalized == normalized_target or normalized.endswith(f"/{normalized_target}")
 
 
 def _safe_detail(detail: str) -> str:
