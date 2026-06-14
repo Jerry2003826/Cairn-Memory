@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -11,9 +10,9 @@ from typing import Any
 
 from omni import eval as behavior_eval
 from omni._common import now_iso, validate_choice
-from omni.dbaccess import ensure_run_exists, root_from_connection
+from omni.dbaccess import ensure_run_exists, next_commit_seq, root_from_connection
 from omni.ids import new_id
-from omni.jsonio import as_json, redact_mapping_str, redact_text
+from omni.jsonio import as_json, decode_json_dict, redact_mapping_str, redact_text
 
 KIND_VALUES = {
     "fast_path",
@@ -260,7 +259,7 @@ def retire_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
             SET status = 'retired', retired_seq = ?, updated_at = ?
             WHERE note_id = ? AND status = 'active'
             """,
-            (_next_commit_seq(conn), now_iso(), note_id),
+            (next_commit_seq(conn), now_iso(), note_id),
         )
         if updated.rowcount != 1:
             raise ValueError(f"experience note could not be retired: {note_id}")
@@ -401,8 +400,8 @@ def _create_experience_note(conn: sqlite3.Connection, candidate: sqlite3.Row) ->
             redact_text(candidate["suggested_action"]),
             2,
             "active",
-            redact_mapping_str(_decode_json_object(candidate["evidence"])),
-            _next_commit_seq(conn),
+            redact_mapping_str(decode_json_dict(candidate["evidence"], default={"decode_error": "invalid_json"})),
+            next_commit_seq(conn),
             None,
             None,
             now,
@@ -412,23 +411,9 @@ def _create_experience_note(conn: sqlite3.Connection, candidate: sqlite3.Row) ->
     return note_id
 
 
-def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    # Increment in place so the read and the write happen under one write lock;
-    # a separate read-then-write pair can hand the same sequence number to two
-    # concurrent writers.
-    updated = conn.execute(
-        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
-    )
-    if updated.rowcount == 0:
-        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
-        return 1
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    return int(row["value"])
-
-
 def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
-    result["evidence"] = _decode_json_object(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"], default={"decode_error": "invalid_json"})
     return result
 
 
@@ -444,7 +429,7 @@ def _note_row(conn: sqlite3.Connection, note_id: str) -> sqlite3.Row:
 
 def _note_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
-    result["evidence"] = _decode_json_object(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"], default={"decode_error": "invalid_json"})
     result["lifecycle"] = _note_lifecycle(result["status"])
     return result
 
@@ -469,14 +454,6 @@ def _note_lifecycle(status: str) -> dict[str, Any]:
             "v1 does not reactivate retired notes"
         ),
     }
-
-
-def _decode_json_object(value: str) -> dict[str, Any]:
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return {"decode_error": "invalid_json"}
-    return decoded if isinstance(decoded, dict) else {"decode_error": "non_object"}
 
 
 def cli_command_readonly(args: argparse.Namespace) -> bool:

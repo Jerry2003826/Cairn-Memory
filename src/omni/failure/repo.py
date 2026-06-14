@@ -6,9 +6,9 @@ import sqlite3
 from typing import Any
 
 from omni._common import now_iso, validate_choice
-from omni.dbaccess import ensure_run_exists
+from omni.dbaccess import ensure_run_exists, next_commit_seq
 from omni.ids import new_id
-from omni.jsonio import redact_mapping_str, redact_text
+from omni.jsonio import decode_json_dict, redact_mapping_str, redact_text
 
 from omni.failure._text import (
     MAX_EXCERPT_CHARS,
@@ -23,7 +23,6 @@ from omni.failure.error_lines import (
 )
 from omni.failure.exit_code import COMMAND_NOT_FOUND_EXIT_CODE, _event_exit_code
 from omni.failure.meta import (
-    _decode_json_object,
     _decode_meta,
     _input_metadata,
     _interrupted,
@@ -128,7 +127,7 @@ def retire_pattern(conn: sqlite3.Connection, pattern_id: str) -> dict[str, Any]:
             SET status = 'retired', retired_seq = ?, updated_at = ?
             WHERE pattern_id = ? AND status = 'active'
             """,
-            (_next_commit_seq(conn), now_iso(), pattern_id),
+            (next_commit_seq(conn), now_iso(), pattern_id),
         )
         if updated.rowcount != 1:
             raise ValueError(f"failure pattern could not be retired: {pattern_id}")
@@ -347,7 +346,7 @@ def _create_failure_pattern(
             2,
             "active",
             redact_mapping_str(_pattern_evidence(candidate)),
-            _next_commit_seq(conn),
+            next_commit_seq(conn),
             None,
             None,
             now,
@@ -367,7 +366,7 @@ def _pattern_evidence(candidate: sqlite3.Row) -> dict[str, Any]:
         "exit_code": candidate["exit_code"],
         "failure_kind": candidate["failure_kind"],
         "error_signature_hash": candidate["error_signature_hash"],
-        "candidate_evidence": _decode_json_object(candidate["evidence"]),
+        "candidate_evidence": decode_json_dict(candidate["evidence"], default={"decode_error": "invalid_json"}),
     }
 
 
@@ -442,13 +441,13 @@ def _events_for_run(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
 
 def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
-    result["evidence"] = _decode_json_object(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"], default={"decode_error": "invalid_json"})
     return result
 
 
 def _pattern_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
-    result["evidence"] = _decode_json_object(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"], default={"decode_error": "invalid_json"})
     result["lifecycle"] = _pattern_lifecycle(result["status"])
     return result
 
@@ -473,15 +472,3 @@ def _pattern_lifecycle(status: str) -> dict[str, Any]:
             "v0 does not reactivate retired patterns"
         ),
     }
-
-
-def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    # Increment in place so the read and write happen under one write lock.
-    updated = conn.execute(
-        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
-    )
-    if updated.rowcount == 0:
-        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
-        return 1
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    return int(row["value"])

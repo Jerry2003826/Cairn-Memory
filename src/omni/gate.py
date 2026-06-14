@@ -7,6 +7,7 @@ import json
 import sqlite3
 from dataclasses import dataclass, replace
 from omni._common import now_iso
+from omni.dbaccess import next_commit_seq
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -165,7 +166,7 @@ def insert_fact(conn: sqlite3.Connection, candidate: FactCandidate) -> int:
             with_id.sensitivity,
             with_id.origin,
             0,
-            _next_commit_seq(conn),
+            next_commit_seq(conn),
             None,
             None,
             None,
@@ -289,15 +290,3 @@ def _fact_id(candidate: FactCandidate) -> str:
     return f"fact_{digest[:24]}"
 
 
-def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    # Increment in place so the read and the write happen under one write lock;
-    # a separate read-then-write pair can hand the same sequence number to two
-    # concurrent writers.
-    updated = conn.execute(
-        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
-    )
-    if updated.rowcount == 0:
-        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
-        return 1
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    return int(row["value"])

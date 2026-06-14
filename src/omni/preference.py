@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sqlite3
 import sys
 from typing import Any
 
 from omni._common import memory_cli_readonly, now_iso, validate_choice
+from omni.dbaccess import next_commit_seq
 from omni.ids import new_id
-from omni.jsonio import as_json, redact_mapping_str, redact_text
+from omni.jsonio import as_json, decode_json_dict, redact_mapping_str, redact_text
 
 KIND_VALUES = {"prefers", "avoids", "boundary"}
 STATE_VALUES = {"pending", "approved", "rejected"}
@@ -191,7 +191,7 @@ def show_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
     if row is None:
         raise ValueError(f"unknown preference note: {note_id}")
     result = dict(row)
-    result["evidence"] = _decode_evidence(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"])
     return result
 
 
@@ -211,7 +211,7 @@ def retire_note(conn: sqlite3.Connection, note_id: str) -> dict[str, Any]:
         SET status = 'retired', retired_seq = ?, updated_at = ?
         WHERE note_id = ?
         """,
-        (_next_commit_seq(conn), now, note_id),
+        (next_commit_seq(conn), now, note_id),
     )
     conn.commit()
     return show_note(conn, note_id)
@@ -275,7 +275,7 @@ def _create_preference_note(
             redact_text(suggested_action),
             "active",
             redact_mapping_str({"pref_cand_id": candidate["pref_cand_id"]}),
-            _next_commit_seq(conn),
+            next_commit_seq(conn),
             None,
             now,
             now,
@@ -286,30 +286,8 @@ def _create_preference_note(
 
 def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
-    result["evidence"] = _decode_evidence(result["evidence"])
+    result["evidence"] = decode_json_dict(result["evidence"])
     return result
-
-
-def _next_commit_seq(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
-    current = int(row["value"]) if row else 0
-    next_seq = current + 1
-    conn.execute(
-        "INSERT INTO meta(key, value) VALUES('commit_seq', ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (str(next_seq),),
-    )
-    return next_seq
-
-
-def _decode_evidence(raw: str | None) -> dict[str, Any]:
-    if not raw:
-        return {}
-    try:
-        decoded = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-    return decoded if isinstance(decoded, dict) else {}
 
 
 def cli_command_readonly(args: argparse.Namespace) -> bool:

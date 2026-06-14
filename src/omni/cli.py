@@ -8,6 +8,14 @@ from collections.abc import Callable
 from typing import Any
 
 from omni import __version__
+from omni._common import (
+    CANDIDATE_STATE_VALUES,
+    MEMORY_EFFECT_VALUES,
+    NOTE_STATUS_VALUES,
+    OUTCOME_STATUS_VALUES,
+    TASK_TYPE_VALUES,
+    TESTS_STATUS_VALUES,
+)
 from omni.config import (
     CLAUDE_HOOK_GITIGNORE_ENTRIES,
     OMNI_GITIGNORE_ENTRIES,
@@ -107,7 +115,7 @@ def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:
     verify_parser.add_argument("--qualifier")
     verify_parser.add_argument(
         "--task",
-        choices=("validation", "bugfix", "docs", "refactor", "exploration", "unknown"),
+        choices=TASK_TYPE_VALUES,
         help="Map task type to a preferred verification qualifier when --qualifier is omitted",
     )
     verify_parser.add_argument(
@@ -182,11 +190,11 @@ def _add_outcome_parser(subcommands: argparse._SubParsersAction) -> None:
     )
     outcome_mark_parser.add_argument(
         "--memory-effect",
-        choices=("helped", "neutral", "failed_to_help", "unknown"),
+        choices=MEMORY_EFFECT_VALUES,
     )
     outcome_mark_parser.add_argument(
         "--task-type",
-        choices=("validation", "bugfix", "docs", "refactor", "exploration", "unknown"),
+        choices=TASK_TYPE_VALUES,
         default="unknown",
     )
     outcome_mark_parser.add_argument("--summary", dest="task_summary")
@@ -215,11 +223,11 @@ def _add_outcome_parser(subcommands: argparse._SubParsersAction) -> None:
     )
     outcome_mark_from_verify_parser.add_argument(
         "--memory-effect",
-        choices=("helped", "neutral", "failed_to_help", "unknown"),
+        choices=MEMORY_EFFECT_VALUES,
     )
     outcome_mark_from_verify_parser.add_argument(
         "--task-type",
-        choices=("validation", "bugfix", "docs", "refactor", "exploration", "unknown"),
+        choices=TASK_TYPE_VALUES,
         default="unknown",
     )
     outcome_mark_from_verify_parser.add_argument("--summary", dest="task_summary")
@@ -235,19 +243,19 @@ def _add_outcome_parser(subcommands: argparse._SubParsersAction) -> None:
     outcome_ls_parser = outcome_subcommands.add_parser("ls")
     outcome_ls_parser.add_argument(
         "--task-type",
-        choices=("validation", "bugfix", "docs", "refactor", "exploration", "unknown"),
+        choices=TASK_TYPE_VALUES,
     )
     outcome_ls_parser.add_argument(
         "--status",
-        choices=("success", "failed", "unknown"),
+        choices=OUTCOME_STATUS_VALUES,
     )
     outcome_ls_parser.add_argument(
         "--tests-status",
-        choices=("passed", "failed", "not_run", "unknown"),
+        choices=TESTS_STATUS_VALUES,
     )
     outcome_ls_parser.add_argument(
         "--memory-effect",
-        choices=("helped", "neutral", "failed_to_help", "unknown"),
+        choices=MEMORY_EFFECT_VALUES,
     )
 
 
@@ -263,7 +271,7 @@ def _add_experience_parser(subcommands: argparse._SubParsersAction) -> None:
     experience_ls_parser = experience_subcommands.add_parser("ls")
     experience_ls_parser.add_argument(
         "--state",
-        choices=("pending", "approved", "rejected", "all"),
+        choices=CANDIDATE_STATE_VALUES,
         default="pending",
     )
     experience_show_parser = experience_subcommands.add_parser("show")
@@ -280,7 +288,7 @@ def _add_experience_parser(subcommands: argparse._SubParsersAction) -> None:
     experience_note_ls_parser = experience_note_subcommands.add_parser("ls")
     experience_note_ls_parser.add_argument(
         "--status",
-        choices=("active", "retired", "all"),
+        choices=NOTE_STATUS_VALUES,
         default="active",
     )
     experience_note_show_parser = experience_note_subcommands.add_parser("show")
@@ -301,7 +309,7 @@ def _add_failure_parser(subcommands: argparse._SubParsersAction) -> None:
     failure_ls_parser = failure_subcommands.add_parser("ls")
     failure_ls_parser.add_argument(
         "--state",
-        choices=("pending", "approved", "rejected", "all"),
+        choices=CANDIDATE_STATE_VALUES,
         default="pending",
     )
     failure_show_parser = failure_subcommands.add_parser("show")
@@ -321,7 +329,7 @@ def _add_failure_parser(subcommands: argparse._SubParsersAction) -> None:
     failure_pattern_ls_parser = failure_pattern_subcommands.add_parser("ls")
     failure_pattern_ls_parser.add_argument(
         "--status",
-        choices=("active", "retired", "all"),
+        choices=NOTE_STATUS_VALUES,
         default="active",
     )
     failure_pattern_show_parser = failure_pattern_subcommands.add_parser("show")
@@ -341,7 +349,7 @@ def _add_preference_parser(subcommands: argparse._SubParsersAction) -> None:
     preference_ls_parser = preference_subcommands.add_parser("ls")
     preference_ls_parser.add_argument(
         "--state",
-        choices=("pending", "approved", "rejected", "all"),
+        choices=CANDIDATE_STATE_VALUES,
         default="pending",
     )
     preference_show_parser = preference_subcommands.add_parser("show")
@@ -360,7 +368,7 @@ def _add_preference_parser(subcommands: argparse._SubParsersAction) -> None:
     preference_note_ls_parser = preference_note_subcommands.add_parser("ls")
     preference_note_ls_parser.add_argument(
         "--status",
-        choices=("active", "retired", "all"),
+        choices=NOTE_STATUS_VALUES,
         default="active",
     )
     preference_note_show_parser = preference_note_subcommands.add_parser("show")
