@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "omnimemory"
 version = "0.1.0"
-description = "Week-1 OmniMemory vertical slice"
+description = "Local CLI-only memory loop for Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
