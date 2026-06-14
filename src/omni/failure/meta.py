@@ -113,9 +113,3 @@ def _decode_meta(meta_json: str | None) -> dict[str, Any]:
     return decoded if isinstance(decoded, dict) else {}
 
 
-def _decode_json_object(value: str) -> dict[str, Any]:
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return {"decode_error": "invalid_json"}
-    return decoded if isinstance(decoded, dict) else {"decode_error": "non_object"}

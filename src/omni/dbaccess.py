@@ -73,6 +73,18 @@ def connect_project_readonly_verify(root: Path | str | None = None) -> sqlite3.C
     return conn
 
 
+def next_commit_seq(conn: sqlite3.Connection) -> int:
+    """Atomically increment and return the commit sequence number."""
+    updated = conn.execute(
+        "UPDATE meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'commit_seq'"
+    )
+    if updated.rowcount == 0:
+        conn.execute("INSERT INTO meta(key, value) VALUES('commit_seq', '1')")
+        return 1
+    row = conn.execute("SELECT value FROM meta WHERE key = 'commit_seq'").fetchone()
+    return int(row["value"])
+
+
 def root_from_connection(conn: sqlite3.Connection) -> Path | None:
     rows = conn.execute("PRAGMA database_list").fetchall()
     for row in rows:

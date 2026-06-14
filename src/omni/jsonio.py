@@ -22,6 +22,17 @@ def redact_mapping_str(value: dict[str, Any]) -> str:
     return redact(encoded).data.decode("utf-8", errors="replace")
 
 
+def decode_json_dict(raw: str | None, *, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Safely parse a JSON string into a dict; return *default* on failure."""
+    if not raw:
+        return dict(default) if default is not None else {}
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return dict(default) if default is not None else {}
+    return decoded if isinstance(decoded, dict) else (dict(default) if default is not None else {})
+
+
 def is_redaction_wrapper(value: str) -> bool:
     try:
         decoded = json.loads(value)

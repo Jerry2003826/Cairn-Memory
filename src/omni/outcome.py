@@ -13,7 +13,7 @@ from omni import verify
 from omni._common import now_iso, validate_choice
 from omni.dbaccess import ensure_run_exists, root_from_connection
 from omni.ids import new_id
-from omni.jsonio import as_json, redact_text
+from omni.jsonio import as_json, decode_json_dict, redact_text
 from omni.redact import redact
 from omni.verify import (
     REASON_CODE_FAILED_EXIT_CODE,
@@ -186,7 +186,9 @@ def show_outcome(conn: sqlite3.Connection, run_id: str) -> dict[str, Any]:
     if row is None:
         raise ValueError(f"unknown outcome for run: {run_id}")
     result = dict(row)
-    result["evidence"] = _decode_evidence(result["evidence"])
+    result["evidence"] = decode_json_dict(
+        result["evidence"], default={"source": "user", "decode_error": "invalid_json"},
+    )
     return result
 
 
@@ -293,14 +295,6 @@ def _evidence_json(value: dict[str, Any]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return redact(encoded).data.decode("utf-8", errors="replace")
-
-
-def _decode_evidence(value: str) -> dict[str, Any]:
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError:
-        return {"source": "user", "decode_error": "invalid_json"}
-    return decoded if isinstance(decoded, dict) else {"source": "user"}
 
 
 def _memory_effect_from_eval(conn: sqlite3.Connection, run_id: str) -> str:

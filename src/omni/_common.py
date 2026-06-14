@@ -36,6 +36,14 @@ def merge_redaction_status(*statuses: str) -> str:
     return "clean"
 
 
+TASK_TYPE_VALUES = frozenset({"validation", "bugfix", "docs", "refactor", "exploration", "unknown"})
+MEMORY_EFFECT_VALUES = frozenset({"helped", "neutral", "failed_to_help", "unknown"})
+OUTCOME_STATUS_VALUES = frozenset({"success", "failed", "unknown"})
+TESTS_STATUS_VALUES = frozenset({"passed", "failed", "not_run", "unknown"})
+CANDIDATE_STATE_VALUES = frozenset({"pending", "approved", "rejected", "all"})
+NOTE_STATUS_VALUES = frozenset({"active", "retired", "all"})
+
+
 def memory_cli_readonly(
     command: str,
     nested_command: str | None,
