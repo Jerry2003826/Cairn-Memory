@@ -170,7 +170,7 @@ Observed:
 - `python -m omni.cli audit secrets`: ok=true.
 - `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 131 passed, 3 skipped, 1 warning.
 
-- [ ] **Step 4: Commit, push, and triage bots**
+- [x] **Step 4: Commit, push, and triage bots**
 
 Commit with the required format and push the branch:
 
@@ -185,4 +185,11 @@ gh pr checks <pr-url> --watch
 gh pr view <pr-url> --comments
 ```
 
-Expected: checks pass or any active Critical/Important bot feedback is fixed before completion.
+Observed:
+
+- Branch pushed and PR opened as `Phase C final delivery evidence`.
+- GitHub CI checks passed for Python 3.11 and 3.12.
+- SonarCloud quality gate passed.
+- Cursor Approval Agent approved the PR.
+- CodeRabbit completed review. Its only actionable item was this checkbox state
+  update; no Critical or Important blocker was reported.
