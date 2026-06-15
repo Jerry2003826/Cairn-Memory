@@ -120,6 +120,28 @@ def test_run_show_does_not_migrate_existing_database(tmp_path: Path) -> None:
     assert failure_tables == 0
 
 
+def test_run_show_ignores_unrelated_nested_command_metadata(tmp_path: Path) -> None:
+    transcript = tmp_path / "unrelated-command.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "tool_use",
+                "timestamp": "2026-06-11T00:00:00Z",
+                "name": "Bash",
+                "message": {"command": "do not show"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ingest.ingest(root=tmp_path, run_id="run_unrelated", transcript=transcript)
+
+    shown = ingest.run_show(tmp_path, "run_unrelated")
+
+    assert "do not show" not in shown
+
+
 def test_migration_creates_schema_and_seed_meta(tmp_path: Path) -> None:
     conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
 

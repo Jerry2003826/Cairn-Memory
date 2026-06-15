@@ -117,16 +117,17 @@ Expected normalized event: `event_type == "tool_use"`, `tool == "bash"`,
 
 ## Task 4: CLI Wiring And Smoke Tests
 
-- [ ] Add failing CLI tests:
+- [x] Add failing CLI tests:
   - `omni inject opencode --mode preview` exits 0 and prints `.omni/generated/memory.md`
   - `omni ingest opencode_run --engine opencode --transcript <path>` exits 0 and `run show` displays the nested command preview
   - unknown `--engine` exits 2 before DB writes
-- [ ] Run the focused CLI tests and verify they fail.
-- [ ] Add `--engine` to the ingest parser with choices from registered capture engines.
-- [ ] Wire CLI ingest to pass `engine=args.engine`.
-- [ ] Update `README.md` and `README.zh-CN.md` command tables now that the new CLI surface exists.
-- [ ] Run `pytest -q tests/test_cli_help.py tests/test_cli_smoke.py`.
-- [ ] Commit with message `day21: cli — expose OpenCode ingest`.
+- [x] Run the focused CLI tests and verify they fail.
+- [x] Add `--engine` to the ingest parser with choices from registered capture engines.
+- [x] Wire CLI ingest to pass `engine=args.engine`.
+- [x] Update `README.md` and `README.zh-CN.md` command tables now that the new CLI surface exists.
+- [x] Add run-show coverage proving unrelated nested `command` fields are ignored while OpenCode `part.state.input.command` still displays.
+- [x] Run `pytest -q tests/test_cli_help.py tests/test_cli_smoke.py`.
+- [x] Commit with message `day21: cli — expose OpenCode ingest`.
 
 ## Task 5: Dogfood And Closeout Evidence
 

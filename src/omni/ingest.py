@@ -789,12 +789,8 @@ def _nested_command(value: Any, *, depth: int = 0) -> Any:
         for key in ("command", "cmd"):
             if key in value:
                 return value[key]
-        for key in ("input", "tool_input", "parameters", "args"):
+        for key in ("input", "tool_input", "parameters", "args", "part", "state"):
             found = _nested_command(value.get(key), depth=depth + 1)
-            if found is not None:
-                return found
-        for nested in value.values():
-            found = _nested_command(nested, depth=depth + 1)
             if found is not None:
                 return found
     if isinstance(value, list):
