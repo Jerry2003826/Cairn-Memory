@@ -90,31 +90,52 @@ def read_view(conn: sqlite3.Connection) -> dict[str, Any]:
         _active_preference_notes(conn),
         _active_failure_patterns(conn),
     )
+    trimmed, omitted = _trim_sections_to_body_budget(sections)
     output_sections: list[dict[str, Any]] = []
-    omitted = False
-    budget_lines: list[str] = ["# Project memory", ""]
     for section in MEMORY_SECTION_ORDER:
-        entries = sections[section]
+        entries = trimmed[section]
         if not entries:
             continue
         items: list[str] = []
         for _dep, line in entries:
-            if omitted or _body_length(budget_lines) + len(line) + 1 > MAX_BODY_CHARS:
-                omitted = True
-                break
             redacted = redact_text(line)
-            if redacted is None:
-                continue
-            items.append(redacted)
-            budget_lines.append(line)
-        if items:
-            output_sections.append({"kind": section, "items": items})
-        budget_lines.append("")
-        if omitted:
-            break
+            if redacted is not None:
+                items.append(redacted)
+        output_sections.append({"kind": section, "items": items})
     if omitted and output_sections:
         output_sections[-1]["items"].append(TRUNCATION_NOTICE)
     return {"schema_version": READ_VIEW_SCHEMA_VERSION, "sections": output_sections}
+
+
+def _trim_sections_to_body_budget(
+    sections: dict[str, list[tuple[Dependency, str]]],
+) -> tuple[dict[str, list[tuple[Dependency, str]]], bool]:
+    """Trim section entries to MAX_BODY_CHARS using the same rules as _render_body."""
+
+    trimmed = {name: [] for name in sections}
+    budget_lines: list[str] = ["# Project memory", ""]
+    omitted = False
+    for section in MEMORY_SECTION_ORDER:
+        entries = sections[section]
+        if not entries:
+            continue
+        header = f"## {section}"
+        if omitted or _body_length(budget_lines) + len(header) + 1 > MAX_BODY_CHARS:
+            omitted = True
+            break
+        budget_lines.append(header)
+        section_entries: list[tuple[Dependency, str]] = []
+        for dep, line in entries:
+            if omitted or _body_length(budget_lines) + len(line) + 1 > MAX_BODY_CHARS:
+                omitted = True
+                break
+            section_entries.append((dep, line))
+            budget_lines.append(line)
+        trimmed[section] = section_entries
+        budget_lines.append("")
+        if omitted:
+            break
+    return trimmed, omitted
 
 
 def _collect_memory_sections(
@@ -255,20 +276,14 @@ def _render_body(
     failure_patterns: list[sqlite3.Row],
 ) -> tuple[str, dict[Dependency, str]]:
     sections = _collect_memory_sections(facts, notes, preference_notes, failure_patterns)
+    trimmed, omitted = _trim_sections_to_body_budget(sections)
 
     lines: list[tuple[str, Dependency | None]] = [("# Project memory", None), ("", None)]
-    omitted = False
     for section in MEMORY_SECTION_ORDER:
-        if not sections[section]:
+        if not trimmed[section]:
             continue
         lines.append((f"## {section}", None))
-        for dep, line in sections[section]:
-            # Once the budget is hit, stop content lines in every later section
-            # too; otherwise a short low-priority line could render while a
-            # higher-priority line was dropped.
-            if omitted or _body_length(_line_texts(lines)) + len(line) + 1 > MAX_BODY_CHARS:
-                omitted = True
-                break
+        for dep, line in trimmed[section]:
             lines.append((line, dep))
         lines.append(("", None))
     if omitted:

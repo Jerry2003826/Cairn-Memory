@@ -12,6 +12,7 @@ from typing import Any
 
 from omni import dbaccess
 from omni import gate
+from omni.capture import default as default_capture_engine
 from omni._common import (
     is_redaction_placeholder as _is_redaction_placeholder,
     merge_redaction_status as _merge_redaction_status,
@@ -443,8 +444,6 @@ def _candidate_from_hook_record(
 
 
 def _preferred_hook_record(records: list[HookRecord]) -> HookRecord:
-    from omni.capture import default as default_capture_engine
-
     for name in default_capture_engine().event_roles.get("reconcile_preference", ()):
         for record in reversed(records):
             if record.payload.get("hook_event_name") == name:
@@ -453,8 +452,6 @@ def _preferred_hook_record(records: list[HookRecord]) -> HookRecord:
 
 
 def _hook_duration_ms(records: list[HookRecord]) -> int | None:
-    from omni.capture import default as default_capture_engine
-
     roles = default_capture_engine().event_roles
     pre_names = set(roles.get("pre", ()))
     post_names = set(roles.get("post", ()))

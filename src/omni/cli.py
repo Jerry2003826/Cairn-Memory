@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 from omni import __version__
@@ -677,20 +679,32 @@ def _cmd_inject(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     return 0
 
 
+@contextmanager
+def _verify_readonly_connection(root: Path | str) -> Iterator[Any]:
+    from omni.dbaccess import connect_project_readonly_verify
+
+    try:
+        conn = connect_project_readonly_verify(root)
+    except (FileNotFoundError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        yield None
+        return
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def _cmd_verify(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if getattr(args, "verify_command", None) == "plan":
         return _cmd_verify_plan(args, parser)
 
     from omni import verify
-    from omni.dbaccess import connect_project_readonly_verify
 
     root = project_root()
-    try:
-        conn = connect_project_readonly_verify(root)
-    except (FileNotFoundError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    try:
+    with _verify_readonly_connection(root) as conn:
+        if conn is None:
+            return 2
         try:
             result = verify.run_preflight(
                 conn,
@@ -703,8 +717,6 @@ def _cmd_verify(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-    finally:
-        conn.close()
     _print_diff(verify.as_json(result))
     if result["status"] == "passed":
         return 0
@@ -715,16 +727,11 @@ def _cmd_verify(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
 
 def _cmd_verify_plan(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     from omni import verify
-    from omni.dbaccess import connect_project_readonly_verify
     from omni.jsonio import as_json
 
-    root = project_root()
-    try:
-        conn = connect_project_readonly_verify(root)
-    except (FileNotFoundError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    try:
+    with _verify_readonly_connection(project_root()) as conn:
+        if conn is None:
+            return 2
         try:
             result = verify.plan_view(
                 conn,
@@ -735,8 +742,6 @@ def _cmd_verify_plan(args: argparse.Namespace, parser: argparse.ArgumentParser) 
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-    finally:
-        conn.close()
     _print_diff(as_json(result))
     return 0
 
