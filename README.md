@@ -89,6 +89,9 @@ omni inject opencode --mode preview    # preview opencode.json instructions
 omni inject opencode --mode link       # add memory.md to OpenCode instructions
 ```
 
+For OpenCode, `link` accepts JSON or JSONC input but writes back normalized JSON;
+comments, trailing commas, and original key order/formatting are not preserved.
+
 `omni inject claude --mode link` only ever touches this managed region of
 `CLAUDE.md` — your own content is never modified:
 

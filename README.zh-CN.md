@@ -84,6 +84,9 @@ omni inject opencode --mode preview    # 预览 opencode.json instructions
 omni inject opencode --mode link       # 把 memory.md 加进 OpenCode instructions
 ```
 
+OpenCode 的 `link` 可以读取 JSON 或 JSONC 配置，但写回时会规范化为 JSON；
+注释、尾逗号和原始键顺序/格式不会保留。
+
 `omni inject claude --mode link` 只会改动 `CLAUDE.md` 中下面这个 managed 区块，
 你自己的内容永远不会被修改：
 
