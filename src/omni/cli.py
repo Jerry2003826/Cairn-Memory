@@ -65,10 +65,18 @@ def _add_hidden_core_parsers(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _add_ingest_parser(subcommands: argparse._SubParsersAction) -> None:
-    ingest_parser = subcommands.add_parser("ingest", help="Ingest redacted Claude Code traces")
+    from omni.capture import names as capture_engine_names
+
+    ingest_parser = subcommands.add_parser("ingest", help="Ingest redacted agent traces")
     ingest_parser.add_argument("run_id", nargs="?")
     ingest_parser.add_argument("--run-id", dest="run_id_option")
     ingest_parser.add_argument("--transcript")
+    ingest_parser.add_argument(
+        "--engine",
+        choices=capture_engine_names(),
+        default="claude",
+        help="Capture engine for manual transcript ingest",
+    )
 
 
 def _add_run_parser(subcommands: argparse._SubParsersAction) -> None:
@@ -604,7 +612,16 @@ def _cmd_ingest(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     from omni.ingest import ingest as ingest_project
 
     run_id = args.run_id_option or args.run_id
-    result = ingest_project(project_root(), run_id=run_id, transcript=args.transcript)
+    try:
+        result = ingest_project(
+            project_root(),
+            run_id=run_id,
+            transcript=args.transcript,
+            engine=args.engine,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     _print_diff(
         f"run_ids={','.join(result.run_ids)} events_inserted={result.events_inserted} "
         f"queue_drained={result.queue_drained}\n"
@@ -717,6 +734,9 @@ def _cmd_inject(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
         result = inject.inject(project_root(), target=args.inject_command, mode=args.mode)
     except inject.ManagedRegionEditedError as exc:
         _print_diff(exc.diff)
+        print(str(exc), file=sys.stderr)
+        return 2
+    except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     _print_diff(result.body if args.mode == "preview" else result.diff)

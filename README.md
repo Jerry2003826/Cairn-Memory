@@ -77,7 +77,7 @@ omni audit secrets
 
 ## 📖 Usage
 
-### 1. Wire up a Claude Code project
+### 1. Wire up a governed agent project
 
 ```powershell
 omni init                              # create the .omni/ layout
@@ -85,7 +85,12 @@ omni audit secrets                     # safety gate (must pass first)
 omni init --install-claude-hooks --yes # install capture hooks
 omni inject claude --mode preview      # preview the CLAUDE.md change
 omni inject claude --mode link         # link memory.md into CLAUDE.md
+omni inject opencode --mode preview    # preview opencode.json instructions
+omni inject opencode --mode link       # add memory.md to OpenCode instructions
 ```
+
+For OpenCode, `link` accepts JSON or JSONC input but writes back normalized JSON;
+comments, trailing commas, and original key order/formatting are not preserved.
 
 `omni inject claude --mode link` only ever touches this managed region of
 `CLAUDE.md` — your own content is never modified:
@@ -96,10 +101,11 @@ omni inject claude --mode link         # link memory.md into CLAUDE.md
 <!-- omni:end -->
 ```
 
-### 2. After a Claude Code run
+### 2. After a governed agent run
 
 ```powershell
 omni ingest                            # import redacted traces -> note the run_id
+omni ingest <run_id> --engine opencode --transcript <utf8-jsonl>
 omni audit secrets
 omni status
 omni eval run <run_id>                 # how did this run behave?
@@ -145,8 +151,9 @@ omni render
 | **Setup** | `omni init [--install-claude-hooks] [--yes]` | — | Create `.omni/`; optionally install Claude Code hooks |
 | | `omni audit secrets` | R | Safety gate — scans the whole `.omni/` tree for leaks |
 | | `omni inject claude --mode preview\|link` | — | Manage the `CLAUDE.md` managed region |
+| | `omni inject opencode --mode preview\|link` | — | Add `.omni/generated/memory.md` to project-local `opencode.json` instructions |
 | **Capture** | `omni hook` *(auto-invoked)* | — | Redacts hook input and appends to the spool; always exits `0` |
-| | `omni ingest` | W | Import redacted traces into the local store |
+| | `omni ingest [--engine claude\|opencode]` | W | Import redacted traces into the local store |
 | | `omni status` | R | Project health: link, database, generated memory |
 | | `omni status --all` | R | Read-only multi-project status overview |
 | | `omni doctor` | R | Read-only project diagnostics |
@@ -209,10 +216,16 @@ The original v1 release deliberately proved the local Claude Code loop first.
 The current repo has since added Phase B governance features and the approved
 Phase C slices that are already present in code.
 
+Phase C C-2 is implemented and dogfooded in this branch for OpenCode v0. It adds
+project-local `opencode.json` instruction injection and UTF-8 `opencode run
+--format json` transcript ingest, with no plugin background process, no MCP
+server, and no new migration.
+
 | ✅ Current repo includes | 🚫 Still out of scope |
 |---|---|
 | Project-local `.omni/` state | Background service |
 | Claude Code hook capture behind a capture-engine seam | Read-only MCP server |
+| OpenCode v0 config injection and transcript ingest | OpenCode plugin background capture |
 | `omni audit secrets` safety gate | Dashboard / TUI |
 | Ingest, behavior eval, dogfood comparison | Multi-agent orchestration / handoff |
 | User-marked outcomes | LLM extractors |
@@ -234,14 +247,14 @@ verification, and failure governance across engines.
 | Stage | What it adds | Status |
 |---|---|:--:|
 | **① OmniMemory Kernel** | capture → redact → eval → outcome → reviewed experience / failure memory → verify bridge | ✅ done |
-| **② OmniBridge** | agent-agnostic capture/inject seam and a read-only machine read surface; second engine and MCP wrapper build on this | ✅ foundation shipped; C-2/C-4 still pending |
+| **② OmniBridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; MCP wrapper builds on this | ✅ foundation shipped; C-2 shipped; C-4 pending |
 | **③ OmniRuntime** | task lifecycle (`start/status/ls/show/close/abandon/read`) plus verify/outcome close bridge; multi-agent handoff later | ✅ C-5 partial shipped |
 | **④ Product** | multi-agent orchestration, permission tiers, audit reports, memory console | planned |
 
-Claude is still the only installed capture/inject target today, but the core
-brain and the machine-read surfaces are engine-neutral. The next proof point is
-a real second engine or a thin read-only MCP wrapper over the existing read
-surface.
+Claude remains the only hook-installed capture target today. OpenCode v0 uses
+project-local `opencode.json` instructions plus UTF-8 JSONL transcript ingest;
+the next proof point after C-2 is a thin read-only MCP wrapper over the existing
+read surface.
 
 ## 🏗️ Architecture
 

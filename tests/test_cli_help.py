@@ -56,3 +56,6 @@ def test_audit_and_ingest_help_are_discoverable(
     assert "secrets" in audit_output
     assert "--transcript" in ingest_output
     assert "--run-id" in ingest_output
+    assert "--engine" in ingest_output
+    assert "claude" in ingest_output
+    assert "opencode" in ingest_output

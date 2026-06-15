@@ -51,6 +51,29 @@ def test_eval_run_keeps_memory_effect_neutral_without_memory_evidence(
     assert "memory context not observed" in result["reason"]
 
 
+def test_eval_run_reads_opencode_normalized_input_command(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "uses_test_command", "pnpm run test")
+    _insert_event(
+        conn,
+        "opencode_run",
+        1,
+        tool="bash",
+        meta={
+            "input": {"command": "pnpm run test"},
+            "part": {"state": {"input": {"command": "pnpm run test"}}},
+        },
+    )
+    conn.commit()
+
+    result = eval_module.evaluate_run(tmp_path, "opencode_run")
+
+    assert result["observed_commands"] == [
+        {"seq": 1, "tool": "bash", "command": "pnpm run test"}
+    ]
+    assert result["first_expected_command_position"] == 1
+
+
 def test_eval_run_reports_failed_to_help_for_unihack_style_negative_sample(
     tmp_path: Path,
 ) -> None:

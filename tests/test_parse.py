@@ -49,6 +49,103 @@ def test_parse_transcript_normalizes_known_jsonl_events(tmp_path: Path) -> None:
     assert result.events[1].event_type == "assistant_message"
 
 
+def test_parse_transcript_normalizes_observed_opencode_tool_use(tmp_path: Path) -> None:
+    transcript = tmp_path / "opencode.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "sessionID": "ses_1367",
+                "input": {"unexpected": "top-level"},
+                "part": {
+                    "type": "tool",
+                    "tool": "bash",
+                    "callID": "call_e413",
+                    "state": {
+                        "input": {"command": "pnpm run test"},
+                        "metadata": {"exit": 0, "output": "sandbox test ok"},
+                        "time": {"start": 1781497265149, "end": 1781497265183},
+                    },
+                },
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="opencode")
+    event = result.events[0]
+
+    assert result.archive is None
+    assert event.event_type == "tool_use"
+    assert event.ts == "1781497265185"
+    assert event.tool == "bash"
+    assert event.tool_use_id == "call_e413"
+    assert event.exit_code == 0
+    assert event.duration_ms == 34
+    assert event.meta["input"]["command"] == "pnpm run test"
+    assert event.meta["opencode_raw_input"] == {"unexpected": "top-level"}
+    assert event.meta["part"]["state"]["input"]["command"] == "pnpm run test"
+
+
+def test_parse_opencode_archives_unrecorded_tool_use_shape(tmp_path: Path) -> None:
+    transcript = tmp_path / "opencode-unknown.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "part": {"state": "running"},
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="opencode")
+
+    assert result.events == []
+    assert result.archive is not None
+    assert result.archive.kind == "transcript_archive"
+    assert result.archive.line_count == 1
+    archive_record = json.loads(result.archive.payload.decode("utf-8").splitlines()[0])
+    assert archive_record["reason"] == "unknown_opencode_shape"
+
+
+def test_parse_opencode_archives_incomplete_tool_use_shapes(tmp_path: Path) -> None:
+    transcript = tmp_path / "opencode-incomplete.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {"part": {"type": "tool", "tool": "bash", "callID": "call_missing_type"}},
+            {"type": "tool_use", "part": {"state": {}}},
+            {
+                "type": "tool_use",
+                "part": {
+                    "type": "message",
+                    "tool": "bash",
+                    "callID": "call_bad",
+                    "state": {"metadata": {"exit": 0}},
+                },
+            },
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="opencode")
+
+    assert result.events == []
+    assert result.archive is not None
+    assert result.archive.line_count == 3
+    reasons = [
+        json.loads(line)["reason"]
+        for line in result.archive.payload.decode("utf-8").splitlines()
+    ]
+    assert reasons == [
+        "unknown_opencode_shape",
+        "unknown_opencode_shape",
+        "unknown_opencode_shape",
+    ]
+
+
 def test_parse_transcript_archives_unknown_lines_with_redaction(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OMNI_PARSE_SECRET", "parse-secret-value-123")
     transcript = tmp_path / "transcript.jsonl"

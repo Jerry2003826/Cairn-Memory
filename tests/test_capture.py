@@ -11,6 +11,7 @@ from omni.capture.claude import EVENT_ROLES, INGEST_EVENTS
 def test_default_engine_is_claude() -> None:
     engine = default()
     assert engine.name == "claude"
+    assert engine.run_engine == "claude_code"
 
 
 def test_get_unknown_engine_raises() -> None:
@@ -38,3 +39,13 @@ def test_claude_engine_event_roles_match_legacy_reconcile_order() -> None:
     assert EVENT_ROLES["pre"] == ("PreToolUse",)
     assert EVENT_ROLES["post"] == ("PostToolUse", "PostToolUseFailure")
     assert default().event_roles == EVENT_ROLES
+
+
+def test_opencode_engine_is_registered_for_run_metadata() -> None:
+    engine = get("opencode")
+
+    assert engine.name == "opencode"
+    assert engine.run_engine == "opencode"
+    assert engine.ingest_events == frozenset()
+    assert engine.install is None
+    assert engine.event_roles == {}

@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import difflib
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+from omni.redact import redact
+
 
 @dataclass(frozen=True)
 class InjectTarget:
@@ -27,8 +32,16 @@ TARGETS: dict[str, InjectTarget] = {
         "<!-- omni:end -->",
         "@.omni/generated/memory.md",
     ),
+    "opencode": InjectTarget(
+        "opencode",
+        "opencode.json",
+        "",
+        "",
+        ".omni/generated/memory.md",
+    ),
 }
 MANAGED_REGION = TARGETS["claude"].managed_region
+OPENCODE_SCHEMA = "https://opencode.ai/config.json"
 
 
 @dataclass(frozen=True)
@@ -57,7 +70,11 @@ def inject(root: Path | str, *, target: str, mode: str) -> InjectResult:
         raise ValueError(f"unknown inject target: {target}") from exc
 
     base = Path(root).resolve()
-    path = base / inject_target.filename
+    path = _project_local_file(base, inject_target)
+
+    if inject_target.name == "opencode":
+        return _inject_opencode(path, inject_target, mode)
+
     managed_region = inject_target.managed_region
 
     if mode == "preview":
@@ -77,6 +94,21 @@ def inject(root: Path | str, *, target: str, mode: str) -> InjectResult:
 
 def inject_claude(root: Path | str, *, mode: str) -> InjectResult:
     return inject(root, target="claude", mode=mode)
+
+
+def _project_local_file(base: Path, target: InjectTarget) -> Path:
+    filename = Path(target.filename)
+    if filename.name != target.filename or filename.is_absolute():
+        raise ValueError(f"invalid inject filename: {target.filename}")
+
+    path = base / filename
+    if target.name == "opencode" and path.is_symlink():
+        raise ValueError(f"invalid {target.filename}: symlinks are not allowed")
+
+    resolved_parent = path.parent.resolve()
+    if resolved_parent != base:
+        raise ValueError(f"invalid {target.filename}: target must stay project-local")
+    return path
 
 
 def _linked_text(current: str, target: InjectTarget) -> str:
@@ -117,3 +149,151 @@ def _diff(current: str, rendered: str, target: InjectTarget) -> str:
             tofile=f"{target.filename} (omni)",
         )
     )
+
+
+def _inject_opencode(path: Path, target: InjectTarget, mode: str) -> InjectResult:
+    preview = _opencode_rendered_config({})
+    if mode == "preview":
+        return InjectResult(path=path, body=preview, diff="", wrote=False)
+    if mode != "link":
+        raise ValueError(f"unsupported inject mode: {mode}")
+
+    current = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    data = _opencode_config(current, label=target.filename) if current else {}
+    instructions = data.get("instructions")
+    if instructions is None:
+        instructions = []
+    if not isinstance(instructions, list):
+        raise ValueError(f"invalid {target.filename}: instructions must be a list")
+
+    if target.import_line in instructions:
+        return InjectResult(path=path, body=preview, diff="", wrote=False)
+
+    updated = dict(data)
+    updated.setdefault("$schema", OPENCODE_SCHEMA)
+    updated["instructions"] = [*instructions, target.import_line]
+    rendered = _opencode_rendered_config(updated)
+    rendered_diff = _redacted_text(_diff(current, rendered, target))
+    # The path is a fixed target filename validated by _project_local_file.
+    path.write_text(rendered, encoding="utf-8")  # NOSONAR
+    return InjectResult(path=path, body=preview, diff=rendered_diff, wrote=True)
+
+
+def _opencode_config(current: str, *, label: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(current)
+    except json.JSONDecodeError:
+        try:
+            json_text = _jsonc_to_json(current)
+        except ValueError as jsonc_text_exc:
+            raise ValueError(f"invalid {label}: {jsonc_text_exc}") from jsonc_text_exc
+        try:
+            parsed = json.loads(json_text)
+        except json.JSONDecodeError as jsonc_exc:
+            raise ValueError(f"invalid {label}: {jsonc_exc.msg}") from jsonc_exc
+    if not isinstance(parsed, dict):
+        raise ValueError(f"invalid {label}: root must be a JSON object")
+    return parsed
+
+
+def _jsonc_to_json(current: str) -> str:
+    return _strip_jsonc_trailing_commas(_strip_jsonc_comments(current))
+
+
+def _strip_jsonc_comments(current: str) -> str:
+    cleaned: list[str] = []
+    index = 0
+
+    while index < len(current):
+        char = current[index]
+
+        if char == '"':
+            string_literal, index = _json_string_literal(current, index)
+            cleaned.append(string_literal)
+            continue
+
+        next_char = current[index + 1 : index + 2]
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(current) and current[index] not in "\r\n":
+                index += 1
+            continue
+        if char == "/" and next_char == "*":
+            index += 2
+            closed = False
+            while index < len(current) - 1:
+                if current[index] == "\n":
+                    cleaned.append("\n")
+                if current[index] == "*" and current[index + 1] == "/":
+                    index += 2
+                    closed = True
+                    break
+                index += 1
+            if not closed:
+                raise ValueError("unterminated block comment")
+            continue
+
+        cleaned.append(char)
+        index += 1
+
+    return "".join(cleaned)
+
+
+def _strip_jsonc_trailing_commas(current: str) -> str:
+    cleaned: list[str] = []
+    index = 0
+
+    while index < len(current):
+        char = current[index]
+
+        if char == '"':
+            string_literal, index = _json_string_literal(current, index)
+            cleaned.append(string_literal)
+            continue
+
+        if char == ",":
+            next_index = _next_non_whitespace(current, index + 1)
+            if current[next_index : next_index + 1] in "]}":
+                index += 1
+                continue
+
+        cleaned.append(char)
+        index += 1
+
+    return "".join(cleaned)
+
+
+def _json_string_literal(current: str, start: int) -> tuple[str, int]:
+    index = start + 1
+    escaped = False
+
+    while index < len(current):
+        char = current[index]
+        index += 1
+
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == '"':
+            break
+
+    return current[start:index], index
+
+
+def _next_non_whitespace(current: str, start: int) -> int:
+    index = start
+    while index < len(current) and current[index].isspace():
+        index += 1
+    return index
+
+
+def _opencode_rendered_config(data: dict[str, Any]) -> str:
+    rendered = dict(data)
+    rendered.setdefault("$schema", OPENCODE_SCHEMA)
+    rendered.setdefault("instructions", [TARGETS["opencode"].import_line])
+    return json.dumps(rendered, indent=2, sort_keys=True) + "\n"
+
+
+def _redacted_text(value: str) -> str:
+    return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")

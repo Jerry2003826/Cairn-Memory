@@ -80,6 +80,8 @@ class ParseResult:
 
 def parse_transcript(
     path: Path | str,
+    *,
+    engine: str = "claude",
 ) -> ParseResult:
     transcript_path = Path(path)
     events: list[NormalizedEvent] = []
@@ -108,8 +110,13 @@ def parse_transcript(
                 continue
 
             if not isinstance(parsed, dict) or not _event_type(parsed):
+                reason = (
+                    "unknown_opencode_shape"
+                    if engine == "opencode"
+                    else "unknown_transcript_shape"
+                )
                 record, status, detectors = _archive_record(
-                    line_no, "unknown_transcript_shape", raw_line
+                    line_no, reason, raw_line
                 )
                 archive_line_count += 1
                 archive_payload_bytes, archive_omitted_lines = _append_archive_record(
@@ -119,7 +126,19 @@ def parse_transcript(
                 archive_detectors.extend(detectors)
                 continue
 
-            events.append(_normalize_event(len(events) + 1, parsed))
+            normalized = _normalize_event(len(events) + 1, parsed, engine=engine)
+            if normalized is None:
+                reason = "unknown_opencode_shape" if engine == "opencode" else "unknown_transcript_shape"
+                record, status, detectors = _archive_record(line_no, reason, raw_line)
+                archive_line_count += 1
+                archive_payload_bytes, archive_omitted_lines = _append_archive_record(
+                    archive_lines, archive_payload_bytes, archive_omitted_lines, record
+                )
+                archive_status = _merge_status(archive_status, status)
+                archive_detectors.extend(detectors)
+                continue
+
+            events.append(normalized)
 
     archive = None
     if archive_line_count:
@@ -154,7 +173,19 @@ def events_as_jsonl(events: list[NormalizedEvent]) -> str:
     return "".join(lines)
 
 
-def _normalize_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
+def _normalize_event(
+    seq: int,
+    row: dict[str, Any],
+    *,
+    engine: str,
+) -> NormalizedEvent | None:
+    if engine == "opencode":
+        return _normalize_opencode_tool_use(seq, row)
+
+    return _normalize_generic_event(seq, row)
+
+
+def _normalize_generic_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
     meta = {key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS}
     ts, ts_status, ts_detectors = _redacted_str(
         row.get("timestamp") or row.get("ts") or row.get("created_at") or ""
@@ -194,6 +225,90 @@ def _normalize_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
             )
         ),
     )
+
+
+def _normalize_opencode_tool_use(seq: int, row: dict[str, Any]) -> NormalizedEvent | None:
+    if row.get("type") != "tool_use":
+        return None
+    part = row.get("part")
+    if not isinstance(part, dict):
+        return None
+    if part.get("type") != "tool":
+        return None
+    if not isinstance(part.get("tool"), str) or not part.get("tool"):
+        return None
+    if not isinstance(part.get("callID"), str) or not part.get("callID"):
+        return None
+    state = part.get("state")
+    if not isinstance(state, dict):
+        return None
+
+    state_input = state.get("input")
+    metadata = state.get("metadata")
+    if state_input is not None and not isinstance(state_input, dict):
+        return None
+    if metadata is not None and not isinstance(metadata, dict):
+        return None
+    if not isinstance(state_input, dict) and not isinstance(metadata, dict):
+        return None
+    if metadata is None:
+        metadata = {}
+    time = state.get("time")
+    if not isinstance(time, dict):
+        time = {}
+
+    meta = {key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS}
+    ts, ts_status, ts_detectors = _redacted_str(row.get("timestamp") or "")
+    event_type, event_status, event_detectors = _redacted_str(row.get("type"))
+    tool, tool_status, tool_detectors = _redacted_optional_str(part.get("tool"))
+    tool_use_id, tool_id_status, tool_id_detectors = _redacted_optional_str(part.get("callID"))
+    redacted_meta, meta_status, meta_detectors = _redacted_meta(meta)
+    if isinstance(redacted_meta, dict):
+        redacted_state = redacted_meta.get("part", {}).get("state", {})
+        redacted_input = (
+            redacted_state.get("input") if isinstance(redacted_state, dict) else None
+        )
+        if isinstance(redacted_input, dict):
+            original_input = redacted_meta.get("input")
+            if original_input is not None and original_input != redacted_input:
+                redacted_meta["opencode_raw_input"] = original_input
+            redacted_meta["input"] = redacted_input
+
+    return NormalizedEvent(
+        seq=seq,
+        ts=ts,
+        event_type=event_type,
+        tool=tool,
+        tool_use_id=tool_use_id,
+        exit_code=_optional_int(metadata.get("exit")),
+        duration_ms=_duration_ms(time.get("start"), time.get("end")),
+        source="transcript",
+        meta=redacted_meta,
+        redaction_status=_merge_redaction_status(
+            ts_status,
+            event_status,
+            tool_status,
+            tool_id_status,
+            meta_status,
+        ),
+        detectors=tuple(
+            dict.fromkeys(
+                ts_detectors
+                + event_detectors
+                + tool_detectors
+                + tool_id_detectors
+                + meta_detectors
+            )
+        ),
+    )
+
+
+def _duration_ms(start: Any, end: Any) -> int | None:
+    start_ms = _optional_int(start)
+    end_ms = _optional_int(end)
+    if start_ms is None or end_ms is None:
+        return None
+    return max(0, end_ms - start_ms)
 
 
 def _redacted_meta(meta: dict[str, Any]) -> tuple[dict[str, Any], str, tuple[str, ...]]:

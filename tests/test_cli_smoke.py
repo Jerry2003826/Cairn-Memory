@@ -912,6 +912,74 @@ def test_ingest_and_run_show_cli(tmp_path: Path) -> None:
     assert '"source": "transcript"' in expanded_result.stdout
 
 
+def test_opencode_inject_cli_preview(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "inject", "opencode", "--mode", "preview")
+
+    assert result.returncode == 0, result.stderr
+    assert '".omni/generated/memory.md"' in result.stdout
+    assert not (tmp_path / "opencode.json").exists()
+
+
+def test_ingest_cli_accepts_opencode_engine_and_run_show_nested_command(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "opencode.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "part": {
+                    "type": "tool",
+                    "tool": "bash",
+                    "callID": "call_e413",
+                    "state": {
+                        "input": {"command": "pnpm run test"},
+                        "metadata": {"exit": 0},
+                        "time": {"start": 1781497265149, "end": 1781497265183},
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ingest_result = run_omni(
+        tmp_path,
+        "ingest",
+        "opencode_run",
+        "--engine",
+        "opencode",
+        "--transcript",
+        str(transcript),
+    )
+    show_result = run_omni(tmp_path, "run", "show", "opencode_run")
+
+    assert ingest_result.returncode == 0, ingest_result.stderr
+    assert "events_inserted=1" in ingest_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "opencode_run" not in show_result.stdout
+    assert "bash" in show_result.stdout
+    assert "pnpm run test" in show_result.stdout
+
+
+def test_ingest_cli_unknown_engine_fails_before_layout_write(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "ingest", "bad_run", "--engine", "missing")
+
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
+    assert not (tmp_path / ".omni").exists()
+
+
+def test_ingest_cli_opencode_requires_transcript_before_layout_write(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "ingest", "bad_run", "--engine", "opencode")
+
+    assert result.returncode == 2
+    assert "requires transcript" in result.stderr
+    assert not (tmp_path / ".omni").exists()
+
+
 def test_run_show_cli_missing_db_is_read_only_and_clear(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "run", "show", "missing_run")
 
