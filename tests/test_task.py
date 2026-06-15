@@ -521,6 +521,39 @@ def test_task_read_view_is_leak_free(tmp_path: Path) -> None:
     conn.close()
 
 
+def test_task_read_view_only_includes_current_project(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    task.start_task(conn, tmp_path, "current project task")
+    now = "2026-06-15T00:00:00Z"
+    conn.execute(
+        """
+        INSERT INTO tasks(
+          task_id, project_id, title, task_type, status, created_seq,
+          created_at, updated_at, evidence
+        ) VALUES(?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "task_other_project",
+            project_id_for_path(tmp_path / "other"),
+            "foreign project task",
+            "unknown",
+            "open",
+            999,
+            now,
+            now,
+            "{}",
+        ),
+    )
+    conn.commit()
+
+    view = task.read_view(conn)
+
+    titles = [item["title"] for item in view["tasks"]]
+    assert titles == ["current project task"]
+    assert "foreign project task" not in json.dumps(view, sort_keys=True)
+    conn.close()
+
+
 def test_cli_task_start_and_read_smoke(tmp_path: Path) -> None:
     init = run_omni(tmp_path, "init")
     assert init.returncode == 0, init.stderr
@@ -571,6 +604,34 @@ def test_cli_task_ls_show_close_abandon_smoke(tmp_path: Path) -> None:
     assert json.loads(abandon.stdout)["status"] == "abandoned"
 
 
+def test_cli_task_close_requires_explicit_status(tmp_path: Path) -> None:
+    init = run_omni(tmp_path, "init")
+    assert init.returncode == 0, init.stderr
+    start = run_omni(tmp_path, "task", "start", "explicit close status")
+    assert start.returncode == 0, start.stderr
+
+    close = run_omni(tmp_path, "task", "close")
+
+    assert close.returncode == 2
+    assert "one of the arguments --success --failed --unknown is required" in close.stderr
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    try:
+        row = conn.execute("SELECT status FROM tasks").fetchone()
+        assert row["status"] == "open"
+    finally:
+        conn.close()
+
+
+def test_cli_task_close_missing_status_does_not_create_database(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+
+    close = run_omni(tmp_path, "task", "close")
+
+    assert close.returncode == 2
+    assert "one of the arguments --success --failed --unknown is required" in close.stderr
+    assert not (tmp_path / ".omni" / "omni.sqlite3").exists()
+
+
 @pytest.mark.parametrize(
     "option",
     [
@@ -586,7 +647,7 @@ def test_task_close_rejects_verify_options_without_from_verify(
     task.start_task(conn, tmp_path, "reject ignored verify option")
     conn.close()
 
-    result = run_omni(tmp_path, "task", "close", option[0], option[1])
+    result = run_omni(tmp_path, "task", "close", "--unknown", option[0], option[1])
 
     assert result.returncode == 2
     assert "requires --from-verify" in result.stderr
@@ -620,6 +681,7 @@ def test_task_close_from_verify_rejects_non_positive_timeout(tmp_path: Path) -> 
         "task",
         "close",
         "--from-verify",
+        "--unknown",
         "--timeout-seconds",
         "0",
     )

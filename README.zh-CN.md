@@ -134,7 +134,7 @@ omni render
 
 `R` = 只读（以只读方式打开 SQLite，不跑任何迁移） · `W` = 写 SQLite。
 
-| 区域 | 命令 | | 作用 |
+| 区域 | 命令 | R/W | 作用 |
 |---|---|:--:|---|
 | **接入** | `omni init [--install-claude-hooks] [--yes]` | — | 创建 `.omni/`；可选安装 Claude Code hooks |
 | | `omni audit secrets` | R | 安全门禁——扫描整个 `.omni/` 树是否有泄露 |
@@ -167,11 +167,11 @@ omni render
 | | `omni preference note ls\|show\|retire` | R/W | 管理已渲染的偏好笔记 |
 | **项目** | `omni project register` | W | 注册项目以供多项目概览使用 |
 | | `omni project ls` | R | 列出已注册项目 |
-| **任务** | `omni task start <intent>` | W | 开始一个 open operational task |
+| **任务** | `omni task start <intent> [--task-type <type>]` | W | 开始一个 open operational task |
 | | `omni task status\|ls\|show` | R | 查看 operational task 状态 |
 | | `omni task read` | R | 以无泄露机器 JSON 读取 open task 上下文 |
-| | `omni task close [--from-verify]` | W | 关闭 open task，并可桥接 verify/outcome |
-| | `omni task abandon` | W | 放弃 open task 并清空指针 |
+| | `omni task close (--success\|--failed\|--unknown) [--from-verify]` | W | 关闭 open task，并可桥接 verify/outcome |
+| | `omni task abandon [--reason <text>]` | W | 放弃 open task 并清空指针 |
 | **渲染** | `omni render [--diff]` | W | 渲染 `.omni/generated/memory.md` |
 
 \* `omni verify` 不写任何 OmniMemory 状态，但它*确实会*执行你项目的验证命令

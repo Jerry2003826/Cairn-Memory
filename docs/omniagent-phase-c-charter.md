@@ -74,6 +74,10 @@ existing human-gated commands.
 - Representative run for `task close`: the most recent run attached to the task; if
   none, close records task-level `outcome_status` / `tests_status` only.
 - Second `task start` while one is open: hard error (no auto-close / supersede).
+- `task close` requires an explicit `--success`, `--failed`, or `--unknown`; no
+  silent default outcome status in automation.
+- `task read` is scoped to the current project and exposes only leak-free open
+  task context.
 - `eval` / memory `extract` stay run-keyed in this stage.
 
 ## 4. Phase C sub-projects

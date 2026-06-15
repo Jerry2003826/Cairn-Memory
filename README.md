@@ -173,11 +173,11 @@ omni render
 | | `omni preference note ls\|show\|retire` | R/W | Manage rendered preference notes |
 | **Project** | `omni project register` | W | Register a project for multi-project overview |
 | | `omni project ls` | R | List registered projects |
-| **Task** | `omni task start <intent>` | W | Start one open operational task |
+| **Task** | `omni task start <intent> [--task-type <type>]` | W | Start one open operational task |
 | | `omni task status\|ls\|show` | R | Inspect operational task state |
 | | `omni task read` | R | Read open task context as leak-free machine JSON |
-| | `omni task close [--from-verify]` | W | Close the open task and optionally bridge verify/outcome |
-| | `omni task abandon` | W | Abandon the open task and clear the pointer |
+| | `omni task close (--success\|--failed\|--unknown) [--from-verify]` | W | Close the open task and optionally bridge verify/outcome |
+| | `omni task abandon [--reason <text>]` | W | Abandon the open task and clear the pointer |
 | **Render** | `omni render [--diff]` | W | Render `.omni/generated/memory.md` |
 
 \* `omni verify` writes no OmniMemory state, but it *does* execute your project's

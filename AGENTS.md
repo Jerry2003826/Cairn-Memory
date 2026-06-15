@@ -67,6 +67,8 @@ Phase C approved and landed:
   surfaces (`omni memory read`, `omni failure read`, `omni verify plan`)
 - C-5 task lifecycle: `omni task start|status|ls|show|close|abandon|read`,
   `008_task_runtime.sql`, and ingest attachment to the current open task
+  (`task close` requires an explicit `--success`, `--failed`, or `--unknown`;
+  `task read` exposes only the current project's open task view)
 
 Still deferred beyond the current Phase C approvals:
 

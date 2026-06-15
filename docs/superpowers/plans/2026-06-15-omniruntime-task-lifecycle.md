@@ -52,8 +52,8 @@ do." `outcome` and `eval` are keyed on a single `run_id`.
 ```
 `omni task start "intent"` ─> task row (open)
    ⟳ agent works; one or more runs are ingested and attached to the open task
-`omni task close --from-verify` ─> runs the known verify command, records evidence on the task
-`omni task close`               ─> records the task outcome, status=closed
+`omni task close --success --from-verify` ─> runs the known verify command, records evidence on the task
+`omni task close --unknown`               ─> records the task outcome, status=closed
 ```
 
 `task` becomes the first-class entity; `run` is an execution record under it.
@@ -244,9 +244,9 @@ _TERMINAL = frozenset({"closed", "abandoned"})
 | `omni task status` | **R** | the current open task (or "none") + attached run count |
 | `omni task ls [--status open\|closed\|abandoned\|all]` | **R** | list tasks |
 | `omni task show <task_id>` | **R** | one task + attached run ids count (ids gated in read-view) |
-| `omni task close [--success\|--failed\|--unknown] [--from-verify ...]` | **W** | record outcome via WP-3, status=closed, clear pointer |
+| `omni task close (--success\|--failed\|--unknown) [--from-verify ...]` | **W** | record outcome via WP-3, status=closed, clear pointer |
 | `omni task abandon [--reason ...]` | **W** | status=abandoned, clear pointer |
-| `omni task read` | **R** | machine-facing leak-free JSON (WP-4) |
+| `omni task read` | **R** | current-project machine-facing leak-free JSON (WP-4) |
 
 Wire writers through `connect_project_migrate`; readers through `_run_db_command(readonly=True, …)`.
 

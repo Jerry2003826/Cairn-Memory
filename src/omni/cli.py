@@ -435,7 +435,7 @@ def _add_task_parser(subcommands: argparse._SubParsersAction) -> None:
     task_show_parser = task_subcommands.add_parser("show")
     task_show_parser.add_argument("task_id")
     task_close_parser = task_subcommands.add_parser("close")
-    close_status = task_close_parser.add_mutually_exclusive_group()
+    close_status = task_close_parser.add_mutually_exclusive_group(required=True)
     close_status.add_argument("--success", action="store_true")
     close_status.add_argument("--failed", action="store_true")
     close_status.add_argument("--unknown", action="store_true")

@@ -238,12 +238,14 @@ def abandon_task(
 
 def read_view(conn: sqlite3.Connection) -> dict[str, Any]:
     """Return a leak-free machine-read view of open tasks only."""
+    project_id = _project_id_from_conn(conn)
     rows = conn.execute(
         """
         SELECT * FROM tasks
-        WHERE status = 'open'
+        WHERE project_id = ? AND status = 'open'
         ORDER BY created_seq DESC, task_id DESC
-        """
+        """,
+        (project_id,),
     ).fetchall()
     return {
         "schema_version": READ_VIEW_SCHEMA_VERSION,
@@ -273,6 +275,7 @@ def handle_cli_action(
     if args.task_command == "read":
         return read_view(conn)
     if args.task_command == "close":
+        _validate_close_status(args, parser)
         _validate_verify_options(args, parser)
         outcome_status = _cli_outcome_status(args)
         return close_task(
@@ -307,6 +310,12 @@ def _validate_verify_options(
     used = [name for name, value in verify_options.items() if value is not None]
     if used:
         parser.error(f"{', '.join(used)} requires --from-verify")
+
+
+def _validate_close_status(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.success or args.failed or args.unknown:
+        return
+    parser.error("task close requires one of --success, --failed, or --unknown")
 
 
 def _cli_outcome_status(args: argparse.Namespace) -> str:
