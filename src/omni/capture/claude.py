@@ -166,36 +166,57 @@ def _upgrade_cairn_hooks(groups: list[object], command: str) -> tuple[list[objec
     upgraded: list[object] = []
     found = False
     for group in groups:
-        if not isinstance(group, dict):
-            upgraded.append(group)
-            continue
-        handlers = group.get("hooks")
-        if not isinstance(handlers, list):
-            upgraded.append(group)
-            continue
-
-        new_handlers: list[object] = []
-        group_has_cairn = False
-        for handler in handlers:
-            if not isinstance(handler, dict):
-                new_handlers.append(handler)
-                continue
-            handler_command = handler.get("command")
-            if _is_cairn_or_legacy_hook_command(handler_command, command):
-                if not found:
-                    replacement = dict(handler)
-                    replacement["command"] = command
-                    new_handlers.append(replacement)
-                    found = True
-                    group_has_cairn = True
-                continue
-            new_handlers.append(handler)
-
-        new_group = dict(group)
-        new_group["hooks"] = new_handlers
-        if group_has_cairn or new_handlers:
-            upgraded.append(new_group)
+        upgraded_group, found = _upgrade_cairn_hook_group(group, command, found)
+        if upgraded_group is not None:
+            upgraded.append(upgraded_group)
     return upgraded, found
+
+
+def _upgrade_cairn_hook_group(
+    group: object, command: str, found: bool
+) -> tuple[object | None, bool]:
+    if not isinstance(group, dict):
+        return group, found
+
+    handlers = group.get("hooks")
+    if not isinstance(handlers, list):
+        return group, found
+
+    upgraded_handlers, found = _upgrade_cairn_hook_handlers(handlers, command, found)
+    if not upgraded_handlers:
+        return None, found
+
+    upgraded = dict(group)
+    upgraded["hooks"] = upgraded_handlers
+    return upgraded, found
+
+
+def _upgrade_cairn_hook_handlers(
+    handlers: list[object], command: str, found: bool
+) -> tuple[list[object], bool]:
+    upgraded: list[object] = []
+    for handler in handlers:
+        upgraded_handler, found = _upgrade_cairn_hook_handler(handler, command, found)
+        if upgraded_handler is not None:
+            upgraded.append(upgraded_handler)
+    return upgraded, found
+
+
+def _upgrade_cairn_hook_handler(
+    handler: object, command: str, found: bool
+) -> tuple[object | None, bool]:
+    if not isinstance(handler, dict):
+        return handler, found
+
+    if not _is_cairn_or_legacy_hook_command(handler.get("command"), command):
+        return handler, found
+
+    if found:
+        return None, found
+
+    replacement = dict(handler)
+    replacement["command"] = command
+    return replacement, True
 
 
 def _is_cairn_or_legacy_hook_command(value: object, command: str) -> bool:

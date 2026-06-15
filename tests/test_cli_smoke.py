@@ -617,6 +617,62 @@ def test_install_claude_hooks_replaces_old_python_module_hook_command(tmp_path: 
     assert "echo keep-user-hook" in commands
 
 
+def test_install_claude_hooks_removes_duplicate_legacy_hook_groups(tmp_path: Path) -> None:
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings = claude_dir / "settings.local.json"
+    old_module_command = f'"{sys.executable}" -m omni.cli hook'
+    settings.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "*",
+                            "hooks": [
+                                {"type": "command", "command": "omni hook", "timeout": 5},
+                                {"type": "command", "command": "echo keep-user-hook"},
+                            ],
+                        },
+                        {
+                            "matcher": "*",
+                            "hooks": [
+                                {"type": "command", "command": "cairn hook", "timeout": 5}
+                            ],
+                        },
+                        {
+                            "matcher": "*",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": old_module_command,
+                                    "timeout": 5,
+                                }
+                            ],
+                        },
+                    ]
+                }
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = hook.install_claude_hooks(tmp_path, yes=True)
+    updated = json.loads(settings.read_text(encoding="utf-8"))
+    commands = [
+        handler["command"]
+        for group in updated["hooks"]["PreToolUse"]
+        for handler in group["hooks"]
+    ]
+
+    assert result.ok is True
+    assert commands.count("cairn hook") == 1
+    assert "omni hook" not in commands
+    assert old_module_command not in commands
+    assert "echo keep-user-hook" in commands
+
+
 def test_init_install_claude_hooks_handles_utf8_bom_settings_with_non_utf8_stdout(tmp_path: Path) -> None:
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
