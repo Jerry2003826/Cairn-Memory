@@ -65,25 +65,30 @@ def start_task(
     now = now_iso()
     task_id = new_id("task")
     redacted_title = redact_text(title)
-    conn.execute(
-        """
-        INSERT INTO tasks(
-          task_id, project_id, title, task_type, status, created_seq,
-          created_at, updated_at, evidence
-        ) VALUES(?,?,?,?,?,?,?,?,?)
-        """,
-        (
-            task_id,
-            project_id,
-            redacted_title,
-            task_type,
-            "open",
-            next_commit_seq(conn),
-            now,
-            now,
-            redact_mapping_str({}),
-        ),
-    )
+    try:
+        conn.execute(
+            """
+            INSERT INTO tasks(
+              task_id, project_id, title, task_type, status, created_seq,
+              created_at, updated_at, evidence
+            ) VALUES(?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                task_id,
+                project_id,
+                redacted_title,
+                task_type,
+                "open",
+                next_commit_seq(conn),
+                now,
+                now,
+                redact_mapping_str({}),
+            ),
+        )
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(
+            "an open task already exists; close or abandon it before starting another"
+        ) from exc
     _set_meta_value(conn, CURRENT_TASK_META_KEY, task_id)
     conn.commit()
     return show_task(conn, task_id)
@@ -142,60 +147,69 @@ def close_task(
     validate_choice("status", status, OUTCOME_STATUS_VALUES)
     task_id = _require_open_task(conn, root)
     representative_run_id = _representative_run_id(conn, task_id)
+    if from_verify and representative_run_id is None:
+        raise ValueError("cannot use --from-verify without an attached run")
     outcome_status = status
     tests_status = "not_run"
     evidence: dict[str, Any] = {"source": "task_close", "run_count": _attached_run_count(conn, task_id)}
     task_type = _task_row(conn, task_id)["task_type"]
 
     now = now_iso()
-    _transition_task(conn, task_id, target="closed", now=now)
-
-    if representative_run_id is not None:
-        if from_verify:
-            outcome_result = outcome.mark_outcome_from_verify(
-                conn,
-                representative_run_id,
-                root,
-                status=status,
-                task_type=task_type,
-                timeout_seconds=timeout_seconds,
-                qualifier=qualifier,
-                profile=profile,
+    try:
+        if representative_run_id is not None:
+            if from_verify:
+                outcome_result = outcome.mark_outcome_from_verify(
+                    conn,
+                    representative_run_id,
+                    root,
+                    status=status,
+                    task_type=task_type,
+                    timeout_seconds=timeout_seconds,
+                    qualifier=qualifier,
+                    profile=profile,
+                    commit=False,
+                )
+            else:
+                outcome_result = outcome.mark_outcome(
+                    conn,
+                    representative_run_id,
+                    status=status,
+                    tests_status="unknown",
+                    task_type=task_type,
+                    commit=False,
+                )
+            outcome_status = outcome_result["status"]
+            tests_status = outcome_result["tests_status"]
+            evidence["verify_reason_code"] = _verify_reason_code(
+                outcome_result.get("evidence", {})
             )
-        else:
-            outcome_result = outcome.mark_outcome(
-                conn,
-                representative_run_id,
-                status=status,
-                tests_status="unknown",
-                task_type=task_type,
-            )
-        outcome_status = outcome_result["status"]
-        tests_status = outcome_result["tests_status"]
-        evidence["verify_reason_code"] = _verify_reason_code(outcome_result.get("evidence", {}))
-    conn.execute(
-        """
-        UPDATE tasks
-        SET outcome_status = ?,
-            tests_status = ?,
-            closed_at = ?,
-            close_reason = ?,
-            evidence = ?,
-            updated_at = ?
-        WHERE task_id = ?
-        """,
-        (
-            outcome_status,
-            tests_status,
-            now,
-            redact_text(close_reason),
-            redact_mapping_str(evidence),
-            now,
-            task_id,
-        ),
-    )
-    _clear_current_task_if(conn, task_id)
-    conn.commit()
+        _transition_task(conn, task_id, target="closed", now=now)
+        conn.execute(
+            """
+            UPDATE tasks
+            SET outcome_status = ?,
+                tests_status = ?,
+                closed_at = ?,
+                close_reason = ?,
+                evidence = ?,
+                updated_at = ?
+            WHERE task_id = ?
+            """,
+            (
+                outcome_status,
+                tests_status,
+                now,
+                redact_text(close_reason),
+                redact_mapping_str(evidence),
+                now,
+                task_id,
+            ),
+        )
+        _clear_current_task_if(conn, task_id)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return show_task(conn, task_id)
 
 
@@ -211,10 +225,10 @@ def abandon_task(
     conn.execute(
         """
         UPDATE tasks
-        SET close_reason = ?, updated_at = ?
+        SET close_reason = ?, closed_at = ?, updated_at = ?
         WHERE task_id = ?
         """,
-        (redact_text(reason), now, task_id),
+        (redact_text(reason), now, now, task_id),
     )
     _clear_current_task_if(conn, task_id)
     conn.commit()

@@ -93,6 +93,47 @@ def test_migration_008_creates_tasks_and_sets_schema_version(tmp_path: Path) -> 
         for row in conn.execute("PRAGMA table_info(runs)").fetchall()
     }
     assert "task_id" in columns
+    indexes = {
+        row["name"]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+        ).fetchall()
+    }
+    assert "uq_tasks_one_open_per_project" in indexes
+    conn.close()
+
+
+def test_unique_index_blocks_second_open_task_row(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "first")
+    project_id = project_id_for_path(tmp_path)
+    now = "2026-06-15T00:00:00Z"
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO tasks(
+              task_id, project_id, title, task_type, status, created_seq,
+              created_at, updated_at, evidence
+            ) VALUES(?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                "task_duplicate_open",
+                project_id,
+                "second open",
+                "unknown",
+                "open",
+                99,
+                now,
+                now,
+                "{}",
+            ),
+        )
+    conn.rollback()
+    assert conn.execute(
+        "SELECT COUNT(*) AS count FROM tasks WHERE project_id = ? AND status = 'open'",
+        (project_id,),
+    ).fetchone()["count"] == 1
+    assert started["status"] == "open"
     conn.close()
 
 
@@ -215,7 +256,64 @@ def test_abandon_clears_current_task_pointer(tmp_path: Path) -> None:
     task.start_task(conn, tmp_path, "give up")
     abandoned = task.abandon_task(conn, tmp_path, reason="blocked")
     assert abandoned["status"] == "abandoned"
+    assert abandoned["closed_at"] is not None
     assert task.current_task_id_for_ingest(conn) is None
+    conn.close()
+
+
+def test_close_from_verify_without_runs_raises(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    task.start_task(conn, tmp_path, "empty verify close")
+    with pytest.raises(ValueError, match="attached run"):
+        task.close_task(conn, tmp_path, from_verify=True)
+    row = conn.execute(
+        "SELECT status FROM tasks WHERE status = 'open'"
+    ).fetchone()
+    assert row is not None
+    conn.close()
+
+
+def test_close_task_rolls_back_when_outcome_marking_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "rollback close")
+    seed_run(conn, tmp_path, "run_rollback")
+    conn.execute(
+        "UPDATE runs SET task_id = ? WHERE run_id = 'run_rollback'",
+        (started["task_id"],),
+    )
+    conn.commit()
+
+    def fail_mark(*args: object, **kwargs: object) -> dict[str, object]:
+        raise ValueError("verify failed")
+
+    monkeypatch.setattr(outcome, "mark_outcome_from_verify", fail_mark)
+
+    with pytest.raises(ValueError, match="verify failed"):
+        task.close_task(conn, tmp_path, status="failed", from_verify=True)
+
+    task_row = conn.execute(
+        "SELECT status FROM tasks WHERE task_id = ?",
+        (started["task_id"],),
+    ).fetchone()
+    assert task_row["status"] == "open"
+    assert (
+        conn.execute(
+            "SELECT 1 FROM outcomes WHERE run_id = 'run_rollback'"
+        ).fetchone()
+        is None
+    )
+    other = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    try:
+        assert (
+            other.execute(
+                "SELECT 1 FROM outcomes WHERE run_id = 'run_rollback'"
+            ).fetchone()
+            is None
+        )
+    finally:
+        other.close()
     conn.close()
 
 
@@ -356,6 +454,7 @@ def test_close_loses_race_to_abandon_and_writes_no_outcome(
     ) -> None:
         if not flipped["done"]:
             flipped["done"] = True
+            conn_arg.rollback()
             other = db.connect(tmp_path / ".omni" / "omni.sqlite3")
             try:
                 task.abandon_task(other, tmp_path, reason="won race")

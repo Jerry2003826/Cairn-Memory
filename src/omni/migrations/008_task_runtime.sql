@@ -21,6 +21,7 @@ CREATE TABLE tasks(
 );
 
 CREATE INDEX idx_tasks_status ON tasks(project_id, status, created_seq);
+CREATE UNIQUE INDEX uq_tasks_one_open_per_project ON tasks(project_id) WHERE status = 'open';
 
 ALTER TABLE runs ADD COLUMN task_id TEXT;
 CREATE INDEX idx_runs_task ON runs(task_id);
