@@ -443,7 +443,9 @@ def _candidate_from_hook_record(
 
 
 def _preferred_hook_record(records: list[HookRecord]) -> HookRecord:
-    for name in ("PostToolUse", "PostToolUseFailure", "PreToolUse"):
+    from omni.capture import default as default_capture_engine
+
+    for name in default_capture_engine().event_roles.get("reconcile_preference", ()):
         for record in reversed(records):
             if record.payload.get("hook_event_name") == name:
                 return record
@@ -451,15 +453,24 @@ def _preferred_hook_record(records: list[HookRecord]) -> HookRecord:
 
 
 def _hook_duration_ms(records: list[HookRecord]) -> int | None:
+    from omni.capture import default as default_capture_engine
+
+    roles = default_capture_engine().event_roles
+    pre_names = set(roles.get("pre", ()))
+    post_names = set(roles.get("post", ()))
     pre = next(
-        (record for record in records if record.payload.get("hook_event_name") == "PreToolUse"),
+        (
+            record
+            for record in records
+            if record.payload.get("hook_event_name") in pre_names
+        ),
         None,
     )
     post = next(
         (
             record
             for record in records
-            if record.payload.get("hook_event_name") in {"PostToolUse", "PostToolUseFailure"}
+            if record.payload.get("hook_event_name") in post_names
         ),
         None,
     )
