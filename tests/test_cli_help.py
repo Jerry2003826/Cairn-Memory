@@ -39,6 +39,7 @@ def test_top_level_help_includes_cli_only_v1_commands(
         "verify",
         "render",
         "inject",
+        "mcp",
         "review",
     ):
         assert command in output

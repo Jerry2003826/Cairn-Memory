@@ -8,8 +8,9 @@
 > Phase B is done; Phase C has partial approvals. Cairn Bridge foundation
 > (capture/inject seams + machine read) and Cairn Runtime C-5 task lifecycle have
 > landed. C-2 OpenCode v0 has landed as the first real second-engine proof.
-> Read-only MCP, multi-agent handoff, permission tiers, and UI remain governed
-> future work. **Every safety invariant is unchanged.**
+> Read-only MCP has landed as a thin wrapper over existing machine-read
+> surfaces. Multi-agent handoff, permission tiers, and UI remain governed future
+> work. **Every safety invariant is unchanged.**
 
 ## Goal
 
@@ -42,6 +43,9 @@ Phase C approved and landed so far:
   `instructions` list; `cairn ingest --engine opencode --transcript <path>` may
   ingest UTF-8 `opencode run --format json` transcripts through the existing
   redacted ingest path. No new migration was added.
+- C-4 read-only MCP: `cairn mcp serve` exposes only `memory_read`,
+  `failure_read`, `verify_plan`, and `task_read` over stdio JSON-RPC. It has no
+  write tools, no HTTP transport, and no new migration.
 
 ## Non-goals, hard this phase
 
@@ -49,7 +53,7 @@ Phase C approved and landed so far:
 unless a matching charter row and `AGENTS.md` update approve them first.)*
 
 NO LLM extractors.  
-NO MCP server.  
+NO write-capable MCP server.
 NO vector or embedding search.  
 NO dashboard or TUI.  
 NO multi-engine router.  
@@ -71,6 +75,8 @@ Phase C approved and landed:
 
 - C-1/C-3 Cairn Bridge foundation: capture/inject seams plus read-only machine
   surfaces (`cairn memory read`, `cairn failure read`, `cairn verify plan`)
+- C-4 read-only MCP wrapper: `cairn mcp serve` wraps `memory read`,
+  `failure read`, `verify plan`, and `task read` as read-only MCP tools
 - C-5 task lifecycle: `cairn task start|status|ls|show|close|abandon|read`,
   `008_task_runtime.sql`, and ingest attachment to the current open task
   (`task close` requires an explicit `--success`, `--failed`, or `--unknown`;
@@ -82,13 +88,15 @@ Phase C approved and landed in the current implementation branch:
   transcript ingest only. OpenCode remains the coding agent; Cairn Memory only
   supplies governed context and redacted evidence capture through existing CLI
   writers.
+- C-4 read-only MCP: external agents may call only the existing read surfaces
+  through stdio MCP tools. Cairn Memory still exposes no external write path.
 
 Still deferred beyond the current Phase C approvals:
 
 - automatic/default observed_command extractor behavior
 - additional memory types beyond the one approved Sub-C type
-- OpenCode plugin background capture, Codex/QwenCode/Cursor adapters, and the
-  read-only MCP wrapper until explicitly approved
+- OpenCode plugin background capture and Codex/QwenCode/Cursor adapters until
+  explicitly approved
 - multi-agent orchestration / handoff, permission tiers, UI (Layer 6–9 beyond task lifecycle)
 
 If a task needs something outside the charter, STOP and leave a TODO comment.
@@ -175,6 +183,7 @@ Violations require reverting the commit.
    - `cairn preference note ls`
    - `cairn preference note show`
    - `cairn project ls`
+   - `cairn mcp serve`
    - `cairn memory read`
    - `cairn verify`
    - `cairn verify plan`
@@ -190,6 +199,8 @@ Violations require reverting the commit.
    `--profile` is used; it writes no Cairn Memory state.
    `cairn verify plan` uses the same read-only selection layer but spawns
    no verification subprocess.
+   `cairn mcp serve` opens SQLite through the same read-only machine-read
+   surfaces and must expose no write tools.
    `cairn doctor` and `cairn status --all` do not open project SQLite at all
    when reporting aggregate health (doctor opens read-only for schema checks
    on the current project only).

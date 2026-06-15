@@ -1,11 +1,11 @@
 # Cairn Memory Phase C Charter (DRAFT — partial approvals landed)
 
 Date: 2026-06-15
-Status: **C-1**, **C-2 OpenCode v0**, **C-3**, and **C-5** are approved and
-merged or implemented on the active C-2 branch. **C-4** (read-only MCP) and
-remaining Product/Runtime scope are still draft/proposed. Any remaining Phase C
-sub-project still requires explicit approval and a matching `AGENTS.md` update
-before implementation — the same rule Phase B used.
+Status: **C-1**, **C-2 OpenCode v0**, **C-3**, **C-4 read-only MCP**, and
+**C-5** are approved and merged or implemented. Remaining Product/Runtime scope
+is still draft/proposed. Any remaining Phase C sub-project still requires
+explicit approval and a matching `AGENTS.md` update before implementation — the
+same rule Phase B used.
 
 ## Purpose
 
@@ -47,7 +47,7 @@ Violations require reverting the commit.
 | Vision stage | Status in this repo |
 |---|---|
 | ① Cairn Memory Kernel | **done** (Phase A/B); I/O currently bound to Claude Code |
-| ② Cairn Bridge | **foundation done** (C-1 capture/inject seams + C-3 machine read); **C-2 OpenCode v0 done**; MCP wrapper still pending |
+| ② Cairn Bridge | **foundation done** (C-1 capture/inject seams + C-3 machine read); **C-2 OpenCode v0 done**; **C-4 read-only MCP done** |
 | ③ Cairn Runtime (task lifecycle, multi-agent handoff) | **C-5 partial done** — task lifecycle only; handoff deferred |
 | ④ Product (orchestration, permission tiers, UI) | deferred |
 
@@ -56,7 +56,7 @@ Violations require reverting the commit.
 | Area | Pre-C boundary | Phase C allowance |
 |---|---|---|
 | Agent binding | Claude-only hook / transcript / `CLAUDE.md` | **C-1 done:** capture + inject-target seams with Claude as the first implementation; **C-2 done:** OpenCode v0 as one real second engine |
-| MCP | forbidden | **C-4 pending:** a read-only MCP server over the machine-read surface — **no write tools** |
+| MCP | forbidden | **C-4 done:** a read-only stdio MCP server over the machine-read surface — **no write tools** |
 | Machine read | human-facing CLI text only | **C-3 done:** stable JSON for `cairn memory read`, `cairn failure read`, and `cairn verify plan`; audit summary remains future scope |
 | Inject target | `CLAUDE.md` only | **C-1 done:** parametrized managed-region injection; new targets require recorded syntax, not guesses |
 
@@ -70,8 +70,13 @@ transcript ingest only. `cairn inject opencode` may update project-local
 `.omni/generated/memory.md` to the official OpenCode `instructions` list.
 `cairn ingest --engine opencode --transcript <path>` may ingest UTF-8 JSONL output
 from `opencode run --format json` through the existing redacted ingest path.
-OpenCode plugins, background capture processes, MCP tools, permission tiers, and
+OpenCode plugins, background capture processes, write-capable MCP tools, permission tiers, and
 multi-agent handoff remain deferred.
+
+**Approved and landed for C-4 read-only MCP:** `cairn mcp serve` exposes exactly
+four stdio MCP tools over the existing machine-read surfaces:
+`memory_read`, `failure_read`, `verify_plan`, and `task_read`. It adds no
+HTTP transport, no write tools, no external DB write path, and no migration.
 
 **Approved and landed in Phase C (Stage ③ — task lifecycle, C-5):** `cairn task *` lifecycle
 commands and migration **`008_task_runtime.sql`** (`tasks` table + nullable
@@ -96,13 +101,11 @@ existing human-gated commands.
 | **C-1: capture/inject seam** | refactor `hook`/`ingest` capture and `inject` into adapter interfaces; Claude becomes one impl behind them (pure refactor, behavior unchanged) | internal interfaces; `cairn inject claude` remains the only target | none | **done** |
 | **C-2: OpenCode v0** | OpenCode config injection + UTF-8 `opencode run --format json` transcript ingest; prove one governed OpenCode validation loop end to end | `cairn inject opencode`, `cairn ingest --engine opencode --transcript <path>` | none | **done** |
 | **C-3: machine read** | stable read-only JSON for memory / known-failures / verify-plan | `cairn memory read`, `cairn failure read`, `cairn verify plan` (R) | none | **done** |
-| **C-4: read-only MCP** | wrap C-3 as MCP tools, read-only | e.g. `cairn mcp serve` (R) | none | proposed |
+| **C-4: read-only MCP** | wrap C-3 plus task read as MCP tools, read-only | `cairn mcp serve` (R) | none | **done** |
 | **C-5: task lifecycle** | `tasks` table + `runs.task_id`; start/status/ls/show/close/abandon/read; ingest attaches runs to open task | `cairn task *` | **`008_task_runtime.sql`** | **done** |
 
-Historical order: **C-1 → C-3 → C-2 → C-4 → C-5.** C-1, C-2, C-3, and C-5
-have landed or are complete on the active branch. Current recommended order is
-**C-4**: package the read surface for tool-calling agents after the real
-second-engine proof.
+Historical order: **C-1 → C-3 → C-2 → C-4 → C-5.** C-1, C-2, C-3, C-4, and
+C-5 have landed or are complete on the active branch.
 Migrations beyond 008 follow the approval process in §5.
 
 ## 5. Definition of Done, migrations, execution protocol
@@ -124,5 +127,5 @@ one step = one commit). Each Phase C sub-project additionally asserts:
 ## 6. Remaining open decisions for the human
 
 1. ~~Which second engine first — OpenCode or Codex?~~ **Resolved:** OpenCode v0 first.
-2. Should C-4 expose only the existing C-3 read views first, or add a separately approved read-only audit summary before MCP?
+2. ~~Should C-4 expose only the existing C-3 read views first, or add a separately approved read-only audit summary before MCP?~~ **Resolved:** C-4 exposes only existing read surfaces plus `task read`; audit summary remains future scope.
 3. ~~Does `task` runtime (Stage ③) stay deferred until Cairn Bridge has a proven second engine?~~ **Resolved:** C-5 (task lifecycle) approved after Cairn Bridge; multi-agent handoff stays deferred.

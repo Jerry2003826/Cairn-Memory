@@ -165,6 +165,7 @@ cairn render
 | **Machine read** | `cairn memory read` | R | Read rendered memory as structured JSON |
 | | `cairn failure read` | R | Read active known failures as structured JSON |
 | | `cairn verify plan` | R | Show selected verification commands without executing them |
+| | `cairn mcp serve` | R | Serve read-only machine views as stdio MCP tools |
 | **Evaluate** | `cairn eval run <run_id>` | R | Heuristic behavior eval for one run |
 | | `cairn eval dogfood --cold <id> --warm <id>` | R | Cold/warm behavior comparison |
 | | `cairn dogfood ...` | R | Consolidated dogfood summary over eval/outcome data |
@@ -223,8 +224,9 @@ Phase C slices that are already present in code.
 
 Phase C C-2 is implemented and dogfooded in this branch for OpenCode v0. It adds
 project-local `opencode.json` instruction injection and UTF-8 `opencode run
---format json` transcript ingest, with no plugin background process, no MCP
-server, and no new migration.
+--format json` transcript ingest, with no plugin background process and no new
+migration. C-4 now adds `cairn mcp serve`, a read-only stdio MCP wrapper over
+the existing machine-read surfaces.
 
 Phase C final delivery evidence from 2026-06-16 is
 [`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md):
@@ -235,14 +237,14 @@ outcome evidence through approved CLI writers.
 | ✅ Current repo includes | 🚫 Still out of scope |
 |---|---|
 | Project-local `.omni/` state | Background service |
-| Claude Code hook capture behind a capture-engine seam | Read-only MCP server |
+| Claude Code hook capture behind a capture-engine seam | Write-capable MCP server |
 | OpenCode v0 config injection and transcript ingest | OpenCode plugin background capture |
 | `cairn audit secrets` safety gate | Dashboard / TUI |
 | Ingest, behavior eval, dogfood comparison | Multi-agent orchestration / handoff |
 | User-marked outcomes | LLM extractors |
 | Reviewable experience, failure, and preference memory | Automatic success / failure inference |
 | Retirable rendered guidance | Automatic memory evolution |
-| Read-only `cairn verify`, `verify plan`, memory read, and failure read | Vector / embedding search |
+| Read-only `cairn verify`, `verify plan`, memory read, failure read, and MCP wrapper | Vector / embedding search |
 | Task lifecycle (`start/status/ls/show/close/abandon/read`) | New DB tables beyond migrations `001`–`008` |
 | Deterministic `memory.md` rendering and managed injection | External write paths for other agents |
 
@@ -258,14 +260,14 @@ verification, and failure governance across engines.
 | Stage | What it adds | Status |
 |---|---|:--:|
 | **① Cairn Memory Kernel** | capture → redact → eval → outcome → reviewed experience / failure memory → verify bridge | ✅ done |
-| **② Cairn Bridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; MCP wrapper builds on this | ✅ foundation shipped; C-2 shipped; C-4 pending |
+| **② Cairn Bridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; C-4 wraps read surfaces as MCP tools | ✅ foundation shipped; C-2 shipped; C-4 shipped |
 | **③ Cairn Runtime** | task lifecycle (`start/status/ls/show/close/abandon/read`) plus verify/outcome close bridge; multi-agent handoff later | ✅ C-5 partial shipped |
 | **④ Product** | multi-agent orchestration, permission tiers, audit reports, memory console | planned |
 
 Claude remains the only hook-installed capture target today. OpenCode v0 uses
 project-local `opencode.json` instructions plus UTF-8 JSONL transcript ingest;
-the next proof point after C-2 is a thin read-only MCP wrapper over the existing
-read surface.
+`cairn mcp serve` exposes `memory_read`, `failure_read`, `verify_plan`, and
+`task_read` as read-only stdio MCP tools.
 
 ## 🏗️ Architecture
 
@@ -297,6 +299,7 @@ Core modules live in [`src/omni/`](src/omni/):
 | `verify.py` | Read-only verification preflight |
 | `render.py` / `inject.py` | Render `memory.md` & inject managed prompt-file regions |
 | `task.py` | Operational task lifecycle and task read view |
+| `mcp.py` | Read-only stdio MCP wrapper over machine-read views |
 
 ## 🛡️ Safety invariants
 

@@ -58,6 +58,16 @@ def _add_doctor_parser(subcommands: argparse._SubParsersAction) -> None:
     subcommands.add_parser("doctor", help="Run read-only project health diagnostics")
 
 
+def _add_mcp_parser(subcommands: argparse._SubParsersAction) -> None:
+    mcp_parser = subcommands.add_parser("mcp", help="Serve read-only MCP tools")
+    mcp_subcommands = mcp_parser.add_subparsers(
+        dest="mcp_command",
+        required=True,
+        metavar="{serve}",
+    )
+    mcp_subcommands.add_parser("serve", help="Serve read-only MCP over stdio")
+
+
 def _add_hidden_core_parsers(subcommands: argparse._SubParsersAction) -> None:
     subcommands.add_parser("hook", help=argparse.SUPPRESS)
     parse_parser = subcommands.add_parser("parse", help=argparse.SUPPRESS)
@@ -496,7 +506,7 @@ def build_parser(*, prog: str = "cairn") -> argparse.ArgumentParser:
         required=True,
         metavar=(
             "{init,audit,ingest,status,doctor,memory,render,inject,dogfood,eval,outcome,"
-            "experience,failure,preference,task,project,verify,review}"
+            "experience,failure,preference,task,project,verify,review,mcp}"
         ),
     )
     _add_init_parser(subcommands)
@@ -506,6 +516,7 @@ def build_parser(*, prog: str = "cairn") -> argparse.ArgumentParser:
     _add_ingest_parser(subcommands)
     _add_run_parser(subcommands)
     _add_audit_parser(subcommands)
+    _add_mcp_parser(subcommands)
     _add_review_parser(subcommands)
     _add_memory_parser(subcommands)
     _add_render_parser(subcommands)
@@ -609,6 +620,15 @@ def _cmd_doctor(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     result = doctor.run(project_root())
     _print_diff(result.as_json())
     return 0 if result.ok else 1
+
+
+def _cmd_mcp(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from omni import mcp
+
+    if args.mcp_command == "serve":
+        return mcp.serve_stdio(project_root())
+    parser.error(f"unknown mcp command: {args.mcp_command}")
+    return 2
 
 
 def _cmd_parse(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -947,6 +967,7 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace, argparse.ArgumentParser], int
     "hook": _cmd_hook,
     "status": _cmd_status,
     "doctor": _cmd_doctor,
+    "mcp": _cmd_mcp,
     "parse": _cmd_parse,
     "ingest": _cmd_ingest,
     "run": _cmd_run,

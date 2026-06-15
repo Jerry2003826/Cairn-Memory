@@ -2,6 +2,11 @@
 
 Date: 2026-06-16 local, with CLI timestamps recorded in UTC.
 
+Update: after this OpenCode/task closeout, C-4 was approved and landed as
+`cairn mcp serve`, a read-only stdio MCP wrapper exposing `memory_read`,
+`failure_read`, `verify_plan`, and `task_read`. The historical evidence below
+still describes the earlier OpenCode/task delivery state.
+
 Scope: approved Phase C only. This closeout covers the already-approved Cairn
 Bridge and Cairn Runtime-lite slices: OpenCode v0 config injection, OpenCode
 UTF-8 JSONL transcript ingest, read-only machine surfaces, task lifecycle, and
@@ -39,9 +44,9 @@ cairn task read
 cairn ingest --engine opencode --transcript
 ```
 
-No MCP server. No external write path. No OpenCode plugin background capture. No
-multi-agent router, no permission-tier system, no UI, no vector search, and no
-LLM extractor were added.
+At the time of this closeout, no MCP server had been added. No external write
+path, OpenCode plugin background capture, multi-agent router, permission-tier
+system, UI, vector search, or LLM extractor were added.
 
 Safety invariants were unchanged:
 
@@ -304,9 +309,9 @@ OpenCode task families.
 - The task lifecycle is implemented for a single open task; multi-agent handoff
   remains outside this approved slice.
 
-## Explicitly not implemented
+## Explicitly not implemented at this closeout
 
-- No MCP server.
+- No MCP server at this closeout. C-4 later landed as a read-only stdio wrapper.
 - No external write path for OpenCode, Codex, QwenCode, Cursor, or any other
   agent.
 - No OpenCode background plugin or automatic capture loop.
