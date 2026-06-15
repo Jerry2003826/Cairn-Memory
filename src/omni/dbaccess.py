@@ -37,40 +37,52 @@ def ensure_run_exists(conn: sqlite3.Connection, run_id: str) -> None:
         raise ValueError(f"unknown run: {run_id}")
 
 
-def connect_project_readonly(
-    root: Path | str | None = None,
+def _open_readonly(
+    root: Path | str | None,
     *,
-    check_schema: bool = True,
+    missing_prefix: str,
+    check_schema: bool,
+    outdated_suffix: str = "",
 ) -> sqlite3.Connection:
+    """Open a read-only project DB, optionally enforcing the latest schema.
+
+    The two public read-only entry points differ only in their user-facing
+    wording, so the open + schema-check mechanics live here in one place.
+    """
     db_path = _project_db_path(root)
     if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
+        raise FileNotFoundError(f"{missing_prefix}: {db_path}")
     conn = db.connect_readonly(db_path)
     if check_schema:
         version = db.schema_version(conn)
         if version != db.LATEST_SCHEMA_VERSION:
             conn.close()
             raise ValueError(
-                f"OmniMemory schema is outdated (found {version or 'none'}, need "
-                f"{db.LATEST_SCHEMA_VERSION}); run an approved write command such as "
-                "'omni render' to migrate"
+                f"OmniMemory schema is outdated (found {version or 'none'}, "
+                f"need {db.LATEST_SCHEMA_VERSION}){outdated_suffix}"
             )
     return conn
 
 
+def connect_project_readonly(
+    root: Path | str | None = None,
+    *,
+    check_schema: bool = True,
+) -> sqlite3.Connection:
+    return _open_readonly(
+        root,
+        missing_prefix="OmniMemory database is missing",
+        check_schema=check_schema,
+        outdated_suffix="; run an approved write command such as 'omni render' to migrate",
+    )
+
+
 def connect_project_readonly_verify(root: Path | str | None = None) -> sqlite3.Connection:
-    db_path = _project_db_path(root)
-    if not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database not found: {db_path}")
-    conn = db.connect_readonly(db_path)
-    version = db.schema_version(conn)
-    if version != db.LATEST_SCHEMA_VERSION:
-        conn.close()
-        raise ValueError(
-            f"OmniMemory schema is outdated (found {version or 'none'}, "
-            f"need {db.LATEST_SCHEMA_VERSION})"
-        )
-    return conn
+    return _open_readonly(
+        root,
+        missing_prefix="OmniMemory database not found",
+        check_schema=True,
+    )
 
 
 def next_commit_seq(conn: sqlite3.Connection) -> int:
