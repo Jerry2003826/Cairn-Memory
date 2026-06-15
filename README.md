@@ -226,6 +226,12 @@ project-local `opencode.json` instruction injection and UTF-8 `opencode run
 --format json` transcript ingest, with no plugin background process, no MCP
 server, and no new migration.
 
+Phase C final delivery evidence from 2026-06-16 is
+[`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md):
+two fresh OpenCode samples consumed Cairn Memory read surfaces before running
+test and release-build commands, then left `engine=opencode` run, task, and
+outcome evidence through approved CLI writers.
+
 | ✅ Current repo includes | 🚫 Still out of scope |
 |---|---|
 | Project-local `.omni/` state | Background service |
@@ -309,6 +315,7 @@ These are hard rules — a violation is grounds for reverting the change:
 - [`docs/cli-only-claude-code-v1-runbook.md`](docs/cli-only-claude-code-v1-runbook.md) — full operator path
 - [`docs/cli-only-claude-code-v1-release-notes.md`](docs/cli-only-claude-code-v1-release-notes.md) — what shipped
 - [`docs/cli-only-claude-code-v1-closeout-2026-06-15.md`](docs/cli-only-claude-code-v1-closeout-2026-06-15.md) — dogfood evidence
+- [`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md) — Phase C OpenCode multi-sample delivery evidence
 - [`docs/cairn-memory-phase-b-charter-2026-06-15.md`](docs/cairn-memory-phase-b-charter-2026-06-15.md) · [`docs/cairn-memory-phase-c-charter.md`](docs/cairn-memory-phase-c-charter.md) — governed expansion records
 - [`docs/experience-memory-v0.md`](docs/experience-memory-v0.md) · [`docs/failure-memory-v0.md`](docs/failure-memory-v0.md) — memory model
 
