@@ -98,6 +98,9 @@ pytest -q
 cairn audit secrets
 ```
 
+Package metadata now installs as `cairn-memory`; Python imports still use the
+existing `omni` package and the legacy `omni` console script remains available.
+
 From a target Claude Code project:
 
 ```powershell

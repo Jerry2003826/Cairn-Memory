@@ -69,6 +69,8 @@ cairn audit secrets
 
 `cairn` 是首选命令名。为了兼容已有安装，旧的 `omni` 命令、Python module 名和
 `.omni/` 状态目录仍然保留。
+Package metadata now installs as `cairn-memory`; Python imports still use the
+existing `omni` package.
 
 > ⚠️ 在 `cairn audit secrets` 于**本 checkout 和目标项目中都**退出码为 `0` 之前,
 > 切勿把 Claude Code hooks 安装进真实项目。

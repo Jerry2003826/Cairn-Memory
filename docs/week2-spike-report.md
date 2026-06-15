@@ -8,6 +8,10 @@ This automated run filled the former `PENDING HUMAN EVIDENCE` slots with
 observed CLI sandbox evidence where available; unsupported interactive surfaces
 are recorded as not feasible rather than invented.
 
+Note: Cairn Memory is the current product name. This report preserves literal
+legacy `omni` commands, hook commands, and sandbox paths from the original
+Week-2 evidence run.
+
 ## 1. Environment
 
 | Field | Evidence |

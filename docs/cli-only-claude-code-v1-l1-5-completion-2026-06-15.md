@@ -31,7 +31,7 @@ DoD: capture redacts before write, archives unknown transcript lines, and catche
 the sandbox secret classes.
 - `src/omni/redact.py` (regex pack + env reverse lookup + skiplist); `tests/test_redact.py` covers `AKIA…` and `ghp_…` (the sandbox secrets); `tests/test_audit.py` covers audit capture.
 - `src/omni/parse.py` archives unknown lines; `tests/test_parse.py` covers `invalid_json`, `unknown_transcript_shape`, and archive truncation.
-- AGENTS safety rules 1–3 (redaction-before-write, `omni hook` always exits 0, hooks never write the DB).
+- AGENTS safety rules 1–3 (redaction-before-write, `cairn hook` always exits 0, hooks never write the DB).
 
 ### Layer 3 — Behavior Eval
 DoD: `memory_effect` branches are stable, cold/warm comparison works, and the
@@ -41,11 +41,11 @@ semantics are documented.
 - Real evidence: `docs/cli-only-claude-code-v1-closeout-2026-06-15.md` (rediscovery 10 → 0).
 
 ### Layer 4 — Verify & Outcome
-DoD: `omni verify` is read-only to Cairn Memory state, every reason code is
+DoD: `cairn verify` is read-only to Cairn Memory state, every reason code is
 documented, and the outcome bridge is stable.
 - `src/omni/verify.py` (read-only connection); `tests/test_verify.py` covers the read-only invariant, every reason code, CLI exit codes, and `ambiguous_qualifier` at the CLI layer.
 - `docs/cli-only-claude-code-v1-verify-reason-codes.md` (new).
-- `omni outcome mark-from-verify` bridge; `scripts/dogfood_ritual.py` orchestration.
+- `cairn outcome mark-from-verify` bridge; `scripts/dogfood_ritual.py` orchestration.
 
 ### Layer 5 — Governed Learning
 DoD: the candidate → approve → render → retire loop is stable and illegal
