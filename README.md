@@ -77,7 +77,7 @@ omni audit secrets
 
 ## 📖 Usage
 
-### 1. Wire up a Claude Code project
+### 1. Wire up a governed agent project
 
 ```powershell
 omni init                              # create the .omni/ layout
@@ -98,7 +98,7 @@ omni inject opencode --mode link       # add memory.md to OpenCode instructions
 <!-- omni:end -->
 ```
 
-### 2. After a Claude Code run
+### 2. After a governed agent run
 
 ```powershell
 omni ingest                            # import redacted traces -> note the run_id
@@ -213,11 +213,10 @@ The original v1 release deliberately proved the local Claude Code loop first.
 The current repo has since added Phase B governance features and the approved
 Phase C slices that are already present in code.
 
-Phase C C-2 is implemented in this branch for OpenCode v0. It adds
+Phase C C-2 is implemented and dogfooded in this branch for OpenCode v0. It adds
 project-local `opencode.json` instruction injection and UTF-8 `opencode run
 --format json` transcript ingest, with no plugin background process, no MCP
-server, and no new migration. Dogfood closeout evidence is the remaining C-2
-acceptance step.
+server, and no new migration.
 
 | ✅ Current repo includes | 🚫 Still out of scope |
 |---|---|
@@ -245,7 +244,7 @@ verification, and failure governance across engines.
 | Stage | What it adds | Status |
 |---|---|:--:|
 | **① OmniMemory Kernel** | capture → redact → eval → outcome → reviewed experience / failure memory → verify bridge | ✅ done |
-| **② OmniBridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; MCP wrapper builds on this | ✅ foundation shipped; C-2 code landed, dogfood pending; C-4 pending |
+| **② OmniBridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; MCP wrapper builds on this | ✅ foundation shipped; C-2 shipped; C-4 pending |
 | **③ OmniRuntime** | task lifecycle (`start/status/ls/show/close/abandon/read`) plus verify/outcome close bridge; multi-agent handoff later | ✅ C-5 partial shipped |
 | **④ Product** | multi-agent orchestration, permission tiers, audit reports, memory console | planned |
 

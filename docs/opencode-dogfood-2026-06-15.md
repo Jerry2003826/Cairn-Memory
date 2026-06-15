@@ -249,16 +249,154 @@ Outcome ledger evidence:
 }
 ```
 
+## C-2 OpenCode v0 Acceptance Run
+
+After C-2 implementation, a new sandbox run validated the shipped OpenCode
+surface: project-local `opencode.json` instruction injection plus UTF-8
+`opencode run --format json` transcript ingest using `--engine opencode`.
+
+Environment:
+
+- Sandbox: `C:\Users\Jiarui Li\AppData\Local\Temp\omniagent-opencode-c2-20260615-183407`
+- OpenCode version: `1.17.7`
+- Invocation: `npx -y opencode-ai@latest run --format json --model apiyi/qwen3.7-max --agent build --dangerously-skip-permissions`
+- Provider config: sandbox-local `opencode.json`, with `APIYI_API_KEY` read from
+  the environment through `{env:APIYI_API_KEY}`. No key was written to the repo
+  or printed in this record.
+
+Preconditions:
+
+```powershell
+python -m omni.cli audit secrets
+python -m omni.cli ingest bootstrap_static
+python -m omni.cli render
+python -m omni.cli inject opencode --mode link
+python -m omni.cli task start "OpenCode C-2 validates sandbox using injected OmniAgent memory and read surfaces" --task-type validation
+```
+
+The injected `opencode.json` preserved the provider config and added exactly one
+instruction entry:
+
+```json
+{
+  "api_key_placeholder_preserved": true,
+  "has_memory_instruction": true,
+  "instruction_count": 1
+}
+```
+
+OpenCode was instructed not to inspect project source files and to use the
+OmniAgent surfaces before running verification. The UTF-8 JSONL transcript
+contained these tool-use events:
+
+| Seq | Command | Exit |
+|---:|---|---:|
+| 2 | `python -m omni.cli memory read` | 0 |
+| 3 | `python -m omni.cli failure read` | 0 |
+| 4 | `python -m omni.cli verify plan` | 0 |
+| 5 | `python -m omni.cli task read` | 0 |
+| 6 | `pnpm run test` | 0 |
+
+OpenCode's final response stated that `pnpm run test` came from OmniAgent
+`verify plan` and that the command passed with `sandbox test ok`.
+
+The transcript was ingested through the shipped C-2 CLI:
+
+```powershell
+python -m omni.cli ingest opencode_c2_run --engine opencode --transcript opencode-c2-run2.jsonl
+```
+
+Ingest evidence:
+
+```text
+run_ids=opencode_c2_run events_inserted=5 queue_drained=0
+```
+
+`omni run show opencode_c2_run` displayed the expected command previews:
+
+```text
+seq | ts | type | tool | exit | artifact | command
+1 | 1781512712661 | tool_use | bash | 0 | 4fb0b481a113 | python -m omni.cli memory read
+2 | 1781512713668 | tool_use | bash | 0 | 7a76fad0d876 | python -m omni.cli failure read
+3 | 1781512714808 | tool_use | bash | 0 | 7e6a6c018fbe | python -m omni.cli verify plan
+4 | 1781512715935 | tool_use | bash | 0 | b7323e315bf3 | python -m omni.cli task read
+5 | 1781512717439 | tool_use | bash | 0 | 45b52191404e | pnpm run test
+```
+
+The run was stored with `engine = "opencode"` and attached to the open task:
+
+```json
+{
+  "engine": "opencode",
+  "run_id": "opencode_c2_run",
+  "task_id": "task_cc860f6c5c1347c4af73034cce7bf400"
+}
+```
+
+The task was closed through the approved CLI writer:
+
+```powershell
+python -m omni.cli task close --success --from-verify
+```
+
+Task evidence:
+
+```json
+{
+  "attached_run_count": 1,
+  "evidence": {
+    "run_count": 1,
+    "source": "task_close",
+    "verify_reason_code": "passed"
+  },
+  "outcome_status": "success",
+  "status": "closed",
+  "task_type": "validation",
+  "tests_status": "passed"
+}
+```
+
+Outcome ledger evidence:
+
+```json
+{
+  "final_command": "pnpm run test",
+  "outcome_id": "outcome_803679fae5cd4de781ab05585cdf0016",
+  "run_id": "opencode_c2_run",
+  "status": "success",
+  "task_type": "validation",
+  "tests_status": "passed",
+  "verify": {
+    "command": "pnpm run test",
+    "exit_code": 0,
+    "reason_code": "passed",
+    "selection_mode": "task",
+    "selection_reason": "selected active uses_test_command fact"
+  }
+}
+```
+
+The sandbox audit passed after C-2 ingest and task close:
+
+```json
+{
+  "fixtures_missing": false,
+  "negative_failures": [],
+  "ok": true,
+  "omni_leaks": [],
+  "positive_failures": []
+}
+```
+
 ## Conclusion
 
-This constrained run proves the current Phase C governed brain layer can be
-consumed by a real non-Claude agent through read-only CLI surfaces, then leave
-run, task, and outcome evidence through the existing approved write path. In
-this transcript, OpenCode ran the selected verification command without separate
-shell-level rediscovery file reads before the test. It does not prove baseline
-behavior improvement without more cold/warm OpenCode samples.
+The first constrained run proved that a real non-Claude agent could consume
+OmniAgent read surfaces and leave task/outcome evidence through approved CLI
+writers. The later C-2 acceptance run proves the shipped OpenCode v0 path:
+project-local instruction injection, strict UTF-8 JSONL transcript ingest,
+`runs.engine = "opencode"`, task attachment, and outcome ledger closure.
 
-It does not prove the full C-2 adapter. That remains the next governed
-integration step: capture OpenCode output through a redacted append-only seam,
-record the observed schema and encoding behavior, and keep all DB writes behind
-the existing CLI writer path.
+This still does not prove broad behavioral improvement across multiple
+OpenCode cold/warm samples. It proves the governed second-engine path is clear,
+read-only from the agent side, and effective for one validation task without
+adding MCP, background capture, permission tiers, or external DB writes.

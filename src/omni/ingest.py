@@ -296,7 +296,7 @@ def _ensure_run(
     run_id: str,
     transcript: Path | None,
     *,
-    run_engine: str,
+    run_engine: str = "claude_code",
 ) -> None:
     conn.execute(
         """

@@ -38,7 +38,7 @@
 - [x] Update `README.md` and `README.zh-CN.md` to show C-2 as approved/in progress without listing not-yet-implemented commands in the current command tables.
 - [x] Update `docs/opencode-dogfood-2026-06-15.md` with the sanitized recorded `tool_use` JSONL row shape that C-2 parser tests will bind to.
 - [x] Run `pytest -q tests/test_docs.py`.
-- [ ] Commit with message `day21: c2 governance — approve OpenCode v0 scope`.
+- [x] Commit with message `day21: c2 governance — approve OpenCode v0 scope`.
 
 ## Task 2: OpenCode Inject Target
 
@@ -131,9 +131,9 @@ Expected normalized event: `event_type == "tool_use"`, `tool == "bash"`,
 
 ## Task 5: Dogfood And Closeout Evidence
 
-- [ ] Update `docs/opencode-dogfood-2026-06-15.md` with the new C-2 run, keeping the earlier constrained read-surface run as historical evidence.
-- [ ] Run sandbox OpenCode with `opencode.json.instructions` injection, ingest the UTF-8 JSONL transcript using `--engine opencode`, then record task/outcome evidence through existing CLI writers.
-- [ ] Run:
+- [x] Update `docs/opencode-dogfood-2026-06-15.md` with the new C-2 run, keeping the earlier constrained read-surface run as historical evidence.
+- [x] Run sandbox OpenCode with `opencode.json.instructions` injection, ingest the UTF-8 JSONL transcript using `--engine opencode`, then record task/outcome evidence through existing CLI writers.
+- [x] Run:
 
 ```powershell
 pytest -q
@@ -142,8 +142,8 @@ python -m omni.cli audit secrets
 pytest -q tests/test_capture.py tests/test_inject.py tests/test_parse.py tests/test_db.py tests/test_cli_smoke.py
 ```
 
-- [ ] Request code review and fix every Critical/Important issue.
-- [ ] Commit with message `day21: dogfood — prove OpenCode C-2 loop`.
+- [x] Request code review and fix every Critical/Important issue.
+- [x] Commit with message `day21: dogfood — prove OpenCode C-2 loop`.
 
 ## Definition Of Done
 
