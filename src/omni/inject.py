@@ -69,7 +69,7 @@ def inject(root: Path | str, *, target: str, mode: str) -> InjectResult:
         raise ValueError(f"unknown inject target: {target}") from exc
 
     base = Path(root).resolve()
-    path = base / inject_target.filename
+    path = _project_local_file(base, inject_target)
 
     if inject_target.name == "opencode":
         return _inject_opencode(path, inject_target, mode)
@@ -93,6 +93,21 @@ def inject(root: Path | str, *, target: str, mode: str) -> InjectResult:
 
 def inject_claude(root: Path | str, *, mode: str) -> InjectResult:
     return inject(root, target="claude", mode=mode)
+
+
+def _project_local_file(base: Path, target: InjectTarget) -> Path:
+    filename = Path(target.filename)
+    if filename.name != target.filename or filename.is_absolute():
+        raise ValueError(f"invalid inject filename: {target.filename}")
+
+    path = base / filename
+    if target.name == "opencode" and path.is_symlink():
+        raise ValueError(f"invalid {target.filename}: symlinks are not allowed")
+
+    resolved_parent = path.parent.resolve()
+    if resolved_parent != base:
+        raise ValueError(f"invalid {target.filename}: target must stay project-local")
+    return path
 
 
 def _linked_text(current: str, target: InjectTarget) -> str:
@@ -141,8 +156,6 @@ def _inject_opencode(path: Path, target: InjectTarget, mode: str) -> InjectResul
         return InjectResult(path=path, body=preview, diff="", wrote=False)
     if mode != "link":
         raise ValueError(f"unsupported inject mode: {mode}")
-    if path.is_symlink():
-        raise ValueError(f"invalid {target.filename}: symlinks are not allowed")
 
     current = path.read_text(encoding="utf-8-sig") if path.exists() else ""
     data = _opencode_config(current, label=target.filename) if current else {}
@@ -160,7 +173,8 @@ def _inject_opencode(path: Path, target: InjectTarget, mode: str) -> InjectResul
     updated["instructions"] = [*instructions, target.import_line]
     rendered = _opencode_rendered_config(updated)
     rendered_diff = _redacted_text(_diff(current, rendered, target))
-    path.write_text(rendered, encoding="utf-8")
+    # The path is a fixed target filename validated by _project_local_file.
+    path.write_text(rendered, encoding="utf-8")  # NOSONAR
     return InjectResult(path=path, body=preview, diff=rendered_diff, wrote=True)
 
 

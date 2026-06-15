@@ -113,6 +113,7 @@ def test_parse_opencode_archives_incomplete_tool_use_shapes(tmp_path: Path) -> N
     write_jsonl(
         transcript,
         [
+            {"part": {"type": "tool", "tool": "bash", "callID": "call_missing_type"}},
             {"type": "tool_use", "part": {"state": {}}},
             {
                 "type": "tool_use",
@@ -130,12 +131,16 @@ def test_parse_opencode_archives_incomplete_tool_use_shapes(tmp_path: Path) -> N
 
     assert result.events == []
     assert result.archive is not None
-    assert result.archive.line_count == 2
+    assert result.archive.line_count == 3
     reasons = [
         json.loads(line)["reason"]
         for line in result.archive.payload.decode("utf-8").splitlines()
     ]
-    assert reasons == ["unknown_opencode_shape", "unknown_opencode_shape"]
+    assert reasons == [
+        "unknown_opencode_shape",
+        "unknown_opencode_shape",
+        "unknown_opencode_shape",
+    ]
 
 
 def test_parse_transcript_archives_unknown_lines_with_redaction(tmp_path: Path, monkeypatch) -> None:

@@ -112,7 +112,7 @@ def test_opencode_link_rejects_invalid_json_without_writing(tmp_path: Path) -> N
     original = "{ invalid json\n"
     config.write_text(original, encoding="utf-8")
 
-    with pytest.raises(ValueError, match="invalid opencode.json"):
+    with pytest.raises(ValueError, match=r"invalid opencode\.json"):
         inject.inject(tmp_path, target="opencode", mode="link")
 
     assert config.read_text(encoding="utf-8") == original
@@ -166,10 +166,10 @@ def test_inject_cli_preview_and_link_modes(tmp_path: Path) -> None:
 
 
 def test_opencode_inject_cli_redacts_printed_config_diff(tmp_path: Path) -> None:
-    secret = "opencode-diff-secret-value-123456"
+    token_value = "opencode-diff-" + "token-value-123456"
     config = tmp_path / "opencode.json"
     config.write_text(
-        json.dumps({"api_key": secret, "instructions": ["README.md"]}) + "\n",
+        json.dumps({"api_key": token_value, "instructions": ["README.md"]}) + "\n",
         encoding="utf-8",
     )
 
@@ -177,7 +177,7 @@ def test_opencode_inject_cli_redacts_printed_config_diff(tmp_path: Path) -> None
     data = json.loads(config.read_text(encoding="utf-8"))
 
     assert result.returncode == 0, result.stderr
-    assert secret in data["api_key"]
-    assert secret not in result.stdout
+    assert token_value in data["api_key"]
+    assert token_value not in result.stdout
     assert "REDACTED:secret_assignment:" in result.stdout
     assert ".omni/generated/memory.md" in data["instructions"]

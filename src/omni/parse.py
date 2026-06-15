@@ -110,8 +110,13 @@ def parse_transcript(
                 continue
 
             if not isinstance(parsed, dict) or not _event_type(parsed):
+                reason = (
+                    "unknown_opencode_shape"
+                    if engine == "opencode"
+                    else "unknown_transcript_shape"
+                )
                 record, status, detectors = _archive_record(
-                    line_no, "unknown_transcript_shape", raw_line
+                    line_no, reason, raw_line
                 )
                 archive_line_count += 1
                 archive_payload_bytes, archive_omitted_lines = _append_archive_record(
