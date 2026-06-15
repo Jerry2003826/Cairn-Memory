@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
+import os
 import sqlite3
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from omni import db
 from omni import ingest
+from omni import outcome
 from omni import task
 from omni.dbaccess import connect_project_readonly
 from omni.ids import project_id_for_path
@@ -177,4 +184,158 @@ def test_transition_to_closed_is_idempotent(tmp_path: Path) -> None:
     now = "2026-06-15T00:00:00Z"
     task._transition_task(conn, started["task_id"], target="closed", now=now)
     task._transition_task(conn, started["task_id"], target="closed", now=now)
+    conn.close()
+
+
+def test_ingest_ignores_stale_meta_for_closed_task(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "stale meta")
+    task_id = started["task_id"]
+    task.close_task(conn, tmp_path, status="unknown")
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?, ?)",
+        (task.CURRENT_TASK_META_KEY, task_id),
+    )
+    conn.commit()
+    ingest._ensure_run(conn, tmp_path, "run_stale_meta", None)
+    conn.commit()
+    row = conn.execute(
+        "SELECT task_id FROM runs WHERE run_id = 'run_stale_meta'"
+    ).fetchone()
+    assert row["task_id"] is None
+    conn.close()
+
+
+def test_representative_run_picks_most_recent_started_at(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "multi run")
+    task_id = started["task_id"]
+    seed_run(conn, tmp_path, "run_older")
+    seed_run(conn, tmp_path, "run_newer")
+    conn.execute(
+        "UPDATE runs SET task_id = ?, started_at = ? WHERE run_id = ?",
+        (task_id, "2026-06-14T00:00:00Z", "run_older"),
+    )
+    conn.execute(
+        "UPDATE runs SET task_id = ?, started_at = ? WHERE run_id = ?",
+        (task_id, "2026-06-15T12:00:00Z", "run_newer"),
+    )
+    conn.commit()
+    assert task._representative_run_id(conn, task_id) == "run_newer"
+    conn.close()
+
+
+def test_close_from_verify_matches_standalone_outcome_reason_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "verify close", task_type="validation")
+    seed_run(conn, tmp_path, "run_verify_close")
+    seed_run(conn, tmp_path, "run_verify_standalone")
+    conn.execute(
+        "UPDATE runs SET task_id = ? WHERE run_id = 'run_verify_close'",
+        (started["task_id"],),
+    )
+    conn.commit()
+
+    verify_payload = {
+        "status": "failed",
+        "reason_code": "failed_exit_code",
+        "command": "pytest -q",
+        "exit_code": 1,
+        "timed_out": False,
+        "reason": "verification command failed",
+        "selection_mode": "auto",
+        "selection_reason": "selected active uses_test_command fact",
+        "duration_ms": 9,
+        "timeout_seconds": 120,
+        "predicate": "uses_test_command",
+        "qualifier": "python",
+    }
+
+    def fake_run_preflight(
+        verify_conn: sqlite3.Connection,
+        root: Path | str,
+        *,
+        timeout_seconds: int,
+        qualifier: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert verify_conn is conn
+        assert Path(root) == tmp_path
+        return verify_payload
+
+    monkeypatch.setattr(
+        outcome,
+        "verify",
+        SimpleNamespace(run_preflight=fake_run_preflight),
+        raising=False,
+    )
+
+    standalone = outcome.mark_outcome_from_verify(
+        conn, "run_verify_standalone", tmp_path, status="failed"
+    )
+    closed = task.close_task(
+        conn, tmp_path, status="failed", from_verify=True, timeout_seconds=120
+    )
+    task_outcome = conn.execute(
+        "SELECT tests_status, evidence FROM outcomes WHERE run_id = 'run_verify_close'"
+    ).fetchone()
+    assert closed["tests_status"] == standalone["tests_status"] == "failed"
+    task_evidence = json.loads(task_outcome["evidence"])
+    assert task_evidence["verify"]["reason_code"] == "failed_exit_code"
+    assert (
+        task_evidence["verify"]["reason_code"]
+        == standalone["evidence"]["verify"]["reason_code"]
+    )
+    conn.close()
+
+
+def test_close_loses_race_to_abandon_and_writes_no_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "race close")
+    seed_run(conn, tmp_path, "run_race_close")
+    conn.execute(
+        "UPDATE runs SET task_id = ? WHERE run_id = 'run_race_close'",
+        (started["task_id"],),
+    )
+    conn.commit()
+
+    real_transition = task._transition_task
+    flipped = {"done": False}
+
+    def racing_transition(
+        conn_arg: sqlite3.Connection,
+        task_id: str,
+        *,
+        target: str,
+        now: str,
+    ) -> None:
+        if not flipped["done"]:
+            flipped["done"] = True
+            other = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+            try:
+                task.abandon_task(other, tmp_path, reason="won race")
+            finally:
+                other.close()
+        return real_transition(conn_arg, task_id, target=target, now=now)
+
+    monkeypatch.setattr(task, "_transition_task", racing_transition)
+
+    with pytest.raises(ValueError, match="task already abandoned|task transition failed"):
+        task.close_task(conn, tmp_path, status="success")
+
+    assert (
+        conn.execute(
+            "SELECT 1 FROM outcomes WHERE run_id = 'run_race_close'"
+        ).fetchone()
+        is None
+    )
+    row = conn.execute(
+        "SELECT status FROM tasks WHERE task_id = ?",
+        (started["task_id"],),
+    ).fetchone()
+    assert row["status"] == "abandoned"
     conn.close()
