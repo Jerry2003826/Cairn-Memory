@@ -719,6 +719,9 @@ def _cmd_inject(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
         _print_diff(exc.diff)
         print(str(exc), file=sys.stderr)
         return 2
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     _print_diff(result.body if args.mode == "preview" else result.diff)
     return 0
 

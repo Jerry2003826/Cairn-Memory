@@ -42,7 +42,7 @@
 
 ## Task 2: OpenCode Inject Target
 
-- [ ] Add failing tests in `tests/test_inject.py`:
+- [x] Add failing tests in `tests/test_inject.py`:
 
 ```python
 def test_opencode_preview_prints_instruction_config_without_writing(tmp_path: Path) -> None:
@@ -64,12 +64,13 @@ def test_opencode_link_appends_instruction_once_and_preserves_config(tmp_path: P
     assert data["instructions"] == ["README.md", ".omni/generated/memory.md"]
 ```
 
-- [ ] Run `pytest -q tests/test_inject.py::test_opencode_preview_prints_instruction_config_without_writing tests/test_inject.py::test_opencode_link_appends_instruction_once_and_preserves_config` and verify the tests fail because `opencode` is not a known target.
-- [ ] Implement an OpenCode injection target in `src/omni/inject.py` using the existing `InjectResult` shape. Keep Claude behavior byte-identical.
-- [ ] Add tests for invalid JSON and non-list `instructions`, both proving no write occurs.
-- [ ] Add a CLI-level redaction test with an existing `opencode.json` containing a secret-like value. The link command must preserve the file value but must not print the raw secret in the diff.
-- [ ] Run `pytest -q tests/test_inject.py`.
-- [ ] Commit with message `day21: inject — add OpenCode instructions target`.
+- [x] Run `pytest -q tests/test_inject.py::test_opencode_preview_prints_instruction_config_without_writing tests/test_inject.py::test_opencode_link_appends_instruction_once_and_preserves_config` and verify the tests fail because `opencode` is not a known target.
+- [x] Implement an OpenCode injection target in `src/omni/inject.py` using the existing `InjectResult` shape. Keep Claude behavior byte-identical.
+- [x] Add tests for invalid JSON and non-list `instructions`, both proving no write occurs.
+- [x] Add a CLI-level redaction test with an existing `opencode.json` containing a secret-like value. The link command must preserve the file value but must not print the raw secret in the diff.
+- [x] Add a symlink rejection test proving `omni inject opencode --mode link` cannot follow `opencode.json` outside the project-local write path.
+- [x] Run `pytest -q tests/test_inject.py`.
+- [x] Commit with message `day21: inject — add OpenCode instructions target`.
 
 ## Task 3: OpenCode Engine And Transcript Normalization
 
