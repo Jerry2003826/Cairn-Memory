@@ -1,8 +1,8 @@
-# Plan — OmniBridge Stage ②: capture adapter, inject target, machine-facing read
+# Plan — Cairn Bridge Stage ②: capture adapter, inject target, machine-facing read
 
 Date: 2026-06-15
 Governs: Phase C sub-projects **C-1 (capture/inject seam)** and **C-3 (machine read)**
-of [`docs/omniagent-phase-c-charter.md`](../../omniagent-phase-c-charter.md).
+of [`docs/cairn-memory-phase-c-charter.md`](../../cairn-memory-phase-c-charter.md).
 Status: completed implementation plan. WP-1 through WP-3 have landed. A
 second-engine adapter (C-2) and MCP wrapper (C-4) build on this but remain out
 of scope here.
@@ -22,10 +22,10 @@ Three seams, each small and independently shippable:
 | WP | What | Kind | New command | Status |
 |----|------|------|-------------|---|
 | **WP-1** | Extract a `capture`/engine seam so Claude hook specifics live behind one interface | refactor (no behavior change) | none | done |
-| **WP-2** | Make `inject` target-parametrized (file path + region + import syntax) | refactor (no behavior change) | `omni inject <target>` keeps `claude` working identically | done |
-| **WP-3** | Add a **read-only**, machine-facing JSON read surface (memory / known-failures / verify-plan) | additive | `omni memory read`, `omni failure read`, `omni verify plan` (all `R`) | done |
+| **WP-2** | Make `inject` target-parametrized (file path + region + import syntax) | refactor (no behavior change) | `cairn inject <target>` keeps `claude` working identically | done |
+| **WP-3** | Add a **read-only**, machine-facing JSON read surface (memory / known-failures / verify-plan) | additive | `cairn memory read`, `cairn failure read`, `cairn verify plan` (all `R`) | done |
 
-Completed order: **WP-1 → WP-2 → WP-3**. The remaining OmniBridge proof points
+Completed order: **WP-1 → WP-2 → WP-3**. The remaining Cairn Bridge proof points
 are C-2 (a real second engine) and C-4 (a thin read-only MCP wrapper).
 
 ---
@@ -35,14 +35,14 @@ are C-2 (a real second engine) and C-4 (a thin read-only MCP wrapper).
 Capture → store → brain → render → inject. Only the two ends touch Claude.
 
 ```
-Claude Code hook ──stdin──> `omni hook`
+Claude Code hook ──stdin──> `cairn hook`
   └ hook.capture_hook(payload: bytes)
        ├ redact_minimal(payload)              # redaction-before-write
        ├ write .omni/spool/hook-<ns>-<uuid>.jsonl   record = {meta, payload}
        └ if hook_event_name in {Stop, SessionEnd}:
             write .omni/spool/ingest-<ns>.json  {event, session_id, transcript_path}
 
-`omni ingest`
+`cairn ingest`
   ├ spool.iter_hook_records(root) -> [HookRecord]      # engine-neutral
   ├ spool.drain_ingest_queue(root)                     # engine-neutral
   └ ingest._ingest_one(...)  reconcile transcript+hook by tool_use_id
@@ -61,7 +61,7 @@ inject.inject_claude(root, mode) -> CLAUDE.md managed region  # CLAUDE-BOUND
 - `src/omni/hook.py`
   - `CLAUDE_HOOK_EVENTS` (12 event names), `MATCHER_EVENTS` — used only to install hooks
   - `INGEST_EVENTS = {"Stop", "SessionEnd"}` — which events flush an ingest request
-  - `install_claude_hooks(...)` + `_settings_with_omni_hooks` + `_hook_group` — writes `.claude/settings.json`
+  - `install_claude_hooks(...)` + `_settings_with_cairn_hooks` + `_hook_group` — writes `.claude/settings.json`
   - `_event_for_enqueue` keys on `hook_event_name`
   - `capture_hook` itself is **engine-neutral** except for the `INGEST_EVENTS` check
 - `src/omni/ingest.py`
@@ -89,7 +89,7 @@ These come from [`AGENTS.md`](../../../AGENTS.md) and the Phase C charter. They 
 1. **Redaction-before-write.** Every byte written under `.omni/` passes
    `redact.redact` / `redact_minimal`. No raw-dump path, ever. New capture
    adapters redact in exactly the same place `capture_hook` does.
-2. **`omni hook` (and any capture entrypoint) ALWAYS exits 0.** Never blocks the
+2. **`cairn hook` (and any capture entrypoint) ALWAYS exits 0.** Never blocks the
    host agent, never makes permission decisions, never writes the DB.
 3. **Capture never writes the DB.** Hooks/adapters only append redacted spool
    files. Only the approved write commands in `AGENTS.md` write SQLite.
@@ -134,7 +134,7 @@ Each item is a real defect class found in review of this repo. Read the "why".
    an engine or a field must touch exactly one place.
 
 4. **Behavior-preserving means byte-identical for Claude.** (Defect risk seen:
-   error-message wording is asserted verbatim by tests, e.g. `"OmniMemory database
+   error-message wording is asserted verbatim by tests, e.g. `"Cairn Memory database
    is missing"` vs `"...not found"`.) Refactors in WP-1/WP-2 must not change the
    Claude spool record shape, the `CLAUDE.md` region text, any error string, or
    any exit code. Run the suite before and after; diffs in test expectations are a
@@ -209,7 +209,7 @@ def default() -> CaptureEngine:               # "claude" for now
 3. In `ingest.py`, replace the hard-coded `("PostToolUse", ...)` orders with
    lookups into `engine.event_roles`. Keep reconcile-by-`tool_use_id` as-is.
 4. Move `install_claude_hooks` + helpers into `capture/claude.py` as the engine's
-   `install`. `hook.py` keeps a thin re-export so `omni init --install-claude-hooks`
+   `install`. `hook.py` keeps a thin re-export so `cairn init --install-claude-hooks`
    and existing imports/tests are unchanged. (Update `cli.py` import only.)
 5. Add `tests/test_capture.py`: registry get/unknown, default engine identity,
    and an assertion that `claude` engine constants equal the old literals.
@@ -260,7 +260,7 @@ def inject(root, *, target: str, mode: str) -> InjectResult: ...
    `return inject(root, target="claude", mode=mode)` so existing callers/tests are
    untouched. `ManagedRegionEditedError` message must stay `"CLAUDE.md managed
    region was edited; refusing overwrite"` for the claude target (assert it).
-3. CLI: `omni inject claude ...` keeps working; add `omni inject <target>` only for
+3. CLI: `cairn inject claude ...` keeps working; add `cairn inject <target>` only for
    targets that actually exist in `TARGETS`. Unknown target ⇒ `parser.error` /
    exit 2, no traceback.
 4. Tests: parametrize the existing inject tests over the `claude` target;
@@ -277,21 +277,21 @@ def inject(root, *, target: str, mode: str) -> InjectResult: ...
 ## 6. WP-3 — Machine-facing read surface
 
 **Goal:** stable, read-only, **leak-free** JSON that an external engine can consume
-without parsing human text. This is the core new value of OmniBridge.
+without parsing human text. This is the core new value of Cairn Bridge.
 
 ### 6.1 Commands (all read-only `R`)
 
 | Command | Returns (JSON) | Source |
 |---------|----------------|--------|
-| `omni memory read` | the rendered memory the next run would see, structured: `{schema_version, sections:[{kind, items:[...]}]}` | `render` model, **post-redaction** |
-| `omni failure read` | active known-failure patterns: `[{summary, suggested_action, command_norm?}]` | `failure.list_patterns(status="active")`, stripped |
-| `omni verify plan` | what `verify` *would* run without running it: `{predicate, qualifier, profile, candidate_commands, selection_mode}` | verify selection layer, **no execution** |
+| `cairn memory read` | the rendered memory the next run would see, structured: `{schema_version, sections:[{kind, items:[...]}]}` | `render` model, **post-redaction** |
+| `cairn failure read` | active known-failure patterns: `[{summary, suggested_action, command_norm?}]` | `failure.list_patterns(status="active")`, stripped |
+| `cairn verify plan` | what `verify` *would* run without running it: `{predicate, qualifier, profile, candidate_commands, selection_mode}` | verify selection layer, **no execution** |
 
 Notes:
 - These are **machine** views. Output is JSON via the existing `jsonio.as_json`
   / `dump_json` (already redacts), `schema_version` is an integer literal you bump
   on breaking changes.
-- `verify plan` must **not** execute anything (today's `omni verify` does run the
+- `verify plan` must **not** execute anything (today's `cairn verify` does run the
   command — `plan` is the dry-run sibling and stays read-only with no process
   spawn).
 
@@ -329,7 +329,7 @@ Notes:
 
 - `pytest -q` green (state the pass/skip counts in each commit body).
 - `git diff --check` clean (no whitespace errors).
-- `omni audit secrets` exits 0 when any runtime/`.omni` path changed.
+- `cairn audit secrets` exits 0 when any runtime/`.omni` path changed.
 - Claude path is byte-identical for capture spool, ingest request, and `CLAUDE.md`.
 - New read commands are read-only and pass metadata-leak tests.
 - `AGENTS.md` read/write command lists updated; new modules added to

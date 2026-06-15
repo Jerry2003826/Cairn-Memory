@@ -1,8 +1,8 @@
-# Plan — OmniRuntime Stage ③: task lifecycle (run → task model shift)
+# Plan — Cairn Runtime Stage ③: task lifecycle (run → task model shift)
 
 Date: 2026-06-15
-Targets: OmniAgent Stage ③ (OmniRuntime) of
-[`docs/omniagent-phase-c-charter.md`](../../omniagent-phase-c-charter.md).
+Targets: Cairn Memory Stage ③ (Cairn Runtime) of
+[`docs/cairn-memory-phase-c-charter.md`](../../cairn-memory-phase-c-charter.md).
 Status: completed implementation plan for C-5. WP-0 through WP-4 have landed.
 
 > **Read this whole file before writing any code.** This plan changes the data
@@ -12,7 +12,7 @@ Status: completed implementation plan for C-5. WP-0 through WP-4 have landed.
 > (anti-patterns) are hard rules — a violation is grounds for reverting the commit.
 
 > **Status note.** WP-0 landed before any schema/code work: `AGENTS.md` and the
-> Phase C charter now approve migration `008_task_runtime.sql` and `omni task *`.
+> Phase C charter now approve migration `008_task_runtime.sql` and `cairn task *`.
 > Future task-runtime expansions still need their own charter row before code.
 
 ---
@@ -25,7 +25,7 @@ Status: completed implementation plan for C-5. WP-0 through WP-4 have landed.
 | **WP-1** | Migration `008_task_runtime.sql`: `tasks` table + `runs.task_id` (nullable) | schema (write) | done |
 | **WP-2** | Task lifecycle core: `start` / `status` / `ls` / `show` / `close` / `abandon` | new module + commands | done |
 | **WP-3** | Bridge existing verify + outcome into a task (no logic forks) | reuse | done |
-| **WP-4** | Read-only task evidence view (leak-free JSON, machine-facing) | reuse WP-3-of-OmniBridge pattern | done |
+| **WP-4** | Read-only task evidence view (leak-free JSON, machine-facing) | reuse WP-3-of-Cairn Bridge pattern | done |
 
 Completed order: **WP-0 → WP-1 → WP-2 → WP-3 → WP-4.** Multi-agent handoff is
 explicitly **out of scope** (Section 9); this plan shipped the single-task
@@ -38,22 +38,22 @@ closed loop first.
 **Before this plan (passive, after-the-fact):**
 
 ```
-Claude hook ─> spool ─> `omni ingest` ─> runs row (status open/closed) + events
-                                          └ `omni outcome mark[-from-verify] <run_id>`
-                                          └ `omni eval run <run_id>`
+Claude hook ─> spool ─> `cairn ingest` ─> runs row (status open/closed) + events
+                                          └ `cairn outcome mark[-from-verify] <run_id>`
+                                          └ `cairn eval run <run_id>`
 ```
 
 A `run` is discovered *after* an agent session, reconstructed from a redacted
 trace. There is no object that represents "the unit of work the agent was asked to
 do." `outcome` and `eval` are keyed on a single `run_id`.
 
-**Vision (active, in-the-loop) — OmniRuntime:**
+**Vision (active, in-the-loop) — Cairn Runtime:**
 
 ```
-`omni task start "intent"` ─> task row (open)
+`cairn task start "intent"` ─> task row (open)
    ⟳ agent works; one or more runs are ingested and attached to the open task
-`omni task close --success --from-verify` ─> runs the known verify command, records evidence on the task
-`omni task close --unknown`               ─> records the task outcome, status=closed
+`cairn task close --success --from-verify` ─> runs the known verify command, records evidence on the task
+`cairn task close --unknown`               ─> records the task outcome, status=closed
 ```
 
 `task` becomes the first-class entity; `run` is an execution record under it.
@@ -80,8 +80,8 @@ All Phase B/C invariants still apply. Re-stated, plus task-specific ones:
 
 1. **Redaction-before-write.** A task `title`/intent is user text → it passes
    `redact_text` before it is stored. No raw intent string in the DB.
-2. **`omni hook` still always exits 0 and never writes the DB.** Task attachment
-   happens inside `omni ingest` (an approved write command), **not** in the hook.
+2. **`cairn hook` still always exits 0 and never writes the DB.** Task attachment
+   happens inside `cairn ingest` (an approved write command), **not** in the hook.
    Do not add a DB write to the capture path to "know the current task."
 3. **Read-only stays read-only.** `task status` / `task ls` / `task show` open
    SQLite `mode=ro` via `dbaccess.connect_project_readonly`, run no migration.
@@ -107,7 +107,7 @@ All Phase B/C invariants still apply. Re-stated, plus task-specific ones:
 
 ## 3. Anti-patterns to avoid (the exact mistakes made in this repo before — do NOT repeat)
 
-The first eight are the same defect classes as the OmniBridge plan; 9–12 are
+The first eight are the same defect classes as the Cairn Bridge plan; 9–12 are
 specific to introducing the task entity.
 
 1. **No twin functions.** (Seen: `connect_project_readonly` vs `…_verify`.) Do not
@@ -223,7 +223,7 @@ _TERMINAL = frozenset({"closed", "abandoned"})
 
 ### 4.3 run ↔ task ↔ outcome relationship
 
-- **Attachment:** `task start` writes `meta.current_task_id`. `omni ingest`, when a
+- **Attachment:** `task start` writes `meta.current_task_id`. `cairn ingest`, when a
   current task exists, stamps `runs.task_id = current_task_id` on runs it
   creates/updates (one new line in the existing `_ensure_run`/ingest path, guarded
   so tasks-absent ingest is unchanged). Runs ingested with no current task keep
@@ -240,13 +240,13 @@ _TERMINAL = frozenset({"closed", "abandoned"})
 
 | Command | R/W | Notes |
 |---------|-----|-------|
-| `omni task start "<intent>"` `[--task-type T]` | **W** | redact title; create open task; set `current_task_id`; error if one already open |
-| `omni task status` | **R** | the current open task (or "none") + attached run count |
-| `omni task ls [--status open\|closed\|abandoned\|all]` | **R** | list tasks |
-| `omni task show <task_id>` | **R** | one task + attached run ids count (ids gated in read-view) |
-| `omni task close (--success\|--failed\|--unknown) [--from-verify ...]` | **W** | record outcome via WP-3, status=closed, clear pointer |
-| `omni task abandon [--reason ...]` | **W** | status=abandoned, clear pointer |
-| `omni task read` | **R** | current-project machine-facing leak-free JSON (WP-4) |
+| `cairn task start "<intent>"` `[--task-type T]` | **W** | redact title; create open task; set `current_task_id`; error if one already open |
+| `cairn task status` | **R** | the current open task (or "none") + attached run count |
+| `cairn task ls [--status open\|closed\|abandoned\|all]` | **R** | list tasks |
+| `cairn task show <task_id>` | **R** | one task + attached run ids count (ids gated in read-view) |
+| `cairn task close (--success\|--failed\|--unknown) [--from-verify ...]` | **W** | record outcome via WP-3, status=closed, clear pointer |
+| `cairn task abandon [--reason ...]` | **W** | status=abandoned, clear pointer |
+| `cairn task read` | **R** | current-project machine-facing leak-free JSON (WP-4) |
 
 Wire writers through `connect_project_migrate`; readers through `_run_db_command(readonly=True, …)`.
 
@@ -258,8 +258,8 @@ Wire writers through `connect_project_migrate`; readers through `_run_db_command
 
 Task runtime is forbidden in the current charter. Before any code:
 
-1. Add a charter section (amend `docs/omniagent-phase-c-charter.md`, or open
-   `docs/omniagent-phase-d-charter.md`) that:
+1. Add a charter section (amend `docs/cairn-memory-phase-c-charter.md`, or open
+   `docs/cairn-memory-phase-d-charter.md`) that:
    - **unfreezes** "task runtime & lifecycle" as approved direction,
    - registers **migration 008** in a charter row (the migration-approval process
      in Phase B charter §5 requires the row to exist *before* implementation),
@@ -269,7 +269,7 @@ Task runtime is forbidden in the current charter. Before any code:
    approved-for-this-phase list; add the new `task` commands to the read/write
    command lists; bump the "approved migrations" line to include `008`.
 3. DoD: charter row exists naming `008_task_runtime.sql` and the `tasks` table; the
-   AGENTS read/write lists name every `omni task *` command. No code yet.
+   AGENTS read/write lists name every `cairn task *` command. No code yet.
 
 ### WP-1 — Migration 008 (schema)
 
@@ -315,7 +315,7 @@ Task runtime is forbidden in the current charter. Before any code:
    outcome_status, tests_status, run_count}]}`, stripped of `task_id`/run ids/
    evidence/timestamps via the existing redaction path.
 2. Declarative field allowlist (like `PATTERN_READ_VIEW_FIELDS`), not a del-list.
-3. `omni task read` wired read-only; leak test reusing the OmniBridge
+3. `cairn task read` wired read-only; leak test reusing the Cairn Bridge
    `assert_no_metadata_leak` helper, including an adversarial seed (ids in evidence).
 
 ---
@@ -363,7 +363,7 @@ Task runtime is forbidden in the current charter. Before any code:
   runs sit under one task, but cross-agent handoff *protocol*, ownership transfer,
   and "who holds the task now" are a later step. Build the single-task loop first;
   let a real second-engine handoff need reshape it (same YAGNI discipline that kept
-  OmniBridge clean).
+  Cairn Bridge clean).
 - **Permission tiers, scheduling, assignees, priorities, blocked/paused states.**
 - **Any dashboard/TUI/console** (Stage ④).
 - **Auto-creating memory or auto-inferring success on close** — banned by §2.4.

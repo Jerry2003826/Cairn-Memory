@@ -39,7 +39,7 @@ def run_preflight(
     task_type: str | None = None,
     profile: str | None = None,
 ) -> dict[str, Any]:
-    """Execute the active project test command without writing Omni state."""
+    """Execute the active project test command without writing Cairn Memory state."""
 
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")

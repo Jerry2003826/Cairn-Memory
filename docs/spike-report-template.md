@@ -1,4 +1,4 @@
-# OmniMemory Spike Report
+# Cairn Memory Spike Report
 
 ## 1. Environment
 

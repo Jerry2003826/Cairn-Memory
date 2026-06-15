@@ -1,7 +1,7 @@
 # Stage Dogfood Acceptance - 2026-06-14
 
 This record packages the latest real-project dogfood evidence for the current
-OmniMemory stage after Failure Lifecycle UX v0.
+Cairn Memory stage after Failure Lifecycle UX v0.
 
 It does not add a new Claude Code run.
 
@@ -40,7 +40,7 @@ Excluded surfaces:
 
 ## Revisions
 
-OmniMemory checkout under test before this record:
+Cairn Memory checkout under test before this record:
 
 ```text
 main / origin/main: de6b4ecb106da8a1961f381a8789dab00d41fc4c
@@ -64,7 +64,7 @@ prompt: Please validate this project and tell me whether the current setup works
 
 ## Gates
 
-OmniMemory checkout:
+Cairn Memory checkout:
 
 ```text
 where omni: <PYTHON_SCRIPTS>\omni.exe
@@ -242,7 +242,7 @@ Reasons:
 - The warm outcome is marked `success` with `tests_status=passed`.
 - The active Known Failure pattern is visible, renders into memory, and has
   clear retire-only lifecycle metadata.
-- `omni audit secrets` passed in both the OmniMemory checkout and target project.
+- `omni audit secrets` passed in both the Cairn Memory checkout and target project.
 
 Limits:
 
@@ -262,7 +262,7 @@ for any new memory feature. The follow-up section below records that check.
 
 ## Fresh Follow-up Warm Run
 
-After this record was merged, a fresh warm run was executed from OmniMemory
+After this record was merged, a fresh warm run was executed from Cairn Memory
 `main` at `adf646efd4f0ea0acedbe0c077fbf5ed3b2ed01e`.
 
 The target project gate was rechecked before the run:
@@ -375,7 +375,7 @@ the same validation fast path is active.
 ## Post-test Wording Fresh Warm Run
 
 After the post-test command wording retune was merged, the target project was
-rendered again from OmniMemory `main` at:
+rendered again from Cairn Memory `main` at:
 
 ```text
 main / origin/main: 2d6294a5d39a7ba86de6c1c622507904d3b2b67d

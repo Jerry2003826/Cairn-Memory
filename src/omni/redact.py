@@ -1,4 +1,4 @@
-"""Minimal irreversible redaction for OmniMemory content."""
+"""Minimal irreversible redaction for Cairn Memory content."""
 
 from __future__ import annotations
 

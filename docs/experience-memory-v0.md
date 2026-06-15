@@ -11,8 +11,8 @@ by itself; treat a single-run result as evidence about observed
 behavior, and use cold/warm comparison when making a memory-impact claim.
 
 ```bash
-omni eval run <run_id>
-omni eval dogfood --cold <run_id> --warm <run_id>
+cairn eval run <run_id>
+cairn eval dogfood --cold <run_id> --warm <run_id>
 ```
 
 The evaluator has these boundaries:
@@ -23,7 +23,7 @@ The evaluator has these boundaries:
 - no LLM extractors
 - no MCP, vector search, dashboard, adapter, Computer Use, or Soul runtime work
 
-`omni eval run <run_id>` reads the existing `runs`, `events`, and `facts` data.
+`cairn eval run <run_id>` reads the existing `runs`, `events`, and `facts` data.
 It reports whether `CLAUDE.md` or `.omni/generated/memory.md` was read when that
 is detectable, the active expected commands from `uses_test_command`,
 `uses_build_command`, `uses_lint_command`, and `uses_typecheck_command` facts,
@@ -67,7 +67,7 @@ Rediscovery events include reads or listings involving `README.md`,
 `package.json`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `DEPLOY.md`,
 and broad glob or directory scan behavior.
 
-`omni eval dogfood --cold <run_id> --warm <run_id>` compares cold and warm runs
+`cairn eval dogfood --cold <run_id> --warm <run_id>` compares cold and warm runs
 by rediscovery count, first expected command position, command adoption, and an
 improvement flag. Improvement requires the warm run to execute an expected
 command and a comparable cold run with recorded events. A missing cold run, or
@@ -83,13 +83,13 @@ and broad project structure, and did not run any pnpm verification command.
 Outcome Log v0 adds a small user-marked record for an ingested run:
 
 ```bash
-omni outcome mark <run_id>
-omni outcome mark-from-verify <run_id>
-omni outcome show <run_id>
+cairn outcome mark <run_id>
+cairn outcome mark-from-verify <run_id>
+cairn outcome show <run_id>
 ```
 
-`omni outcome mark <run_id>` records the human-visible outcome for an existing
-run. In v0 this is explicitly user-marked. OmniMemory does not infer task
+`cairn outcome mark <run_id>` records the human-visible outcome for an existing
+run. In v0 this is explicitly user-marked. Cairn Memory does not infer task
 success, task failure, or test status automatically.
 
 The logged fields are:
@@ -105,9 +105,9 @@ If the caller does not provide `memory_effect`, the outcome command may reuse
 Behavior Eval v0 when the local evidence is available, but it falls back to
 `unknown` and never blocks the mark operation on eval uncertainty.
 
-Verify-to-Outcome helper v0 adds `omni outcome mark-from-verify <run_id>` as a
+Verify-to-Outcome helper v0 adds `cairn outcome mark-from-verify <run_id>` as a
 small bridge from the manual verify preflight into the user-marked outcome log.
-It runs the same project-level verification command selected by `omni verify`,
+It runs the same project-level verification command selected by `cairn verify`,
 then writes an outcome record with `tests_status` set from the verify result:
 `passed` for a passing command, `failed` for a failing command, and `unknown`
 when verify cannot select or run a command clearly. It records the selected
@@ -130,14 +130,14 @@ Experience Candidate v0 turns Behavior Eval and Outcome Log evidence into
 reviewable candidate records only:
 
 ```bash
-omni experience extract <run_id>
-omni experience ls
-omni experience show <exp_cand_id>
-omni experience approve <exp_cand_id>
-omni experience reject <exp_cand_id>
+cairn experience extract <run_id>
+cairn experience ls
+cairn experience show <exp_cand_id>
+cairn experience approve <exp_cand_id>
+cairn experience reject <exp_cand_id>
 ```
 
-`omni experience extract <run_id>` reads the run's Behavior Eval result and its
+`cairn experience extract <run_id>` reads the run's Behavior Eval result and its
 user-marked outcome. It can create `fast_path` candidates when validation
 succeeded after using the known verification command early, or
 `rediscovery_waste` candidates when validation had memory available but
@@ -157,8 +157,8 @@ Experience Notes + Renderer v0 turns approved candidates into active experience
 notes and renders active notes into `.omni/generated/memory.md`:
 
 ```bash
-omni experience approve <exp_cand_id>
-omni render
+cairn experience approve <exp_cand_id>
+cairn render
 ```
 
 All notes are review-gated. A pending candidate does not render. A rejected
@@ -215,9 +215,9 @@ Experience Note Lifecycle v1 adds explicit review controls for already-approved
 experience notes without changing the note schema or renderer semantics:
 
 ```bash
-omni experience note ls
-omni experience note show <note_id>
-omni experience note retire <note_id>
+cairn experience note ls
+cairn experience note show <note_id>
+cairn experience note retire <note_id>
 ```
 
 `note ls` and `note show` are SQLite read-only. `note retire` is an approved
@@ -236,9 +236,9 @@ keeping future lifecycle decisions explicit.
 Failure Memory v0 starts after the real unihack experience loop reached behavior
 pass after renderer tuning. It now includes reviewable candidate extraction and
 human approval into active failure patterns:
-`omni failure extract`, `omni failure ls`, `omni failure show`,
-`omni failure approve`, `omni failure reject`, `omni failure pattern ls`,
-`omni failure pattern show`, and `omni failure pattern retire`.
+`cairn failure extract`, `cairn failure ls`, `cairn failure show`,
+`cairn failure approve`, `cairn failure reject`, `cairn failure pattern ls`,
+`cairn failure pattern show`, and `cairn failure pattern retire`.
 Known Failures Renderer v0 renders only active failure patterns into
 `memory.md`; pending and rejected failure candidates do not render.
 Pattern Lifecycle v0 can retire an active pattern so it stops rendering, but it
@@ -249,10 +249,10 @@ does not implement supersede or automatic evolution.
 Verify v0 adds a manual preflight command:
 
 ```bash
-omni verify
+cairn verify
 ```
 
-`omni verify` opens the OmniMemory SQLite database in read-only mode, selects an
+`cairn verify` opens the Cairn Memory SQLite database in read-only mode, selects an
 active project-level `uses_test_command` fact, executes that command from the
 project root, and prints redacted JSON with the command, exit code, duration,
 bounded stdout/stderr excerpts, timeout state, and a simple
@@ -267,12 +267,12 @@ PowerShell command-execution aliases, Windows `.exe` POSIX-shell names such as
 
 This is intentionally not automatic success detection. It does not mark
 outcomes, extract failure candidates, create experience candidates, render
-memory, or write any OmniMemory state. A failed preflight exits non-zero so a
+memory, or write any Cairn Memory state. A failed preflight exits non-zero so a
 human or script can stop, inspect the JSON evidence, and decide whether to mark
 an outcome or extract a failure candidate.
 
-`omni outcome mark-from-verify <run_id>` is the approved write-side helper for
-recording a verify result in the Outcome Log. It is separate from `omni verify`
+`cairn outcome mark-from-verify <run_id>` is the approved write-side helper for
+recording a verify result in the Outcome Log. It is separate from `cairn verify`
 so the preflight command itself remains SQLite read-only.
 
 Current scope limitation: Verify v0 only uses project-level
@@ -281,18 +281,18 @@ no single unscoped command to prefer, it reports `unknown` instead of guessing.
 
 ## Verify Hardening v0.3
 
-Verify Hardening v0.3 keeps `omni verify` SQLite read-only and adds stable
+Verify Hardening v0.3 keeps `cairn verify` SQLite read-only and adds stable
 selection/output semantics for scripts and humans:
 
 ```bash
-omni verify --qualifier <qualifier>
-omni outcome mark-from-verify <run_id> --qualifier <qualifier>
+cairn verify --qualifier <qualifier>
+cairn outcome mark-from-verify <run_id> --qualifier <qualifier>
 ```
 
 `--qualifier` is an exact match against active project-level
 `uses_test_command` facts after trimming surrounding whitespace; internal
 whitespace remains significant. It does not accept arbitrary commands, does not
-add a new scope or subject selector, and does not write OmniMemory state.
+add a new scope or subject selector, and does not write Cairn Memory state.
 Missing or ambiguous qualifiers return `status=unknown` without executing a
 command.
 
@@ -309,26 +309,26 @@ failures.
 ## Verify Polish v0.4
 
 Verify Polish v0.4 settles one open exit-code decision without changing the
-write boundary: `start_failed` remains `status=failed`, so `omni verify` exits
+write boundary: `start_failed` remains `status=failed`, so `cairn verify` exits
 `1` when a selected and parsed verification command cannot start. Scripts should
 distinguish this from a command that ran and failed by checking
 `reason_code=start_failed`.
 
 ## Verify v0.5 / Outcome-from-Verify Hardening
 
-Verify v0.5 hardens the read-only `omni verify` → explicit write
-`omni outcome mark-from-verify` bridge without adding new memory types, tables,
+Verify v0.5 hardens the read-only `cairn verify` → explicit write
+`cairn outcome mark-from-verify` bridge without adding new memory types, tables,
 or automatic success inference.
 
-`omni verify` stays SQLite read-only: it opens the database read-only, runs no
-migrations, and writes no OmniMemory state. It may execute the selected
+`cairn verify` stays SQLite read-only: it opens the database read-only, runs no
+migrations, and writes no Cairn Memory state. It may execute the selected
 project-level verification command and prints a stable redacted JSON contract
 with `status`, `reason_code`, `command`, `qualifier`, `predicate`,
 `selection_mode`, `selection_reason`, `exit_code`, `timed_out`, `duration_ms`,
 and the `stdout_truncated` / `stderr_truncated` flags. Unknown, ambiguous, and
 no-command selections return a clear `reason_code` and never execute a command.
 
-`omni outcome mark-from-verify` remains the only write bridge from verify output
+`cairn outcome mark-from-verify` remains the only write bridge from verify output
 into the Outcome Log. It requires an existing `run_id`, runs the same preflight,
 and records a redacted, bounded verify summary in outcome evidence that excludes
 raw stdout and stderr excerpts.
@@ -348,13 +348,13 @@ command, stays `unknown` because verify cannot observe whether the user ran
 tests another way. Outcome `status` defaults to `unknown` and changes only when
 the user explicitly passes `--success`, `--failed`, or `--unknown`; v0.5 does
 not automatically infer task success from a passing verification command.
-Re-running `omni outcome mark-from-verify` for the same run is idempotent: it
+Re-running `cairn outcome mark-from-verify` for the same run is idempotent: it
 updates the outcome row in place, preserving `created_at` and advancing
 `updated_at`.
 
 ## Verify reason codes (v0.5 reference)
 
-Every `omni verify` JSON response includes a stable `reason_code`. Selection and
+Every `cairn verify` JSON response includes a stable `reason_code`. Selection and
 parse failures may also include `candidate_commands`, `available_qualifiers`
 (when `--qualifier` does not match), or `disambiguation_hint` (when multiple
 active facts match).
@@ -377,7 +377,7 @@ active facts match).
 | `parse_error_invalid_command` | `unknown` | Configured command could not be parsed. |
 | `unknown` | `unknown` | Fallback when no other code applies. |
 
-`omni outcome mark-from-verify` maps verify output to outcome `tests_status`
+`cairn outcome mark-from-verify` maps verify output to outcome `tests_status`
 without inferring task `status`:
 
 | Verify `reason_code` | Outcome `tests_status` |
@@ -410,11 +410,11 @@ Key evidence:
   run executed `pnpm run test` as the first expected command before any
   rediscovery, then ran build and lint.
 - Verify v0 selected `pnpm run test` in unihack and passed with exit code 0.
-- `omni outcome mark-from-verify 0caab82c-8ae8-40b9-9b51-a0b10a94ae8e
+- `cairn outcome mark-from-verify 0caab82c-8ae8-40b9-9b51-a0b10a94ae8e
   --task-type validation` wrote an outcome with `tests_status=passed`,
   `status=unknown`, `memory_effect=neutral`, `final_command=pnpm run test`, and
   verify-sourced evidence that excluded stdout and stderr excerpts.
-- `omni audit secrets` passed after the mark-from-verify write.
+- `cairn audit secrets` passed after the mark-from-verify write.
 
 This is still not causal proof for all future runs. It is a concrete
 end-to-end v0.2 proof that redacted evidence can be evaluated, reviewed into

@@ -542,7 +542,7 @@ def test_eval_run_missing_database_reports_unknown_without_creating_layout(
     result = eval_module.evaluate_run(tmp_path, "missing_run")
 
     assert result["memory_effect"] == "unknown"
-    assert result["reason"] == "insufficient evidence: OmniMemory database is missing"
+    assert result["reason"] == "insufficient evidence: Cairn Memory database is missing"
     assert not (tmp_path / ".omni").exists()
 
 

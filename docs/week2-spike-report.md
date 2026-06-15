@@ -8,6 +8,10 @@ This automated run filled the former `PENDING HUMAN EVIDENCE` slots with
 observed CLI sandbox evidence where available; unsupported interactive surfaces
 are recorded as not feasible rather than invented.
 
+Note: Cairn Memory is the current product name. This report preserves literal
+legacy `omni` commands, hook commands, and sandbox paths from the original
+Week-2 evidence run.
+
 ## 1. Environment
 
 | Field | Evidence |
@@ -15,7 +19,7 @@ are recorded as not feasible rather than invented.
 | OS | Microsoft Windows NT 10.0.19045.0 |
 | Python version | Python 3.14.3 |
 | Claude Code version | 2.1.173 (Claude Code) |
-| OmniMemory commit (`git rev-parse HEAD`) | 3693cf1a1862b15d3308509c92589bcbda77230f |
+| Cairn Memory commit (`git rev-parse HEAD`) | 3693cf1a1862b15d3308509c92589bcbda77230f |
 | Sandbox path | C:\Users\Jiarui Li\AppData\Local\Temp\omni-week2-sandbox |
 | `omni` on PATH in the claude-launching shell: yes/no | yes: C:\Users\Jiarui Li\scoop\apps\python\current\Scripts\omni.exe |
 | CLAUDE_PROJECT_DIR observed for hooks: yes/no/value | no explicit CLAUDE_PROJECT_DIR field in captured hook payloads; S1 hook metadata cwd stayed at sandbox root after Bash `cd .claude` |

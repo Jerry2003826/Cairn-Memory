@@ -1,7 +1,7 @@
 # Dogfood Acceptance Pack v0
 
 Dogfood Acceptance Pack v0 is a repeatable evidence package for proving the
-current OmniMemory loop on a real project. It adds no runtime features and no
+current Cairn Memory loop on a real project. It adds no runtime features and no
 new storage. It turns existing commands into a controlled acceptance procedure:
 
 ```text
@@ -29,26 +29,26 @@ memory, automatic memory evolution, or new database tables.
 
 ## Preconditions
 
-Run from the OmniMemory checkout first:
+Run from the Cairn Memory checkout first:
 
 ```bash
 git rev-parse HEAD
 pytest -q
-omni audit secrets
-where omni
+cairn audit secrets
+where cairn
 ```
 
 Then move to the target project root and gate real-project work:
 
 ```bash
-omni audit secrets
-omni status
+cairn audit secrets
+cairn status
 git status --short
 ```
 
-Do not continue if `omni audit secrets` fails. Do not install or modify hooks
+Do not continue if `cairn audit secrets` fails. Do not install or modify hooks
 unless that is part of the explicit test. Do not edit target project source as
-part of this acceptance pack except for OmniMemory managed outputs such as
+part of this acceptance pack except for Cairn Memory managed outputs such as
 `.omni/generated/memory.md` and the managed `CLAUDE.md` region.
 
 ## Prepare Memory
@@ -56,8 +56,8 @@ part of this acceptance pack except for OmniMemory managed outputs such as
 In the target project:
 
 ```bash
-omni render --diff
-omni render
+cairn render --diff
+cairn render
 grep -n "omni:begin" CLAUDE.md
 grep -n ".omni/generated/memory.md" CLAUDE.md
 ```
@@ -65,14 +65,14 @@ grep -n ".omni/generated/memory.md" CLAUDE.md
 If the managed region is missing:
 
 ```bash
-omni inject claude --mode preview
-omni inject claude --mode link
+cairn inject claude --mode preview
+cairn inject claude --mode link
 ```
 
 Re-check:
 
 ```bash
-omni audit secrets
+cairn audit secrets
 git diff -- CLAUDE.md .omni/generated/memory.md
 ```
 
@@ -81,7 +81,7 @@ Expected:
 - `CLAUDE.md` changes only inside the managed region.
 - `.omni/generated/memory.md` contains no run ids, candidate ids, note ids,
   pattern ids, evidence JSON, timestamps, raw stderr, or secrets.
-- `omni audit secrets` exits 0.
+- `cairn audit secrets` exits 0.
 
 ## Warm Run
 
@@ -97,25 +97,25 @@ Please validate this project and tell me whether the current setup works. Use th
 After the Claude Code run ends:
 
 ```bash
-omni ingest
-omni audit secrets
-omni status
+cairn ingest
+cairn audit secrets
+cairn status
 ```
 
 Record the new `run_id`, then evaluate it:
 
 ```bash
-omni eval run <warm_run_id>
-omni verify
-omni outcome mark-from-verify <warm_run_id> --task-type validation
+cairn eval run <warm_run_id>
+cairn verify
+cairn outcome mark-from-verify <warm_run_id> --task-type validation
 ```
 
 If the target has a known qualifier-specific command, use the same qualifier for
 both verify and outcome:
 
 ```bash
-omni verify --qualifier <qualifier>
-omni outcome mark-from-verify <warm_run_id> --qualifier <qualifier> --task-type validation
+cairn verify --qualifier <qualifier>
+cairn outcome mark-from-verify <warm_run_id> --qualifier <qualifier> --task-type validation
 ```
 
 ## Cold/Warm Comparison
@@ -123,7 +123,7 @@ omni outcome mark-from-verify <warm_run_id> --qualifier <qualifier> --task-type 
 Compare the new warm run against a known cold or old negative run:
 
 ```bash
-omni eval dogfood --cold <cold_run_id> --warm <warm_run_id>
+cairn eval dogfood --cold <cold_run_id> --warm <warm_run_id>
 ```
 
 Record:
@@ -144,8 +144,8 @@ Record:
 Use these verdicts:
 
 - `PASS`: warm run executes the expected verification command before forbidden
-  rediscovery, rediscovery count is lower than cold, `omni verify` passes, and
-  `omni audit secrets` passes.
+  rediscovery, rediscovery count is lower than cold, `cairn verify` passes, and
+  `cairn audit secrets` passes.
 - `PARTIAL`: warm run adopts the expected command or reduces rediscovery, but
   still does broad rediscovery before the first expected command, or verify is
   inconclusive.
@@ -162,24 +162,24 @@ current memory package influenced this target under this task prompt.
 If the warm run exposes a new failure:
 
 ```bash
-omni failure extract <warm_run_id>
-omni failure ls
-omni failure show <failure_cand_id>
+cairn failure extract <warm_run_id>
+cairn failure ls
+cairn failure show <failure_cand_id>
 ```
 
 Approve only after human review:
 
 ```bash
-omni failure approve <failure_cand_id> --summary "<summary>" --suggested-action "<action>"
-omni render --diff
+cairn failure approve <failure_cand_id> --summary "<summary>" --suggested-action "<action>"
+cairn render --diff
 ```
 
 If the warm run proves a useful validation fast path:
 
 ```bash
-omni experience extract <warm_run_id>
-omni experience ls
-omni experience show <exp_cand_id>
+cairn experience extract <warm_run_id>
+cairn experience ls
+cairn experience show <exp_cand_id>
 ```
 
 Approve only when the candidate is supported by eval and outcome evidence.

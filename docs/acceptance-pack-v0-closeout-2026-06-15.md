@@ -2,6 +2,9 @@
 
 Date: 2026-06-15 local
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original closeout run.
+
 ## Scope decision
 
 This stage chose **Scope A (docs-only)**. It adds no runtime code.
@@ -39,7 +42,7 @@ This complements the existing real-project loop runbook
 The runbook's classification matches AGENTS.md and the CLI:
 
 - Read-only: `omni status`, `omni eval run`, `omni eval dogfood`,
-  `omni outcome show`, and `omni verify` (read-only for OmniMemory state, but it
+  `omni outcome show`, and `omni verify` (read-only for Cairn Memory state, but it
   executes the selected verification command).
 - Approved writers, run explicitly by a human: `omni outcome mark-from-verify`,
   `omni experience extract`, `omni failure extract`.
@@ -57,7 +60,7 @@ explicit human steps, not automatic.
 3. The dogfood cold/warm comparison is the stronger behavior metric.
 4. Outcome `status` is user-marked or explicitly `mark-from-verify` anchored;
    there is no automatic task success inference.
-5. `omni verify` is read-only for OmniMemory state but executes the selected
+5. `omni verify` is read-only for Cairn Memory state but executes the selected
    verification command.
 6. `omni experience extract` and `omni failure extract` are approved writers and
    must be run explicitly by the human.

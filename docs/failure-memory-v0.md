@@ -5,16 +5,16 @@ into active patterns, and a small Known Failures renderer. Phase 1 creates
 reviewable failure candidates from already-ingested, already-redacted events:
 
 ```bash
-omni failure extract <run_id>
-omni failure ls
-omni failure show <failure_cand_id>
-omni failure approve <failure_cand_id> \
+cairn failure extract <run_id>
+cairn failure ls
+cairn failure show <failure_cand_id>
+cairn failure approve <failure_cand_id> \
   --summary "Tests failed because the configured command returned a dependency resolution error." \
   --suggested-action "Inspect the existing package manager and lockfile before installing or switching package managers."
-omni failure reject <failure_cand_id>
-omni failure pattern ls
-omni failure pattern show <pattern_id>
-omni failure pattern retire <pattern_id>
+cairn failure reject <failure_cand_id>
+cairn failure pattern ls
+cairn failure pattern show <pattern_id>
+cairn failure pattern retire <pattern_id>
 ```
 
 Failure Pattern v0 adds a human approval step for reviewed candidates. Known
@@ -58,12 +58,12 @@ Failure Pattern v0 lets a human approve a pending failure candidate into an
 active `failure_patterns` row:
 
 ```bash
-omni failure approve <failure_cand_id> \
+cairn failure approve <failure_cand_id> \
   --summary "Tests failed because the configured command returned a dependency resolution error." \
   --suggested-action "Inspect the existing package manager and lockfile before installing or switching package managers."
 ```
 
-The `summary` and `suggested_action` are human-provided in v0. OmniMemory does
+The `summary` and `suggested_action` are human-provided in v0. Cairn Memory does
 not use an LLM to summarize failures. Free text is redacted before it is stored,
 and the approval output is passed through the same JSON output redaction path as
 candidate extraction.
@@ -83,9 +83,9 @@ Pattern Lifecycle v0 adds the minimum controls needed after Known Failures can
 affect future behavior:
 
 ```bash
-omni failure pattern ls
-omni failure pattern show <pattern_id>
-omni failure pattern retire <pattern_id>
+cairn failure pattern ls
+cairn failure pattern show <pattern_id>
+cairn failure pattern retire <pattern_id>
 ```
 
 `ls` and `show` are read-only and open SQLite in read-only mode. `retire` is the
@@ -137,11 +137,11 @@ passes through output redaction before it is written.
 The manual loop is:
 
 ```bash
-omni failure approve <failure_cand_id> \
+cairn failure approve <failure_cand_id> \
   --summary "Tests failed because dependency resolution failed." \
   --suggested-action "Inspect the existing package manager and lockfile before changing dependencies."
-omni render --diff
-omni render
+cairn render --diff
+cairn render
 ```
 
 This completes the v0 deterministic path from a redacted failure event to a

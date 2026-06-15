@@ -1,11 +1,11 @@
-# OmniMemory v0.4 Verify Polish Plan
+# Cairn Memory v0.4 Verify Polish Plan
 
 Date: 2026-06-14 local
 
 ## Summary
 
 v0.4 is a small polish stage for Verify. It should reduce ambiguity in the
-verify contract without expanding OmniMemory into new runtime features.
+verify contract without expanding Cairn Memory into new runtime features.
 
 This stage should not add tables, migrations, adapters, MCP, vector search,
 dashboard UI, LLM extraction, Computer Use, Soul runtime, automatic evolution,
@@ -36,7 +36,7 @@ automatic failure memory, or automatic success inference.
 
 5. Re-run read-only safety smoke.
    - Confirm `omni verify` still opens SQLite read-only, runs no migrations,
-     and writes no OmniMemory state.
+     and writes no Cairn Memory state.
    - Confirm `outcome mark-from-verify` remains the separate approved writer.
 
 ## Acceptance Criteria

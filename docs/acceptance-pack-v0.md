@@ -17,21 +17,21 @@ pack focuses on summarizing evidence that is already in the database.
 ## Read-only vs writer commands
 
 Read-only commands open SQLite read-only, run no migrations, and write no
-OmniMemory state. `omni verify` is read-only for OmniMemory state but executes
+Cairn Memory state. `cairn verify` is read-only for Cairn Memory state but executes
 the selected project verification command.
 
 | Command | Class | Notes |
 | --- | --- | --- |
-| `omni status` | read-only | filesystem/state summary, no DB write |
-| `omni eval run <run_id>` | read-only | heuristic behavior classification |
-| `omni eval dogfood --cold <id> --warm <id>` | read-only | cold/warm comparison |
-| `omni verify` | read-only (executes command) | no OmniMemory write; runs the selected verification command |
-| `omni outcome show <run_id>` | read-only | reads the existing outcome row |
-| `omni outcome mark-from-verify <run_id>` | **approved writer** | the explicit verify->outcome write bridge |
-| `omni experience extract <run_id>` | **approved writer** | run explicitly by a human; creates reviewable candidates |
-| `omni failure extract <run_id>` | **approved writer** | run explicitly by a human; creates reviewable candidates |
+| `cairn status` | read-only | filesystem/state summary, no DB write |
+| `cairn eval run <run_id>` | read-only | heuristic behavior classification |
+| `cairn eval dogfood --cold <id> --warm <id>` | read-only | cold/warm comparison |
+| `cairn verify` | read-only (executes command) | no Cairn Memory write; runs the selected verification command |
+| `cairn outcome show <run_id>` | read-only | reads the existing outcome row |
+| `cairn outcome mark-from-verify <run_id>` | **approved writer** | the explicit verify->outcome write bridge |
+| `cairn experience extract <run_id>` | **approved writer** | run explicitly by a human; creates reviewable candidates |
+| `cairn failure extract <run_id>` | **approved writer** | run explicitly by a human; creates reviewable candidates |
 
-`omni audit secrets` is not a SQLite writer. It scans the `.omni/` tree and
+`cairn audit secrets` is not a SQLite writer. It scans the `.omni/` tree and
 writes only the existing audit marker `.omni/audit/secrets.passed` when it
 passes. Approved writers must be run explicitly by a human; this pack never runs
 `experience extract` or `failure extract` for you, because they are writers.
@@ -39,21 +39,21 @@ passes. Approved writers must be run explicitly by a human; this pack never runs
 ## Step 0 - Gate
 
 ```bash
-omni audit secrets
-omni status
+cairn audit secrets
+cairn status
 ```
 
 Expected:
 
-- `omni audit secrets`: `ok=true`, with empty `positive_failures`,
+- `cairn audit secrets`: `ok=true`, with empty `positive_failures`,
   `negative_failures`, and `omni_leaks`. Do not continue if this fails.
-- `omni status`: `ok=true`, and the `omni_dir`, `database`, and (if memory was
+- `cairn status`: `ok=true`, and the `omni_dir`, `database`, and (if memory was
   rendered) `generated_memory` / `claude_link` flags reflect the project state.
 
 ## Step 1 - Behavior Eval (read-only)
 
 ```bash
-omni eval run <run_id>
+cairn eval run <run_id>
 ```
 
 Record these fields (all redacted and bounded already):
@@ -76,7 +76,7 @@ Treat `neutral` here as "not observed", not as "memory did not help".
 ## Step 2 - Dogfood cold/warm comparison (read-only)
 
 ```bash
-omni eval dogfood --cold <cold_run_id> --warm <warm_run_id>
+cairn eval dogfood --cold <cold_run_id> --warm <warm_run_id>
 ```
 
 Record these fields:
@@ -94,15 +94,15 @@ requires a comparable cold run with recorded events and a warm run that executed
 an expected command. A missing or event-less cold run reports
 `cold_comparable=false` and does not count as improvement.
 
-## Step 3 - Verify preflight (read-only for OmniMemory state)
+## Step 3 - Verify preflight (read-only for Cairn Memory state)
 
 ```bash
-omni verify
+cairn verify
 # or, when the target uses a qualifier-scoped command:
-omni verify --qualifier <qualifier>
+cairn verify --qualifier <qualifier>
 ```
 
-`omni verify` opens SQLite read-only and writes no OmniMemory state, but it does
+`cairn verify` opens SQLite read-only and writes no Cairn Memory state, but it does
 execute the selected `uses_test_command`. Record these stable JSON fields:
 
 - `status`: `passed`, `failed`, or `unknown`
@@ -124,11 +124,11 @@ The verify->outcome write bridge is the only approved way to record a verify
 result into the Outcome Log:
 
 ```bash
-omni outcome mark-from-verify <run_id> --task-type validation
-omni outcome show <run_id>
+cairn outcome mark-from-verify <run_id> --task-type validation
+cairn outcome show <run_id>
 ```
 
-`omni outcome mark-from-verify` derives `tests_status` from the verify
+`cairn outcome mark-from-verify` derives `tests_status` from the verify
 `reason_code` only:
 
 - `reason_code=passed` -> `tests_status=passed`
@@ -140,7 +140,7 @@ It never infers task success. Outcome `status` is user-marked: it stays
 `--unknown`. Re-running it is idempotent: it preserves `created_at` and advances
 `updated_at`.
 
-`omni outcome show <run_id>` (read-only) records:
+`cairn outcome show <run_id>` (read-only) records:
 
 - `status`, `tests_status`, `memory_effect`, `task_type`
 - `final_command`
@@ -155,8 +155,8 @@ not run automatically as part of this pack. They create reviewable candidate row
 only; nothing renders into memory until a human approves a candidate.
 
 ```bash
-omni experience extract <run_id>
-omni failure extract <run_id>
+cairn experience extract <run_id>
+cairn failure extract <run_id>
 ```
 
 Record only the extraction status, not raw payloads:
@@ -177,9 +177,9 @@ candidate exists without running the explicit writer.
 3. The dogfood cold/warm comparison is the stronger behavior metric.
 4. Outcome `status` is user-marked or explicitly `mark-from-verify` anchored;
    there is no automatic task success inference.
-5. `omni verify` is read-only for OmniMemory state but executes the selected
+5. `cairn verify` is read-only for Cairn Memory state but executes the selected
    verification command.
-6. `omni experience extract` and `omni failure extract` are approved writers and
+6. `cairn experience extract` and `cairn failure extract` are approved writers and
    must be run explicitly by the human.
 7. The acceptance report contains no raw stdout/stderr or artifact payloads.
 8. Redaction boundaries are preserved; recorded fields come from already-redacted
@@ -187,17 +187,17 @@ candidate exists without running the explicit writer.
 
 ## Acceptance checklist
 
-- [ ] `omni audit secrets` passed (`ok=true`).
-- [ ] `omni status` reflects the expected project state.
-- [ ] `omni eval run <run_id>` recorded with `memory_effect` and rediscovery
+- [ ] `cairn audit secrets` passed (`ok=true`).
+- [ ] `cairn status` reflects the expected project state.
+- [ ] `cairn eval run <run_id>` recorded with `memory_effect` and rediscovery
       fields, with the `neutral` caveat noted.
-- [ ] `omni eval dogfood` recorded with `cold_comparable`, `improvement`, and
+- [ ] `cairn eval dogfood` recorded with `cold_comparable`, `improvement`, and
       `command_adopted`.
-- [ ] `omni verify` recorded with `status`, `reason_code`, and truncation flags
+- [ ] `cairn verify` recorded with `status`, `reason_code`, and truncation flags
       only (no raw excerpts).
-- [ ] `omni outcome mark-from-verify` run explicitly; `tests_status` derived from
+- [ ] `cairn outcome mark-from-verify` run explicitly; `tests_status` derived from
       `reason_code`; `status` not auto-inferred.
-- [ ] `omni outcome show <run_id>` evidence excludes raw stdout/stderr.
+- [ ] `cairn outcome show <run_id>` evidence excludes raw stdout/stderr.
 - [ ] experience/failure extract status recorded as explicit-writer output or
       `unknown`; no automatic extraction.
 - [ ] No new tables, no new memory types, no new runtime features were added.

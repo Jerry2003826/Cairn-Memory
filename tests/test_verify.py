@@ -822,7 +822,7 @@ def test_cli_verify_missing_db_does_not_create_omni(
     captured = capsys.readouterr()
 
     assert code == 2
-    assert "OmniMemory database not found" in captured.err
+    assert "Cairn Memory database not found" in captured.err
     assert captured.out == ""
     assert not (tmp_path / ".omni").exists()
 

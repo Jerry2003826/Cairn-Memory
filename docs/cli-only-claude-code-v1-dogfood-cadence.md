@@ -15,14 +15,14 @@ existing operator ritual so memory quality stays measurable over time.
   changes, so a cold/warm comparison stays available.
 
 Real-project rule (AGENTS.md): never run on a real project until
-`omni audit secrets` exits 0 in both the OmniMemory checkout and the target.
+`cairn audit secrets` exits 0 in both the Cairn Memory checkout and the target.
 
 ## One-command helper
 
 From the target project root, after a Claude Code session:
 
 ```powershell
-omni ingest            # note the warm run id from run_ids=...
+cairn ingest            # note the warm run id from run_ids=...
 python <omni_checkout>\scripts\dogfood_ritual.py --warm <warm_run_id> --cold <cold_run_id>
 ```
 
@@ -36,20 +36,20 @@ ingest -> audit secrets -> eval run -> verify -> outcome mark-from-verify -> eva
 For a read-only summary after ingest (no writes), use:
 
 ```powershell
-omni dogfood --warm <warm_run_id>
-omni dogfood --warm <warm_run_id> --cold <cold_run_id>
+cairn dogfood --warm <warm_run_id>
+cairn dogfood --warm <warm_run_id> --cold <cold_run_id>
 ```
 
 ## Layer 3 — more real dogfood samples
 
 Adding more real-project dogfood samples is intentionally **not** automatable
 from code: each sample requires you to run Claude Code in the target project.
-OmniMemory cannot start or operate Claude Code on your behalf.
+Cairn Memory cannot start or operate Claude Code on your behalf.
 
 After each real session:
 
-1. `omni ingest` and note the warm `run_id`.
-2. Run this cadence (write path) or `omni dogfood` (read-only review).
+1. `cairn ingest` and note the warm `run_id`.
+2. Run this cadence (write path) or `cairn dogfood` (read-only review).
 3. Optionally archive notable runs to `docs/cli-only-claude-code-v1-*-YYYY-MM-DD.md`.
 
 Routine green runs do not each need a doc; Layer 3 is about deliberate,
@@ -72,7 +72,7 @@ treated as a helper error.
   `rediscovery_count` is low or zero.
 - `dogfood_improvement` is `true` against a comparable cold run.
 - `outcome_status` stays `unknown` unless you explicitly confirm task success
-  with `omni outcome mark <run_id> --success` (a deliberate, separate step).
+  with `cairn outcome mark <run_id> --success` (a deliberate, separate step).
 
 ## Recording evidence
 
@@ -85,9 +85,9 @@ treated as a helper error.
 ## On a failing run
 
 1. Inspect the verify summary and the failing command.
-2. `omni failure extract <run_id>` to create reviewable candidates.
-3. Review and, if valid, `omni failure approve <id> --summary ... --suggested-action ...`.
-4. `omni render` to surface a Known Failures line; `omni failure pattern retire`
+2. `cairn failure extract <run_id>` to create reviewable candidates.
+3. Review and, if valid, `cairn failure approve <id> --summary ... --suggested-action ...`.
+4. `cairn render` to surface a Known Failures line; `cairn failure pattern retire`
    to withdraw it later.
 
 ## Boundaries

@@ -2,13 +2,17 @@
 
 Date: 2026-06-15
 
+Note: Cairn Memory is the current product name. Literal commands, paths,
+transcript excerpts, and ledger JSON below preserve the spelling recorded during
+the original run, including legacy `omni` CLI and `OmniAgent` text.
+
 Scope: Phase C productization evidence. This is a real OpenCode run using the
-approved read-only OmniAgent CLI surfaces. It is **not** a C-2 OpenCode capture
+approved read-only Cairn Memory CLI surfaces. It is **not** a C-2 OpenCode capture
 adapter, not MCP, and not an external write path.
 
 ## Boundary
 
-OpenCode remained the coding-agent runtime. OmniAgent only provided governed
+OpenCode remained the coding-agent runtime. Cairn Memory only provided governed
 brain-layer state:
 
 - reviewed local memory through `omni memory read`
@@ -23,7 +27,7 @@ search, LLM extractor, or automatic memory evolution was implemented.
 
 ## Environment
 
-- OmniAgent checkout: `C:\Users\Jiarui Li\Documents\OmniAgent`
+- Cairn Memory checkout: `C:\Users\Jiarui Li\Documents\OmniAgent`
 - Sandbox: `C:\Users\Jiarui Li\AppData\Local\Temp\omniagent-opencode-dogfood-20260615-141758`
 - OpenCode invocation: `npx -y opencode-ai@latest run --format json --model apiyi/qwen3.7-max --agent build --dangerously-skip-permissions`
 - Provider config: sandbox-local `opencode.json`, with API key read from an
@@ -33,7 +37,7 @@ search, LLM extractor, or automatic memory evolution was implemented.
 ## Preconditions
 
 The sandbox was created with `scripts/create_sandbox.ps1`, then initialized with
-OmniAgent:
+Cairn Memory:
 
 ```powershell
 python -m omni.cli init
@@ -391,7 +395,7 @@ The sandbox audit passed after C-2 ingest and task close:
 ## Conclusion
 
 The first constrained run proved that a real non-Claude agent could consume
-OmniAgent read surfaces and leave task/outcome evidence through approved CLI
+Cairn Memory read surfaces and leave task/outcome evidence through approved CLI
 writers. The later C-2 acceptance run proves the shipped OpenCode v0 path:
 project-local instruction injection, strict UTF-8 JSONL transcript ingest,
 `runs.engine = "opencode"`, task attachment, and outcome ledger closure.

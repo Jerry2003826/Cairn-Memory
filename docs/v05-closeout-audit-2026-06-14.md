@@ -1,10 +1,10 @@
 # Verify v0.5 Closeout Audit - 2026-06-14
 
-This closeout covers OmniMemory Verify v0.5 / outcome-from-verify hardening.
+This closeout covers Cairn Memory Verify v0.5 / outcome-from-verify hardening.
 
 Scope stayed narrow:
 
-- `omni verify` remains SQLite read-only and writes no OmniMemory state.
+- `omni verify` remains SQLite read-only and writes no Cairn Memory state.
 - `omni outcome mark-from-verify` remains the explicit write bridge into
   outcomes.
 - No new tables, migrations, memory types, renderer behavior, MCP, vector
@@ -41,7 +41,7 @@ Contract:
 
 ## Local Verification
 
-Commands run in the OmniMemory checkout:
+Commands run in the Cairn Memory checkout:
 
 ```text
 pytest -q

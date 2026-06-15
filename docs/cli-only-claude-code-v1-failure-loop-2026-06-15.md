@@ -2,6 +2,9 @@
 
 Date: 2026-06-15
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original evidence run.
+
 ## What this records
 
 Phase B (real-usage quality governance) evidence that the failure-memory half of
@@ -23,7 +26,7 @@ remains the authoritative manual acceptance path.
 - Claude Code driven headlessly to run the tests (which then fail)
 - `omni ingest`, then the existing failure-memory commands
 - `bash` is unavailable on the host, so the loop was reproduced with PowerShell +
-  OmniMemory's own CLI rather than `scripts/golden_demo.sh`
+  Cairn Memory's own CLI rather than `scripts/golden_demo.sh`
 
 Environment: `claude` 2.1.173, `node` v22.22.0, `pnpm` 10.33.0. No product code,
 tables, or memory types were added.

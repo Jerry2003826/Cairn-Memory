@@ -1,4 +1,7 @@
-# OmniMemory Spike Report - Week 1 Manual Demo
+# Cairn Memory Spike Report - Week 1 Manual Demo
+
+Note: Cairn Memory is the current product name. This report preserves the
+literal `omni` commands recorded during the original 2026-06-11 demo run.
 
 ## 1. Environment
 

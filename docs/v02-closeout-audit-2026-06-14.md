@@ -1,4 +1,4 @@
-# OmniMemory v0.2 Closeout Audit
+# Cairn Memory v0.2 Closeout Audit
 
 Date: 2026-06-14 local
 
@@ -6,7 +6,7 @@ Branch base audited: `e1d59a034430dfcc1471fcbfe9b249a429985ff4`
 
 ## Scope
 
-This closeout audit covers the current OmniMemory v0.2 / Experience Memory
+This closeout audit covers the current Cairn Memory v0.2 / Experience Memory
 foundations loop:
 
 - Behavior Eval v0
@@ -160,7 +160,7 @@ surface:
 | Known Failures renderer | Pass for v0 scope | Tests cover active pattern rendering and exclusion of raw ids/evidence/timestamps; real dogfood has one active pattern. | Rendering is concise guidance, not a runtime matcher or automatic remediation system. |
 | Pattern lifecycle | Pass for v0 scope | `failure pattern ls/show/retire` are implemented and covered by tests and fixture smoke. | Lifecycle is active/retired only; no supersede. The real active pattern was not retired to preserve dogfood memory. |
 | Read-only command safety | Pass | Real unihack DB hash guard stayed unchanged across status/run/eval/outcome/experience/failure/pattern/verify read-only commands. | `omni audit secrets` is intentionally excluded because it writes the audit marker. |
-| Secret safety | Pass | `omni audit secrets` passed in both OmniAgent and unihack after the current smoke. | Redaction remains conservative and irreversible; no raw vault exists. |
+| Secret safety | Pass | `omni audit secrets` passed in both Cairn Memory and unihack after the current smoke. | Redaction remains conservative and irreversible; no raw vault exists. |
 
 ## Real Dogfood Status
 

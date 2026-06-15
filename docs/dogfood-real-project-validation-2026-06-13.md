@@ -1,8 +1,8 @@
-# OmniMemory Real-Project Dogfood Validation - 2026-06-13
+# Cairn Memory Real-Project Dogfood Validation - 2026-06-13
 
 ## Objective
 
-Prove OmniMemory is safe and stable in a real small project, and collect evidence
+Prove Cairn Memory is safe and stable in a real small project, and collect evidence
 that a later agent run spends less effort rediscovering project basics.
 
 Target project:
@@ -68,7 +68,7 @@ omni audit secrets
   omni_leaks: []
 
 omni init --install-claude-hooks --yes
-  Initialized OmniMemory at ...\unihack3-13\.omni
+  Initialized Cairn Memory at ...\unihack3-13\.omni
 
 local hook inspection
   settings_json_exists=False
@@ -226,6 +226,6 @@ ok, and the target repository stayed clean.
 
 The reduced-rediscovery goal did not pass on V1. The real warm agent read the
 memory link, then still re-read README/package.json/project structure and did
-not run any validation command. Current conclusion: OmniMemory is leaving usable
+not run any validation command. Current conclusion: Cairn Memory is leaving usable
 trace and is safe enough to keep dogfooding, but it has not yet proven real
 agent exploration reduction in this project.

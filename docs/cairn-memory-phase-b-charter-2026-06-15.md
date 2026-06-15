@@ -1,12 +1,12 @@
-# OmniAgent Phase B Charter
+# Cairn Memory Phase B Charter
 
 Date: 2026-06-15
 
 ## Purpose
 
-OmniMemory CLI-only Claude Code v1 (Layers 1–5) is complete. Phase B is the
-governed transition toward OmniAgent: expand the CLI boundary without breaking
-local-first safety, human review gates, or read-only invariants.
+Cairn Memory CLI-only Claude Code v1 (Layers 1–5) is complete. Phase B is the
+governed transition beyond the Claude-only kernel: expand the CLI boundary
+without breaking local-first safety, human review gates, or read-only invariants.
 
 This charter is the approval record for that boundary change. Sub-projects must
 not land before this document and an AGENTS.md update are merged.
@@ -15,17 +15,17 @@ not land before this document and an AGENTS.md update are merged.
 
 - **Redaction-before-write:** every content byte written under `.omni/` passes
   `redact.redact(bytes)`. No raw-dump path, no original vault.
-- **`omni hook` always exits 0.** Hooks never write the DB; they only append
+- **`cairn hook` always exits 0.** Hooks never write the DB; they only append
   redacted spool lines.
 - **Read-only commands** open SQLite with `mode=ro`, never run migrations, and
-  never write OmniMemory state. `omni verify` may execute the selected project
-  verification command but writes no OmniMemory state.
+  never write Cairn Memory state. `cairn verify` may execute the selected project
+  verification command but writes no Cairn Memory state.
 - **Human review gate:** candidates become active memory only after explicit
   approve. No automatic success inference, no automatic memory evolution.
 - **Render safety:** generated `memory.md` must not leak internal ids, evidence,
   timestamps, or confidence scores.
 - **Real-project gate:** do not install hooks or run real dogfood until
-  `omni audit secrets` exits 0 in both the OmniMemory checkout and the target.
+  `cairn audit secrets` exits 0 in both the Cairn Memory checkout and the target.
 
 Violations require reverting the commit.
 
@@ -35,10 +35,10 @@ Violations require reverting the commit.
 |------|-------------|-------------------|
 | Migrations | 001–006 only | 007+ per sub-project rows below |
 | Memory types | experience + failure only | one new review-gated type per approved sub-project (preference first) |
-| Interactive review | week-2 / disabled | `omni review interactive` enabled (human-gated writes only) |
-| Doctor | week-2 / disabled | `omni doctor` enabled (read-only diagnostics) |
+| Interactive review | week-2 / disabled | `cairn review interactive` enabled (human-gated writes only) |
+| Doctor | week-2 / disabled | `cairn doctor` enabled (read-only diagnostics) |
 | Verify selection | `--qualifier` only | `--task` and `--profile` mapping layers (still read-only) |
-| Multi-project | single `project_root()` only | user registry + read-only `omni status --all` |
+| Multi-project | single `project_root()` only | user registry + read-only `cairn status --all` |
 
 Still forbidden in Phase B: MCP server, multi-engine router, Computer Use,
 vector/embedding search, dashboard/TUI, automatic evolution, automatic failure
@@ -48,17 +48,17 @@ memory, LLM extractors, answer cache.
 
 | Sub-project | Migration | New tables / commands | DoD |
 |-------------|-----------|----------------------|-----|
-| Sub-A: review + doctor | none | `omni review interactive`, `omni doctor` | CLI wired; read-only doctor; interactive approve/reject/skip/quit |
-| Sub-B: task-profile verify | none | `omni verify --task`, `--profile` | verify still read-only; reason codes tested |
-| Sub-C: preference memory | `007_preference_memory.sql` | `preference_candidates`, `preference_notes`, `omni preference *` | candidate→approve→render→retire; render section; no metadata leak |
-| Sub-D: multi-project overview | none | `~/.omni/projects.json`, `omni project register/ls`, `omni status --all` | read-only aggregate; single-project status unchanged |
+| Sub-A: review + doctor | none | `cairn review interactive`, `cairn doctor` | CLI wired; read-only doctor; interactive approve/reject/skip/quit |
+| Sub-B: task-profile verify | none | `cairn verify --task`, `--profile` | verify still read-only; reason codes tested |
+| Sub-C: preference memory | `007_preference_memory.sql` | `preference_candidates`, `preference_notes`, `cairn preference *` | candidate→approve→render→retire; render section; no metadata leak |
+| Sub-D: multi-project overview | none | `~/.omni/projects.json`, `cairn project register/ls`, `cairn status --all` | read-only aggregate; single-project status unchanged |
 
 ## 4. Sub-project Definition of Done (template)
 
 Each sub-project PR must satisfy:
 
 - `pytest -q` green
-- `omni audit secrets` ok when touching runtime paths
+- `cairn audit secrets` ok when touching runtime paths
 - `git diff --check` clean
 - read-only invariants preserved for read-only commands
 - render/metadata-leak tests pass when touching render
