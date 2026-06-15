@@ -38,7 +38,7 @@ cold_id="$(new_uuid)"
 run_omni ingest >/dev/null
 run_omni render --diff >/dev/null
 run_omni render >/dev/null
-run_omni inject claude --mode link >/dev/null # omni inject claude --mode link
+run_omni inject claude --mode link >/dev/null # cairn inject claude --mode link
 
 warm_ids=()
 for _ in 1 2 3; do

@@ -1,4 +1,4 @@
-"""Command line interface for OmniMemory."""
+"""Command line interface for Cairn Memory."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def _add_init_parser(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _add_status_parser(subcommands: argparse._SubParsersAction) -> None:
-    status_parser = subcommands.add_parser("status", help="Show OmniMemory project status")
+    status_parser = subcommands.add_parser("status", help="Show Cairn Memory project status")
     status_parser.add_argument(
         "--all",
         action="store_true",
@@ -476,9 +476,20 @@ def _add_project_parser(subcommands: argparse._SubParsersAction) -> None:
     project_subcommands.add_parser("ls")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="omni")
-    parser.add_argument("--version", action="version", version=f"omni {__version__}")
+def _program_name() -> str:
+    command_name = Path(sys.argv[0]).stem.lower()
+    if command_name in {"cairn", "omni"}:
+        return command_name
+    return "cairn"
+
+
+def build_parser(*, prog: str = "cairn") -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"cairn-memory {__version__}",
+    )
 
     subcommands = parser.add_subparsers(
         dest="command",
@@ -551,7 +562,7 @@ def _cmd_init(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             ensure_gitignore_entry(result.root, CLAUDE_HOOK_GITIGNORE_ENTRIES)
             or gitignore_updated
         )
-    print(f"Initialized OmniMemory at {result.omni_dir}")
+    print(f"Initialized Cairn Memory at {result.omni_dir}")
     if gitignore_updated:
         print(f"Updated {result.root / '.gitignore'}")
     if args.install_claude_hooks:
@@ -957,7 +968,7 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace, argparse.ArgumentParser], int
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    parser = build_parser(prog=_program_name() if argv is None else "cairn")
     args = parser.parse_args(argv)
     handler = _HANDLERS.get(args.command)
     if handler is None:

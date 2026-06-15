@@ -6,7 +6,7 @@ Operator:
 
 Target project:
 
-OmniMemory commit:
+Cairn Memory commit:
 
 Target project commit:
 
@@ -14,11 +14,11 @@ Target project commit:
 
 ```bash
 pytest -q
-omni audit secrets
-where omni
+cairn audit secrets
+where cairn
 ```
 
-OmniMemory result:
+Cairn Memory result:
 
 ```text
 <paste concise result>
@@ -27,8 +27,8 @@ OmniMemory result:
 Target project gate:
 
 ```bash
-omni audit secrets
-omni status
+cairn audit secrets
+cairn status
 git status --short
 ```
 
@@ -41,8 +41,8 @@ Target result:
 ## Memory State
 
 ```bash
-omni render --diff
-omni render
+cairn render --diff
+cairn render
 grep -n "omni:begin" CLAUDE.md
 grep -n ".omni/generated/memory.md" CLAUDE.md
 git diff -- CLAUDE.md .omni/generated/memory.md
@@ -69,9 +69,9 @@ Please validate this project and tell me whether the current setup works. Use th
 Post-run ingest:
 
 ```bash
-omni ingest
-omni audit secrets
-omni status
+cairn ingest
+cairn audit secrets
+cairn status
 ```
 
 Result:
@@ -83,8 +83,8 @@ Result:
 ## Eval
 
 ```bash
-omni eval run <warm_run_id>
-omni eval dogfood --cold <cold_run_id> --warm <warm_run_id>
+cairn eval run <warm_run_id>
+cairn eval dogfood --cold <cold_run_id> --warm <warm_run_id>
 ```
 
 Key fields:
@@ -102,16 +102,16 @@ dogfood improvement:
 ## Verify and Outcome
 
 ```bash
-omni verify
-omni outcome mark-from-verify <warm_run_id> --task-type validation
-omni outcome show <warm_run_id>
+cairn verify
+cairn outcome mark-from-verify <warm_run_id> --task-type validation
+cairn outcome show <warm_run_id>
 ```
 
 If using a qualifier:
 
 ```bash
-omni verify --qualifier <qualifier>
-omni outcome mark-from-verify <warm_run_id> --qualifier <qualifier> --task-type validation
+cairn verify --qualifier <qualifier>
+cairn outcome mark-from-verify <warm_run_id> --qualifier <qualifier> --task-type validation
 ```
 
 Key fields:
@@ -130,10 +130,10 @@ outcome memory_effect:
 Commands run:
 
 ```bash
-omni experience extract <warm_run_id>
-omni experience ls
-omni failure extract <warm_run_id>
-omni failure ls
+cairn experience extract <warm_run_id>
+cairn experience ls
+cairn failure extract <warm_run_id>
+cairn failure ls
 ```
 
 Candidates:

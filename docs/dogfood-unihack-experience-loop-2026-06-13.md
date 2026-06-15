@@ -2,7 +2,7 @@
 
 ## Environment
 
-- OmniAgent commit: `93f807078219a525702777df8b72599c76100571`
+- Cairn Memory commit: `93f807078219a525702777df8b72599c76100571`
 - renderer tuning commit: `395b094a726e5b09e6afb0b8aaccdd0ed54f044e`
 - unihack path: `C:\Users\Jiarui Li\Documents\OmniDogfood\unihack3-13`
 - OS: `Microsoft Windows NT 10.0.19045.0`

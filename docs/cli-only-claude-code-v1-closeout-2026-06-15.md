@@ -40,7 +40,7 @@ Safety gates before the Claude Code run:
 - `omni audit secrets`: `ok=true`
 - `omni status`: `ok=true`, `claude_link=true`, `database=true`,
   `generated_memory=true`
-- `CLAUDE.md` contained the managed OmniMemory link region
+- `CLAUDE.md` contained the managed Cairn Memory link region
 - `.omni/generated/memory.md` was rendered before the run
 
 The active memory contained a Fast Path instruction requiring validation tasks

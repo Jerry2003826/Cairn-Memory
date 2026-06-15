@@ -23,11 +23,11 @@ A warm run passes robust acceptance when:
 ## Method (Windows adaptation)
 
 `scripts/golden_demo.sh` is Bash and `bash` is unavailable on this host, so the
-loop was reproduced with PowerShell plus OmniMemory's own read-only evaluator
+loop was reproduced with PowerShell plus Cairn Memory's own read-only evaluator
 instead of the Bash harness:
 
 - disposable sandbox created with `scripts/create_sandbox.ps1` (under TEMP,
-  outside the OmniMemory checkout)
+  outside the Cairn Memory checkout)
 - Claude Code driven headlessly:
   `claude --print --no-session-persistence --session-id <uuid> --permission-mode bypassPermissions --output-format text "<task>"`
 - one cold run, then `omni ingest`, `omni render --diff`, `omni render`,

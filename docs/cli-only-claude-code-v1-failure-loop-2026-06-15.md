@@ -23,7 +23,7 @@ remains the authoritative manual acceptance path.
 - Claude Code driven headlessly to run the tests (which then fail)
 - `omni ingest`, then the existing failure-memory commands
 - `bash` is unavailable on the host, so the loop was reproduced with PowerShell +
-  OmniMemory's own CLI rather than `scripts/golden_demo.sh`
+  Cairn Memory's own CLI rather than `scripts/golden_demo.sh`
 
 Environment: `claude` 2.1.173, `node` v22.22.0, `pnpm` 10.33.0. No product code,
 tables, or memory types were added.

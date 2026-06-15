@@ -1,4 +1,4 @@
-"""Identifier helpers for OmniMemory records."""
+"""Identifier helpers for Cairn Memory records."""
 
 from __future__ import annotations
 

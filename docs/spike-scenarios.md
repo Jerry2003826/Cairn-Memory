@@ -1,12 +1,12 @@
-# OmniMemory Spike Scenarios
+# Cairn Memory Spike Scenarios
 
 Run these only inside a sandbox created by `scripts/create_sandbox.sh`.
 
 ## Day 1: S1-S6
 
-S1. Run `omni init`.
+S1. Run `cairn init`.
 
-S2. Run `omni init --install-claude-hooks --yes` and record the printed diff.
+S2. Run `cairn init --install-claude-hooks --yes` and record the printed diff.
 
 S3. Start Claude Code in the sandbox and submit a simple prompt that runs `pwd`.
 
@@ -20,11 +20,11 @@ S6. End the session and inspect `.omni/spool/` for redacted hook records and ing
 
 S7. Locate the Claude transcript JSONL path for the sandbox session.
 
-S8. Run `omni parse <transcript.jsonl>` once parser support exists.
+S8. Run `cairn parse <transcript.jsonl>` once parser support exists.
 
-S9. Run `omni ingest --transcript <transcript.jsonl>` once ingest support exists.
+S9. Run `cairn ingest --transcript <transcript.jsonl>` once ingest support exists.
 
-S10. Run `omni run show <run_id>` and inspect event ordering.
+S10. Run `cairn run show <run_id>` and inspect event ordering.
 
 S11. Compare hook `tool_use_id` values with transcript tool IDs where available.
 

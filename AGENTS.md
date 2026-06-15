@@ -1,23 +1,23 @@
-# OmniAgent Phase C (governed brain layer transition)
+# Cairn Memory Phase C (governed brain layer transition)
 
-> **Vision update (2026-06-15).** OmniAgent is now scoped as an *agent-agnostic*
+> **Vision update (2026-06-15).** Cairn Memory is now scoped as an *agent-agnostic*
 > governed brain layer for **all** AI Coding Agents (Claude Code, Codex, OpenCode,
-> QwenCode, Cursor), delivered in four stages — ① OmniMemory Kernel · ② OmniBridge
-> (multi-engine adapters + a read-only access surface) · ③ OmniRuntime (task
+> QwenCode, Cursor), delivered in four stages — ① Cairn Memory Kernel · ② Cairn Bridge
+> (multi-engine adapters + a read-only access surface) · ③ Cairn Runtime (task
 > lifecycle + multi-agent handoff) · ④ Product. The Kernel (Layers 1–5) is done;
-> Phase B is done; Phase C has partial approvals. OmniBridge foundation
-> (capture/inject seams + machine read) and OmniRuntime C-5 task lifecycle have
+> Phase B is done; Phase C has partial approvals. Cairn Bridge foundation
+> (capture/inject seams + machine read) and Cairn Runtime C-5 task lifecycle have
 > landed. C-2 OpenCode v0 has landed as the first real second-engine proof.
 > Read-only MCP, multi-agent handoff, permission tiers, and UI remain governed
 > future work. **Every safety invariant is unchanged.**
 
 ## Goal
 
-**Completed:** OmniMemory CLI-only Claude Code v1 (Layers 1–5). See
+**Completed:** Cairn Memory CLI-only Claude Code v1 (Layers 1–5). See
 `docs/cli-only-claude-code-v1-l1-5-completion-2026-06-15.md`.
 
-**Current phase:** OmniAgent Phase C — partial governed expansion per
-`docs/omniagent-phase-c-charter.md`.
+**Current phase:** Cairn Memory Phase C — partial governed expansion per
+`docs/cairn-memory-phase-c-charter.md`.
 
 Current proven loop (unchanged):
 
@@ -32,14 +32,14 @@ Phase B added, without breaking safety invariants:
 
 Phase C approved and landed so far:
 
-- OmniBridge foundation: capture-engine seam, inject-target seam, and
-  read-only machine surfaces (`omni memory read`, `omni failure read`,
-  `omni verify plan`)
-- OmniRuntime C-5: `008_task_runtime.sql` and `omni task *` lifecycle commands
+- Cairn Bridge foundation: capture-engine seam, inject-target seam, and
+  read-only machine surfaces (`cairn memory read`, `cairn failure read`,
+  `cairn verify plan`)
+- Cairn Runtime C-5: `008_task_runtime.sql` and `cairn task *` lifecycle commands
   for a single open task; multi-agent handoff remains deferred
-- C-2 OpenCode v0: `omni inject opencode --mode preview|link` may update only
+- C-2 OpenCode v0: `cairn inject opencode --mode preview|link` may update only
   project-local `opencode.json` to add `.omni/generated/memory.md` to OpenCode's
-  `instructions` list; `omni ingest --engine opencode --transcript <path>` may
+  `instructions` list; `cairn ingest --engine opencode --transcript <path>` may
   ingest UTF-8 `opencode run --format json` transcripts through the existing
   redacted ingest path. No new migration was added.
 
@@ -61,17 +61,17 @@ No new tables beyond approved migrations for the current phase. Approved now:
 
 Phase B approved (charter section 3):
 
-- `omni review interactive` (human-gated fact candidate review)
-- `omni doctor` (read-only project diagnostics)
-- `omni verify --task` / `--profile` (read-only selection mapping)
-- `007_preference_memory.sql` and `omni preference *` (Sub-C)
-- `omni project register|ls` and `omni status --all` (read-only multi-project)
+- `cairn review interactive` (human-gated fact candidate review)
+- `cairn doctor` (read-only project diagnostics)
+- `cairn verify --task` / `--profile` (read-only selection mapping)
+- `007_preference_memory.sql` and `cairn preference *` (Sub-C)
+- `cairn project register|ls` and `cairn status --all` (read-only multi-project)
 
 Phase C approved and landed:
 
-- C-1/C-3 OmniBridge foundation: capture/inject seams plus read-only machine
-  surfaces (`omni memory read`, `omni failure read`, `omni verify plan`)
-- C-5 task lifecycle: `omni task start|status|ls|show|close|abandon|read`,
+- C-1/C-3 Cairn Bridge foundation: capture/inject seams plus read-only machine
+  surfaces (`cairn memory read`, `cairn failure read`, `cairn verify plan`)
+- C-5 task lifecycle: `cairn task start|status|ls|show|close|abandon|read`,
   `008_task_runtime.sql`, and ingest attachment to the current open task
   (`task close` requires an explicit `--success`, `--failed`, or `--unknown`;
   `task read` exposes only the current project's open task view)
@@ -79,7 +79,7 @@ Phase C approved and landed:
 Phase C approved and landed in the current implementation branch:
 
 - C-2 OpenCode v0: one second engine via OpenCode config injection and
-  transcript ingest only. OpenCode remains the coding agent; OmniAgent only
+  transcript ingest only. OpenCode remains the coding agent; Cairn Memory only
   supplies governed context and redacted evidence capture through existing CLI
   writers.
 
@@ -108,7 +108,7 @@ Violations require reverting the commit.
    In spike-dump mode, if the redactor fails, write a stub:
    `{error, payload_sha256, byte_len}` instead of content.
 
-2. `omni hook` ALWAYS exits 0.
+2. `cairn hook` ALWAYS exits 0.
    It never blocks.
    It never makes permission decisions.
    It only redacts and appends to `.omni/spool/`.
@@ -120,74 +120,77 @@ Violations require reverting the commit.
    Stop and SessionEnd hooks only write redacted ingest request files under:
    `.omni/spool/`.
 
+   `cairn` is the preferred CLI name; legacy `omni` invokes the same CLI for
+   compatibility. The command safety classifications below apply to both names.
+
    Legacy `.omni/spool/ingest_queue.jsonl` is read best-effort for migration,
    but new hooks do not append to it.
 
    Only these commands write SQLite:
-   - `omni ingest`
-   - `omni review`
-   - `omni review interactive`
-   - `omni render`
-   - `omni outcome mark`
-   - `omni outcome mark-from-verify`
-   - `omni experience extract`
-   - `omni experience approve`
-   - `omni experience reject`
-   - `omni experience note retire`
-   - `omni failure extract`
-   - `omni failure approve`
-   - `omni failure reject`
-   - `omni failure pattern retire`
-   - `omni preference extract`
-   - `omni preference approve`
-   - `omni preference reject`
-   - `omni preference note retire`
-   - `omni project register`
-   - `omni task start`
-   - `omni task close`
-   - `omni task abandon`
+   - `cairn ingest`
+   - `cairn review`
+   - `cairn review interactive`
+   - `cairn render`
+   - `cairn outcome mark`
+   - `cairn outcome mark-from-verify`
+   - `cairn experience extract`
+   - `cairn experience approve`
+   - `cairn experience reject`
+   - `cairn experience note retire`
+   - `cairn failure extract`
+   - `cairn failure approve`
+   - `cairn failure reject`
+   - `cairn failure pattern retire`
+   - `cairn preference extract`
+   - `cairn preference approve`
+   - `cairn preference reject`
+   - `cairn preference note retire`
+   - `cairn project register`
+   - `cairn task start`
+   - `cairn task close`
+   - `cairn task abandon`
 
    These commands are read-only:
-   - `omni parse`
-   - `omni run show`
-   - `omni status`
-   - `omni status --all`
-   - `omni doctor`
-   - `omni eval run`
-   - `omni eval dogfood`
-   - `omni dogfood`
-   - `omni outcome show`
-   - `omni outcome ls`
-   - `omni experience ls`
-   - `omni experience show`
-   - `omni experience note ls`
-   - `omni experience note show`
-   - `omni failure ls`
-   - `omni failure show`
-   - `omni failure pattern ls`
-   - `omni failure pattern show`
-   - `omni failure read`
-   - `omni preference ls`
-   - `omni preference show`
-   - `omni preference note ls`
-   - `omni preference note show`
-   - `omni project ls`
-   - `omni memory read`
-   - `omni verify`
-   - `omni verify plan`
-   - `omni task status`
-   - `omni task ls`
-   - `omni task show`
-   - `omni task read`
+   - `cairn parse`
+   - `cairn run show`
+   - `cairn status`
+   - `cairn status --all`
+   - `cairn doctor`
+   - `cairn eval run`
+   - `cairn eval dogfood`
+   - `cairn dogfood`
+   - `cairn outcome show`
+   - `cairn outcome ls`
+   - `cairn experience ls`
+   - `cairn experience show`
+   - `cairn experience note ls`
+   - `cairn experience note show`
+   - `cairn failure ls`
+   - `cairn failure show`
+   - `cairn failure pattern ls`
+   - `cairn failure pattern show`
+   - `cairn failure read`
+   - `cairn preference ls`
+   - `cairn preference show`
+   - `cairn preference note ls`
+   - `cairn preference note show`
+   - `cairn project ls`
+   - `cairn memory read`
+   - `cairn verify`
+   - `cairn verify plan`
+   - `cairn task status`
+   - `cairn task ls`
+   - `cairn task show`
+   - `cairn task read`
 
    Read-only commands open SQLite in read-only mode and never run
    migrations; migrations run only inside approved write commands.
-   `omni verify` is SQLite read-only but executes the selected project
+   `cairn verify` is SQLite read-only but executes the selected project
    verification command, including when `--qualifier`, `--task`, or
-   `--profile` is used; it writes no OmniMemory state.
-   `omni verify plan` uses the same read-only selection layer but spawns
+   `--profile` is used; it writes no Cairn Memory state.
+   `cairn verify plan` uses the same read-only selection layer but spawns
    no verification subprocess.
-   `omni doctor` and `omni status --all` do not open project SQLite at all
+   `cairn doctor` and `cairn status --all` do not open project SQLite at all
    when reporting aggregate health (doctor opens read-only for schema checks
    on the current project only).
 
@@ -199,14 +202,14 @@ Violations require reverting the commit.
    <!-- omni:end -->
    ```
 
-5. `omni init` creates `.omni/` only.
-   Bare `omni init` may ensure exactly one gitignore entry: `.omni/`.
-   Routine commands such as `omni ingest` and `omni audit secrets` must not
+5. `cairn init` creates `.omni/` only.
+   Bare `cairn init` may ensure exactly one gitignore entry: `.omni/`.
+   Routine commands such as `cairn ingest` and `cairn audit secrets` must not
    modify `.gitignore` or other user files while ensuring the `.omni/` layout.
    Installing hooks into project-level `.claude/settings.json` requires:
 
    ```bash
-   omni init --install-claude-hooks
+   cairn init --install-claude-hooks
    ```
 
    This command must:
@@ -217,12 +220,12 @@ Violations require reverting the commit.
    - not create a raw settings backup by default
    - never touch global `~/.claude/settings.json`
 
-   If `omni audit secrets` has never passed in this checkout, installing hooks additionally requires `--yes`.
+   If `cairn audit secrets` has never passed in this checkout, installing hooks additionally requires `--yes`.
 
-6. Real projects are FORBIDDEN until `omni audit secrets` exits 0.
+6. Real projects are FORBIDDEN until `cairn audit secrets` exits 0.
    Default manual testing happens in `scripts/create_sandbox.sh` repos. Real
    dogfood acceptance may run only as an explicit Dogfood Acceptance Pack task
-   after `omni audit secrets` passes in both the OmniMemory checkout and the
+   after `cairn audit secrets` passes in both the Cairn Memory checkout and the
    target project.
 
 ## Environment and commands
@@ -262,7 +265,7 @@ Do not reorder.
    - `omni` entrypoint
    - `config.py`
    - `ids.py`
-   - `omni init`
+   - `cairn init`
 
 2. `redact.py` MINIMAL:
    - env reverse lookup
@@ -272,7 +275,7 @@ Do not reorder.
 
 3. `hook.py`:
    - stdin → `redact_minimal` → spike dump / spool
-   - `omni init --install-claude-hooks`
+   - `cairn init --install-claude-hooks`
    - `scripts/create_sandbox.sh`
 
 4. `migrations/001_init.sql`:
@@ -289,27 +292,27 @@ Do not reorder.
    - reconcile by `tool_use_id`
    - `duration_ms`
    - watchdog
-   - `omni run show`
+   - `cairn run show`
 
 7. `redact.py` FULL:
    - entropy detector
    - skip list
    - allowlists
    - fixtures corpus
-   - `omni audit secrets`
+   - `cairn audit secrets`
    - scan the ENTIRE `.omni/` tree, including `spike/` and `spool/`
 
 8. Extractors and gate:
    - `extract/pm.py`
    - `extract/scripts.py`
    - `gate.py`
-   - non-interactive `omni review approve|reject <id>`
+   - non-interactive `cairn review approve|reject <id>`
 
 9. Renderer and injection:
    - `render.py`
    - `inject.py`
-   - `omni render`
-   - `omni inject claude`
+   - `cairn render`
+   - `cairn inject claude`
 
 10. Docs:
    - `docs/demo.md`
@@ -342,7 +345,7 @@ When Claude Code hook or transcript behavior is UNKNOWN:
 - redaction positives: 100% recall on curated fixtures
 - redaction negatives: 0 false positives on curated negative corpus
 - no open-world false-positive claim
-- `omni audit secrets` exits 0 on the sandbox after a real session
+- `cairn audit secrets` exits 0 on the sandbox after a real session
 - full `.omni/` tree scan passes
 - manual cold/warm demo passes per `docs/demo.md`
 - warm run satisfies G6 ROBUST criterion on 3/3 golden tasks

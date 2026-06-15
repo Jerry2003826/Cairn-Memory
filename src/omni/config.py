@@ -1,4 +1,4 @@
-"""Project-local OmniMemory configuration and layout helpers."""
+"""Project-local Cairn Memory configuration and layout helpers."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ OMNI_SUBDIRS = (
     "generated",
 )
 
-DEFAULT_CONFIG = """# OmniMemory project-local configuration.
+DEFAULT_CONFIG = """# Cairn Memory project-local configuration.
 version = 1
 """
 

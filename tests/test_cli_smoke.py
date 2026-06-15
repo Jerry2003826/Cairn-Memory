@@ -280,8 +280,8 @@ def test_init_install_claude_hooks_defaults_to_local_settings(
     assert gitignore.count(".claude/*.omni-tmp") == 1
     assert gitignore.count(".claude/settings.json.omni-bak") == 1
     assert "--- .claude/settings.local.json" in result.stdout
-    assert "+++ .claude/settings.local.json (omni)" in result.stdout
-    assert "omni hook" in result.stdout
+    assert "+++ .claude/settings.local.json (cairn)" in result.stdout
+    assert "cairn hook" in result.stdout
     assert diff_secret not in result.stdout
     assert not (claude_dir / "settings.json.omni-bak").exists()
     assert not (tmp_path / ".omni" / "backups").exists()
@@ -291,7 +291,7 @@ def test_init_install_claude_hooks_defaults_to_local_settings(
     local_settings = claude_dir / "settings.local.json"
     updated = json.loads(local_settings.read_text(encoding="utf-8"))
     command = updated["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-    assert command == "omni hook"
+    assert command == "cairn hook"
     assert updated["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == command
     assert updated["hooks"]["Stop"][0]["hooks"][0]["command"] == command
     assert updated["hooks"]["SessionEnd"][0]["hooks"][0]["command"] == command
@@ -340,7 +340,7 @@ def test_init_install_claude_hooks_project_scope_preserves_project_settings(
 
     assert result.returncode == 0, result.stderr
     assert "--- .claude/settings.json" in result.stdout
-    assert "+++ .claude/settings.json (omni)" in result.stdout
+    assert "+++ .claude/settings.json (cairn)" in result.stdout
     assert diff_secret not in result.stdout
     assert not (claude_dir / "settings.local.json").exists()
     updated = json.loads(settings.read_text(encoding="utf-8"))
@@ -351,7 +351,7 @@ def test_init_install_claude_hooks_project_scope_preserves_project_settings(
         for handler in group["hooks"]
     ]
     assert updated["permissions"] == {}
-    assert command == "omni hook"
+    assert command == "cairn hook"
     assert f"echo token={diff_secret}" in user_commands
 
 
@@ -379,7 +379,7 @@ def test_install_claude_hooks_uses_portable_default_command(tmp_path: Path) -> N
     command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
     assert result.ok is True
-    assert command == "omni hook"
+    assert command == "cairn hook"
     assert str(sys.executable) not in command
 
 
@@ -458,7 +458,7 @@ def test_install_claude_hooks_writes_settings_through_temp_file(
         errors: str | None = None,
         newline: str | None = None,
     ) -> int:
-        if self == settings and "omni hook" in data:
+        if self == settings and "cairn hook" in data:
             raise AssertionError("settings.local.json must be replaced from a temp file")
         return original_write_text(
             self, data, encoding=encoding, errors=errors, newline=newline
@@ -469,7 +469,7 @@ def test_install_claude_hooks_writes_settings_through_temp_file(
     result = hook.install_claude_hooks(tmp_path, yes=True)
 
     assert result.ok is True
-    assert "omni hook" in settings.read_text(encoding="utf-8")
+    assert "cairn hook" in settings.read_text(encoding="utf-8")
     assert not (claude_dir / "settings.local.json.omni-tmp").exists()
 
 
@@ -487,7 +487,7 @@ def test_init_install_claude_hooks_fails_closed_on_invalid_local_settings(
     assert result.returncode == 2
     assert settings.read_text(encoding="utf-8") == original
     assert "invalid" in result.stderr.lower()
-    assert "omni hook" not in settings.read_text(encoding="utf-8")
+    assert "cairn hook" not in settings.read_text(encoding="utf-8")
     assert not (claude_dir / "settings.json.omni-bak").exists()
 
 
@@ -509,6 +509,21 @@ def test_init_install_claude_hooks_fails_closed_on_non_object_local_settings(
 
 
 def test_install_claude_hooks_honors_hook_command_override(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("CAIRN_HOOK_COMMAND", "custom cairn hook")
+
+    result = hook.install_claude_hooks(tmp_path, yes=True)
+    settings = json.loads(
+        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+    )
+    command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+    assert result.ok is True
+    assert command == "custom cairn hook"
+
+
+def test_install_claude_hooks_honors_legacy_hook_command_override(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("OMNI_HOOK_COMMAND", "custom omni hook")
@@ -553,12 +568,12 @@ def test_install_claude_hooks_replaces_legacy_omni_hook_command(tmp_path: Path) 
         for group in updated["hooks"]["PreToolUse"]
         for handler in group["hooks"]
     ]
-    omni_commands = [command for command in commands if "omni" in command]
+    hook_commands = [command for command in commands if command in {"cairn hook", "omni hook"}]
 
     assert result.ok is True
-    assert "omni hook" in commands
-    assert len(omni_commands) == 1
-    assert omni_commands[0] == "omni hook"
+    assert "cairn hook" in commands
+    assert "omni hook" not in commands
+    assert hook_commands == ["cairn hook"]
     assert "echo keep-user-hook" in commands
 
 
@@ -594,11 +609,11 @@ def test_install_claude_hooks_replaces_old_python_module_hook_command(tmp_path: 
         for group in updated["hooks"]["PreToolUse"]
         for handler in group["hooks"]
     ]
-    omni_commands = [command for command in commands if "omni" in command]
+    hook_commands = [command for command in commands if command in {"cairn hook", old_command}]
 
     assert result.ok is True
     assert old_command not in commands
-    assert omni_commands == ["omni hook"]
+    assert hook_commands == ["cairn hook"]
     assert "echo keep-user-hook" in commands
 
 
@@ -984,7 +999,7 @@ def test_run_show_cli_missing_db_is_read_only_and_clear(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "run", "show", "missing_run")
 
     assert result.returncode == 2
-    assert "OmniMemory database is missing" in result.stderr
+    assert "Cairn Memory database is missing" in result.stderr
     assert not (tmp_path / ".omni").exists()
 
 
@@ -1233,7 +1248,7 @@ def test_golden_demo_script_declares_full_automation_steps() -> None:
     assert "create_sandbox.sh" in script
     assert "omni.cli" in script
     assert "claude" in script
-    assert "omni inject claude --mode link" in script
+    assert "cairn inject claude --mode link" in script
     assert "G6 robust" in script
 
 

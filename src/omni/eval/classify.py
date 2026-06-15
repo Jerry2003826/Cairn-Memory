@@ -54,7 +54,7 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
     if not db_path.exists():
         return _unknown_result(
             run_id,
-            "insufficient evidence: OmniMemory database is missing",
+            "insufficient evidence: Cairn Memory database is missing",
         )
 
     try:

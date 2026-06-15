@@ -1,4 +1,4 @@
-# OmniMemory v0.3 Closeout Audit
+# Cairn Memory v0.3 Closeout Audit
 
 Date: 2026-06-14 local
 
@@ -8,7 +8,7 @@ Merged PR: `#25` (`Jiarui/verify-hardening-v03`)
 
 ## Scope
 
-This closeout audit covers OmniMemory v0.3 / Verify hardening only.
+This closeout audit covers Cairn Memory v0.3 / Verify hardening only.
 
 v0.3 keeps the v0.2 Experience/Failure Memory loop intact and hardens the
 read-only verification bridge:
@@ -39,7 +39,7 @@ AGENTS.md, `docs/experience-memory-v0.md`, the CLI route, and the implementation
 agree on the v0.3 boundary:
 
 - `omni verify` is SQLite read-only, opens the database through the read-only
-  connection path, and never writes OmniMemory state.
+  connection path, and never writes Cairn Memory state.
 - `omni verify` may execute the selected project-level verification command.
 - `omni outcome mark-from-verify` is the approved write bridge that records the
   verify result into Outcome Log evidence.
@@ -133,7 +133,7 @@ Results:
 | Stable verify JSON | Pass | Tests cover reason codes, selection fields, truncation booleans, malformed commands, start failures, timeouts, and redaction-safe output. | Existing fields remain for compatibility; new scripts should prefer `reason_code`. |
 | Shell-wrapper rejection | Pass | Tests cover direct wrappers and `env` delegation, including `env -S` and `--split-string` forms. | This is preflight hardening over reviewed facts, not a general command sandbox. |
 | Outcome bridge | Pass | Tests cover `outcome mark-from-verify` with qualifier and safe evidence storage. | It records verify evidence but still does not infer task success. |
-| Read-only boundary | Pass | `omni verify` remains on the read-only SQLite path and writes no OmniMemory state. | It may execute the selected project verification command. |
+| Read-only boundary | Pass | `omni verify` remains on the read-only SQLite path and writes no Cairn Memory state. | It may execute the selected project verification command. |
 | Migration governance | Pass | Migration set remains 001-006; no v0.3 tables were added. | Future schema changes require an approved phase and migration. |
 
 ## Remaining Non-blocking Items
@@ -152,7 +152,7 @@ Possible v0.4 follow-ups:
 
 ## Closeout Verdict
 
-OmniMemory v0.3 / Verify hardening is ready to close.
+Cairn Memory v0.3 / Verify hardening is ready to close.
 
 The defensible claim is narrow: the project now has a read-only verification
 preflight with deterministic qualifier selection, stable machine-readable

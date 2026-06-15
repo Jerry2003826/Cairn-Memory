@@ -2,7 +2,7 @@
 
 ## Product Shape
 
-CLI-only Claude Code v1 is the first productized OmniMemory shape:
+CLI-only Claude Code v1 is the first productized Cairn Memory shape:
 
 - local Python CLI only
 - Claude Code only
@@ -33,27 +33,27 @@ Claude Code run
 
 The runtime already has the pieces needed for the loop:
 
-- `omni init`
-- `omni audit secrets`
-- `omni init --install-claude-hooks --yes`
-- `omni inject claude --mode preview`
-- `omni inject claude --mode link`
-- `omni ingest`
-- `omni status`
-- `omni eval run <run_id>`
-- `omni eval dogfood --cold <run_id> --warm <run_id>`
-- `omni outcome mark <run_id>`
-- `omni outcome mark-from-verify <run_id>`
-- `omni outcome show <run_id>`
-- `omni experience extract|ls|show|approve|reject`
-- `omni experience note ls|show|retire`
-- `omni failure extract|ls|show|approve|reject`
-- `omni failure pattern ls|show|retire`
-- `omni verify`
-- `omni render`
+- `cairn init`
+- `cairn audit secrets`
+- `cairn init --install-claude-hooks --yes`
+- `cairn inject claude --mode preview`
+- `cairn inject claude --mode link`
+- `cairn ingest`
+- `cairn status`
+- `cairn eval run <run_id>`
+- `cairn eval dogfood --cold <run_id> --warm <run_id>`
+- `cairn outcome mark <run_id>`
+- `cairn outcome mark-from-verify <run_id>`
+- `cairn outcome show <run_id>`
+- `cairn experience extract|ls|show|approve|reject`
+- `cairn experience note ls|show|retire`
+- `cairn failure extract|ls|show|approve|reject`
+- `cairn failure pattern ls|show|retire`
+- `cairn verify`
+- `cairn render`
 
 CLI-only v1 starts by making the required safety and ingestion commands
-discoverable in `omni --help`: `audit` and `ingest` are public commands.
+discoverable in `cairn --help`: `audit` and `ingest` are public commands.
 Lower-level debug or review internals such as `run` and `review` remain hidden
 from top-level help until they have a deliberate user-facing shape.
 
@@ -62,50 +62,50 @@ from top-level help until they have a deliberate user-facing shape.
 The operator-facing command sequence is maintained in
 `docs/cli-only-claude-code-v1-runbook.md`.
 
-For the OmniMemory checkout:
+For the Cairn Memory checkout:
 
 ```powershell
 cd C:\Users\Jiarui Li\Documents\OmniAgent
 pip install -e ".[dev]"
-where omni
+where cairn
 pytest -q
-omni audit secrets
+cairn audit secrets
 ```
 
 For a Claude Code target project:
 
 ```powershell
 cd <target-project>
-omni init
-omni audit secrets
-omni init --install-claude-hooks --yes
-omni inject claude --mode preview
-omni inject claude --mode link
+cairn init
+cairn audit secrets
+cairn init --install-claude-hooks --yes
+cairn inject claude --mode preview
+cairn inject claude --mode link
 ```
 
 The real-project rule remains unchanged: do not install hooks into a real
-project until `omni audit secrets` passes in that checkout.
+project until `cairn audit secrets` passes in that checkout.
 
 After a Claude Code session:
 
 ```powershell
-omni ingest
-omni audit secrets
-omni status
-omni eval run <run_id>
-omni verify
-omni outcome mark-from-verify <run_id> --success --task-type validation
-omni experience extract <run_id>
-omni experience ls
-omni failure extract <run_id>
-omni failure ls
+cairn ingest
+cairn audit secrets
+cairn status
+cairn eval run <run_id>
+cairn verify
+cairn outcome mark-from-verify <run_id> --success --task-type validation
+cairn experience extract <run_id>
+cairn experience ls
+cairn failure extract <run_id>
+cairn failure ls
 # inspect candidates, then approve or reject explicitly
-omni render --diff
-omni render
+cairn render --diff
+cairn render
 ```
 
 Human review remains explicit. v1 does not approve experience notes or failure
-patterns automatically. Take `<run_id>` from the `omni ingest` `run_ids=...`
+patterns automatically. Take `<run_id>` from the `cairn ingest` `run_ids=...`
 output, and use `--success` only after a passing verification command. Rendering
 only includes already approved notes and active failure patterns.
 
@@ -113,11 +113,11 @@ only includes already approved notes and active failure patterns.
 
 CLI-only Claude Code v1 is ready when these are true:
 
-1. A fresh user can discover the supported command path from `omni --help`,
+1. A fresh user can discover the supported command path from `cairn --help`,
    subcommand help, and one runbook.
 2. The runbook includes a first-run path, post-run ingest path, review path, and
    rollback/retire path.
-3. The real-project safety gate is clear: `omni audit secrets` must pass before
+3. The real-project safety gate is clear: `cairn audit secrets` must pass before
    hook installation.
 4. Read-only commands are documented and tested to avoid migrations and SQLite
    writes.

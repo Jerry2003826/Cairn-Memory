@@ -70,9 +70,9 @@ importers:
     [System.IO.File]::WriteAllText(
         (Join-Path $root "CLAUDE.md"),
         @'
-# OmniMemory Sandbox
+# Cairn Memory Sandbox
 
-Use this disposable repository for OmniMemory hook and transcript spikes.
+Use this disposable repository for Cairn Memory hook and transcript spikes.
 '@ + "`n",
         $utf8NoBom
     )
@@ -88,7 +88,7 @@ node_modules/
     )
 
     git add package.json pnpm-lock.yaml test.js build.js CLAUDE.md .gitignore | Out-Null
-    git -c user.name="Omni Sandbox" -c user.email="omni-sandbox@local.invalid" commit -m "sandbox init" 2>$null | Out-Null
+    git -c user.name="Cairn Sandbox" -c user.email="omni-sandbox@local.invalid" commit -m "sandbox init" 2>$null | Out-Null
 
     Write-Output $root
 }

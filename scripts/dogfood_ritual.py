@@ -1,4 +1,4 @@
-"""Run the OmniMemory governance ritual for one real Claude Code run.
+"""Run the Cairn Memory governance ritual for one real Claude Code run.
 
 Periodic dogfood helper. Given a warm run id (and optionally a cold baseline run
 id), it runs the operator ritual through the public CLI and prints a consolidated
@@ -7,7 +7,7 @@ JSON report:
     ingest -> audit secrets -> eval run -> verify -> outcome mark-from-verify
     -> eval dogfood
 
-For a read-only summary without writes, prefer ``omni dogfood --warm <id>``
+For a read-only summary without writes, prefer ``cairn dogfood --warm <id>``
 (optional ``--cold <id>``) instead of re-chaining eval/outcome commands.
 
 It only calls existing CLI commands. It never passes ``--success`` (task success
@@ -37,10 +37,10 @@ from typing import Any
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the OmniMemory governance ritual for one warm run.",
+        description="Run the Cairn Memory governance ritual for one warm run.",
     )
     parser.add_argument(
-        "--warm", required=True, help="warm run id (from the `omni ingest` output)"
+        "--warm", required=True, help="warm run id (from the `cairn ingest` output)"
     )
     parser.add_argument(
         "--cold", default=None, help="optional cold baseline run id for dogfood compare"
@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-ingest",
         action="store_true",
-        help="do not run `omni ingest` first (use when the run is already ingested)",
+        help="do not run `cairn ingest` first (use when the run is already ingested)",
     )
     return parser
 
@@ -72,7 +72,7 @@ def _run_cli(args: list[str]) -> dict[str, Any]:
         except json.JSONDecodeError:
             parsed = None
     return {
-        "command": ["omni", *args],
+        "command": ["cairn", *args],
         "returncode": proc.returncode,
         "json": parsed,
         "stdout_tail": stdout[-2000:],

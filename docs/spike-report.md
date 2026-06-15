@@ -1,4 +1,4 @@
-# OmniMemory Spike Report - Week 1 Manual Demo
+# Cairn Memory Spike Report - Week 1 Manual Demo
 
 ## 1. Environment
 

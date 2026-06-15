@@ -1,9 +1,9 @@
 # CLI-only Claude Code v1 — Verify Reason Codes
 
-`omni verify` runs the known project verification command and prints a redacted
-JSON result. It is read-only with respect to OmniMemory state (it opens SQLite
+`cairn verify` runs the known project verification command and prints a redacted
+JSON result. It is read-only with respect to Cairn Memory state (it opens SQLite
 read-only and runs no migrations); the only writer in the post-verify flow is
-`omni outcome mark-from-verify`. This document is the reference for the `status`,
+`cairn outcome mark-from-verify`. This document is the reference for the `status`,
 `reason_code`, and process exit codes it can emit.
 
 `docs/cli-only-claude-code-v1-runbook.md` remains the operator path; this file is
@@ -72,7 +72,7 @@ need shell semantics.
 - Output excerpts are redacted and bounded. `stdout_truncated` /
   `stderr_truncated` flag when an excerpt was shortened, whether by the text
   budget or the in-flight capture limit.
-- `omni verify` never writes OmniMemory state, but it does execute the selected
+- `cairn verify` never writes Cairn Memory state, but it does execute the selected
   project command (for example `pnpm run test`). Bridge a result into the Outcome
-  Log with `omni outcome mark-from-verify <run_id>`; task success stays
+  Log with `cairn outcome mark-from-verify <run_id>`; task success stays
   user-marked via `--success`.

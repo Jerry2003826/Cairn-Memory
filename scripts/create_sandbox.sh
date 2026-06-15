@@ -48,9 +48,9 @@ fake_github_token="ghp_""abcdefghijklmnopqrstuvwxyz1234567890"
 printf 'GITHUB_TOKEN = "%s"\n' "$fake_github_token" > fake_config.py
 
 cat > CLAUDE.md <<'MD'
-# OmniMemory Sandbox
+# Cairn Memory Sandbox
 
-Use this disposable repository for OmniMemory hook and transcript spikes.
+Use this disposable repository for Cairn Memory hook and transcript spikes.
 MD
 
 cat > .gitignore <<'GITIGNORE'
@@ -61,6 +61,6 @@ node_modules/
 GITIGNORE
 
 git add package.json pnpm-lock.yaml test.js build.js CLAUDE.md .gitignore >/dev/null
-git -c user.name='Omni Sandbox' -c user.email='omni-sandbox@local.invalid' commit -m 'sandbox init' >/dev/null 2>&1 || true
+git -c user.name='Cairn Sandbox' -c user.email='omni-sandbox@local.invalid' commit -m 'sandbox init' >/dev/null 2>&1 || true
 
 printf '%s\n' "$PWD"

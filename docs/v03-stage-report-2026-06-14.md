@@ -1,4 +1,4 @@
-# OmniMemory v0.3 Stage Report
+# Cairn Memory v0.3 Stage Report
 
 Date: 2026-06-14 local
 
@@ -6,7 +6,7 @@ Current main at report time: `e9dcd798dfe374f48366d72e825930a62beebeb2`
 
 ## Summary
 
-OmniMemory v0.3 closed the Verify hardening stage. It did not add product
+Cairn Memory v0.3 closed the Verify hardening stage. It did not add product
 features, tables, migrations, runtime services, automatic success inference, or
 automatic memory evolution.
 
@@ -70,7 +70,7 @@ Results:
 - Approved migrations remain exactly `001` through `006`.
 - `omni verify` remains SQLite read-only and does not run migrations.
 - `omni verify` may execute the selected project verification command but writes
-  no OmniMemory state.
+  no Cairn Memory state.
 - `omni outcome mark-from-verify` remains the approved write bridge into the
   Outcome Log.
 - No MCP, vector search, dashboard, adapters, Computer Use, LLM extractors, Soul
@@ -79,9 +79,9 @@ Results:
 
 ## Verdict
 
-OmniMemory v0.3 is closed.
+Cairn Memory v0.3 is closed.
 
-The defensible claim is narrow: OmniMemory now has a deterministic, read-only
+The defensible claim is narrow: Cairn Memory now has a deterministic, read-only
 verification preflight with exact qualifier selection, stable machine-readable
 reason codes, conservative command preflight rejection, and a separate
 reviewable outcome-write bridge.

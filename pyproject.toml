@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "omnimemory"
+name = "cairn-memory"
 version = "0.1.0"
-description = "Local CLI-only memory loop for Claude Code"
+description = "Local governed memory layer for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,7 @@ dependencies = []
 dev = ["pytest>=8"]
 
 [project.scripts]
+cairn = "omni.cli:main"
 omni = "omni.cli:main"
 
 [tool.setuptools.packages.find]

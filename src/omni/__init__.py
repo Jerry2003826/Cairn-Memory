@@ -1,3 +1,3 @@
-"""OmniMemory package."""
+"""Cairn Memory package."""
 
 __version__ = "0.1.0"

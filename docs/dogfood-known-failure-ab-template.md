@@ -2,7 +2,7 @@
 
 ## Context
 
-* OmniMemory commit:
+* Cairn Memory commit:
 * project:
 * failure pattern id:
 * old failed run id:

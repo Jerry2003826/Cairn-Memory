@@ -1,4 +1,4 @@
-# OmniAgent Phase C Charter (DRAFT — partial approvals landed)
+# Cairn Memory Phase C Charter (DRAFT — partial approvals landed)
 
 Date: 2026-06-15
 Status: **C-1**, **C-2 OpenCode v0**, **C-3**, and **C-5** are approved and
@@ -9,10 +9,10 @@ before implementation — the same rule Phase B used.
 
 ## Purpose
 
-The 2026-06-15 vision reframes OmniAgent as an **agent-agnostic** governed brain
+The 2026-06-15 vision reframes Cairn Memory as an **agent-agnostic** governed brain
 layer for AI Coding Agents (Claude Code, Codex, OpenCode, QwenCode, Cursor) — not
 a Claude-only memory loop. Phase A/B built the **Kernel** (Layers 1–5) with its
-I/O bound to Claude Code. **Phase C opens the boundary toward OmniBridge**
+I/O bound to Claude Code. **Phase C opens the boundary toward Cairn Bridge**
 (multi-engine adapters + a read-only access surface) **without relaxing any safety
 invariant.**
 
@@ -23,17 +23,17 @@ still proceeds one governed sub-project at a time.
 ## 1. Invariants (unchanged from Phase B — must not relax)
 
 - **Redaction-before-write** — every byte under `.omni/` passes `redact.redact`.
-- **`omni hook` always exits 0** — hooks never write the DB; only append redacted spool lines.
-- **Read-only commands** open SQLite `mode=ro`, never run migrations, never write OmniMemory state.
+- **`cairn hook` always exits 0** — hooks never write the DB; only append redacted spool lines.
+- **Read-only commands** open SQLite `mode=ro`, never run migrations, never write Cairn Memory state.
 - **Human review gate** — candidates become active memory only after explicit approve. No automatic success inference, no automatic memory evolution.
 - **Render safety** — generated memory must not leak internal ids, evidence, timestamps, or confidence scores.
-- **Real-project gate** — no hooks / real dogfood until `omni audit secrets` exits 0 in both checkouts.
+- **Real-project gate** — no hooks / real dogfood until `cairn audit secrets` exits 0 in both checkouts.
 
 ### New invariants introduced by multi-agent scope
 
 - **External agents are read-only consumers.** Any adapter or MCP surface may
   *read* rendered memory, known failures, verify plans, task read views, and
-  future approved audit summaries. It **must not** write OmniMemory state. Every
+  future approved audit summaries. It **must not** write Cairn Memory state. Every
   write still goes through the human-gated CLI write commands listed in
   `AGENTS.md`.
 - **Capture stays append-only and redacted.** A new capture adapter (OpenCode,
@@ -46,9 +46,9 @@ Violations require reverting the commit.
 
 | Vision stage | Status in this repo |
 |---|---|
-| ① OmniMemory Kernel | **done** (Phase A/B); I/O currently bound to Claude Code |
-| ② OmniBridge | **foundation done** (C-1 capture/inject seams + C-3 machine read); **C-2 OpenCode v0 done**; MCP wrapper still pending |
-| ③ OmniRuntime (task lifecycle, multi-agent handoff) | **C-5 partial done** — task lifecycle only; handoff deferred |
+| ① Cairn Memory Kernel | **done** (Phase A/B); I/O currently bound to Claude Code |
+| ② Cairn Bridge | **foundation done** (C-1 capture/inject seams + C-3 machine read); **C-2 OpenCode v0 done**; MCP wrapper still pending |
+| ③ Cairn Runtime (task lifecycle, multi-agent handoff) | **C-5 partial done** — task lifecycle only; handoff deferred |
 | ④ Product (orchestration, permission tiers, UI) | deferred |
 
 ## 3. Relaxations (Phase C only)
@@ -57,7 +57,7 @@ Violations require reverting the commit.
 |---|---|---|
 | Agent binding | Claude-only hook / transcript / `CLAUDE.md` | **C-1 done:** capture + inject-target seams with Claude as the first implementation; **C-2 done:** OpenCode v0 as one real second engine |
 | MCP | forbidden | **C-4 pending:** a read-only MCP server over the machine-read surface — **no write tools** |
-| Machine read | human-facing CLI text only | **C-3 done:** stable JSON for `omni memory read`, `omni failure read`, and `omni verify plan`; audit summary remains future scope |
+| Machine read | human-facing CLI text only | **C-3 done:** stable JSON for `cairn memory read`, `cairn failure read`, and `cairn verify plan`; audit summary remains future scope |
 | Inject target | `CLAUDE.md` only | **C-1 done:** parametrized managed-region injection; new targets require recorded syntax, not guesses |
 
 **Still forbidden in Phase C** (defer to Runtime/Product): multi-agent orchestration /
@@ -65,15 +65,15 @@ handoff, permission tiers, dashboard / TUI, vector / embedding search, LLM extra
 automatic memory evolution, **any external write path**, Computer Use.
 
 **Approved and landed for C-2 OpenCode v0:** OpenCode config injection and
-transcript ingest only. `omni inject opencode` may update project-local
+transcript ingest only. `cairn inject opencode` may update project-local
 `opencode.json` by adding
 `.omni/generated/memory.md` to the official OpenCode `instructions` list.
-`omni ingest --engine opencode --transcript <path>` may ingest UTF-8 JSONL output
+`cairn ingest --engine opencode --transcript <path>` may ingest UTF-8 JSONL output
 from `opencode run --format json` through the existing redacted ingest path.
 OpenCode plugins, background capture processes, MCP tools, permission tiers, and
 multi-agent handoff remain deferred.
 
-**Approved and landed in Phase C (Stage ③ — task lifecycle, C-5):** `omni task *` lifecycle
+**Approved and landed in Phase C (Stage ③ — task lifecycle, C-5):** `cairn task *` lifecycle
 commands and migration **`008_task_runtime.sql`** (`tasks` table + nullable
 `runs.task_id`). Tasks are **operational state, not memory** — closing a task does
 not auto-create experience/failure/preference rows or infer success without the
@@ -93,11 +93,11 @@ existing human-gated commands.
 
 | Sub-project | Scope | New surface | Migration | Status |
 |---|---|---|---|---|
-| **C-1: capture/inject seam** | refactor `hook`/`ingest` capture and `inject` into adapter interfaces; Claude becomes one impl behind them (pure refactor, behavior unchanged) | internal interfaces; `omni inject claude` remains the only target | none | **done** |
-| **C-2: OpenCode v0** | OpenCode config injection + UTF-8 `opencode run --format json` transcript ingest; prove one governed OpenCode validation loop end to end | `omni inject opencode`, `omni ingest --engine opencode --transcript <path>` | none | **done** |
-| **C-3: machine read** | stable read-only JSON for memory / known-failures / verify-plan | `omni memory read`, `omni failure read`, `omni verify plan` (R) | none | **done** |
-| **C-4: read-only MCP** | wrap C-3 as MCP tools, read-only | e.g. `omni mcp serve` (R) | none | proposed |
-| **C-5: task lifecycle** | `tasks` table + `runs.task_id`; start/status/ls/show/close/abandon/read; ingest attaches runs to open task | `omni task *` | **`008_task_runtime.sql`** | **done** |
+| **C-1: capture/inject seam** | refactor `hook`/`ingest` capture and `inject` into adapter interfaces; Claude becomes one impl behind them (pure refactor, behavior unchanged) | internal interfaces; `cairn inject claude` remains the only target | none | **done** |
+| **C-2: OpenCode v0** | OpenCode config injection + UTF-8 `opencode run --format json` transcript ingest; prove one governed OpenCode validation loop end to end | `cairn inject opencode`, `cairn ingest --engine opencode --transcript <path>` | none | **done** |
+| **C-3: machine read** | stable read-only JSON for memory / known-failures / verify-plan | `cairn memory read`, `cairn failure read`, `cairn verify plan` (R) | none | **done** |
+| **C-4: read-only MCP** | wrap C-3 as MCP tools, read-only | e.g. `cairn mcp serve` (R) | none | proposed |
+| **C-5: task lifecycle** | `tasks` table + `runs.task_id`; start/status/ls/show/close/abandon/read; ingest attaches runs to open task | `cairn task *` | **`008_task_runtime.sql`** | **done** |
 
 Historical order: **C-1 → C-3 → C-2 → C-4 → C-5.** C-1, C-2, C-3, and C-5
 have landed or are complete on the active branch. Current recommended order is
@@ -125,4 +125,4 @@ one step = one commit). Each Phase C sub-project additionally asserts:
 
 1. ~~Which second engine first — OpenCode or Codex?~~ **Resolved:** OpenCode v0 first.
 2. Should C-4 expose only the existing C-3 read views first, or add a separately approved read-only audit summary before MCP?
-3. ~~Does `task` runtime (Stage ③) stay deferred until OmniBridge has a proven second engine?~~ **Resolved:** C-5 (task lifecycle) approved after OmniBridge; multi-agent handoff stays deferred.
+3. ~~Does `task` runtime (Stage ③) stay deferred until Cairn Bridge has a proven second engine?~~ **Resolved:** C-5 (task lifecycle) approved after Cairn Bridge; multi-agent handoff stays deferred.

@@ -10,11 +10,11 @@
 > historical commit snippets or intermediate test examples from this plan for
 > new work; use the current AGENTS.md commit/test rules.
 
-**Goal:** Make OmniMemory usable as a first CLI-only Claude Code product path without adding new memory types or runtime services.
+**Goal:** Make Cairn Memory usable as a first CLI-only Claude Code product path without adding new memory types or runtime services.
 
 **Architecture:** Keep the current local SQLite and `.omni/` architecture. Improve discoverability, runbooks, and public-command smoke coverage around the existing loop instead of adding MCP, adapters, services, dashboards, or new tables.
 
-**Tech Stack:** Python 3.11+, stdlib CLI via `argparse`, SQLite, pytest, Markdown docs, existing OmniMemory commands.
+**Tech Stack:** Python 3.11+, stdlib CLI via `argparse`, SQLite, pytest, Markdown docs, existing Cairn Memory commands.
 
 ---
 
@@ -150,50 +150,50 @@ Create `docs/cli-only-claude-code-v1-runbook.md` with these sections:
 
 - Python 3.11 or newer
 - Claude Code installed
-- OmniMemory installed from the local checkout with `pip install -e ".[dev]"`
-- `where omni` resolves to the intended executable on Windows
+- Cairn Memory installed from the local checkout with `pip install -e ".[dev]"`
+- `where cairn` resolves to the intended executable on Windows
 
 ## Install and Local Safety Check
 
 ```powershell
 cd C:\Users\Jiarui Li\Documents\OmniAgent
 pip install -e ".[dev]"
-where omni
+where cairn
 pytest -q
-omni audit secrets
+cairn audit secrets
 ```
 
 ## Target Project Setup
 
 ```powershell
 cd <target-project>
-omni init
-omni audit secrets
-omni init --install-claude-hooks --yes
-omni inject claude --mode preview
-omni inject claude --mode link
+cairn init
+cairn audit secrets
+cairn init --install-claude-hooks --yes
+cairn inject claude --mode preview
+cairn inject claude --mode link
 ```
 
 ## After a Claude Code Run
 
 ```powershell
-omni ingest
-omni audit secrets
-omni status
-omni eval run <run_id>
-omni verify
-omni outcome mark-from-verify <run_id> --task-type validation
+cairn ingest
+cairn audit secrets
+cairn status
+cairn eval run <run_id>
+cairn verify
+cairn outcome mark-from-verify <run_id> --task-type validation
 ```
 
 ## Review and Render Memory
 
 ```powershell
-omni experience extract <run_id>
-omni experience ls
-omni failure extract <run_id>
-omni failure ls
-omni render --diff
-omni render
+cairn experience extract <run_id>
+cairn experience ls
+cairn failure extract <run_id>
+cairn failure ls
+cairn render --diff
+cairn render
 ```
 
 Approve or reject experience and failure candidates only after inspecting their
@@ -202,18 +202,18 @@ JSON output. Do not approve candidates automatically.
 ## Withdraw Rendered Guidance
 
 ```powershell
-omni experience note ls
-omni experience note retire <note_id>
-omni failure pattern ls
-omni failure pattern retire <pattern_id>
-omni render --diff
-omni render
+cairn experience note ls
+cairn experience note retire <note_id>
+cairn failure pattern ls
+cairn failure pattern retire <pattern_id>
+cairn render --diff
+cairn render
 ```
 
 ## Dogfood Comparison
 
 ```powershell
-omni eval dogfood --cold <old_run_id> --warm <new_run_id>
+cairn eval dogfood --cold <old_run_id> --warm <new_run_id>
 ```
 ````
 
@@ -352,7 +352,7 @@ Run:
 
 ```bash
 pytest -q
-omni audit secrets
+cairn audit secrets
 git diff --check
 ```
 
@@ -370,9 +370,9 @@ record:
 ```text
 cold_run_id=<id>
 warm_run_id=<id>
-omni eval run <warm_run_id>
-omni eval dogfood --cold <cold_run_id> --warm <warm_run_id>
-omni audit secrets
+cairn eval run <warm_run_id>
+cairn eval dogfood --cold <cold_run_id> --warm <warm_run_id>
+cairn audit secrets
 ```
 
 - [x] **Step 3: Write closeout evidence**
@@ -385,7 +385,7 @@ Create `docs/cli-only-claude-code-v1-closeout-2026-06-15.md` with:
 ## Local Verification
 
 - `pytest -q`: <summary>
-- `omni audit secrets`: ok=true
+- `cairn audit secrets`: ok=true
 - `git diff --check`: no whitespace errors
 
 ## Dogfood Evidence
@@ -423,7 +423,7 @@ Run:
 
 ```bash
 pytest -q
-omni audit secrets
+cairn audit secrets
 git diff --check
 ```
 
@@ -440,7 +440,7 @@ gh pr create --base main --head Jiarui/cli-only-claude-code-v1-readiness --title
 
 ## Test Plan
 - pytest -q
-- omni audit secrets
+- cairn audit secrets
 - git diff --check
 - python scripts/cli_only_smoke.py"
 ```

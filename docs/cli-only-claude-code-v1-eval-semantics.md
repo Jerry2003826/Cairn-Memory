@@ -1,12 +1,12 @@
 # CLI-only Claude Code v1 — Behavior Eval Semantics
 
-`omni eval run <run_id>` and `omni eval dogfood` classify whether an ingested run
+`cairn eval run <run_id>` and `cairn eval dogfood` classify whether an ingested run
 appears to use memory effectively. Both are **read-only** (they open SQLite
 read-only and run no migrations) and **heuristic** — a single result is evidence,
 not causal proof. This document explains the output fields and the
 `memory_effect` rules, aligned to `src/omni/eval.py`.
 
-## `omni eval run`
+## `cairn eval run`
 
 | field | meaning |
 |---|---|
@@ -49,7 +49,7 @@ without emitting a detectable `Read` event, so `neutral` is expected even when
 behavior is good — which is why the cold/warm comparison below is the stronger
 signal.
 
-## `omni eval dogfood`
+## `cairn eval dogfood`
 
 Compares a cold (or older) run against a warm run.
 
@@ -71,5 +71,5 @@ single-run `memory_effect`. The recorded reference is
 
 - Heuristic, not causal proof; a single `memory_effect` is not a verdict.
 - Output is redacted and bounded.
-- Read-only with respect to OmniMemory state: no writes, no migrations. Outcomes
-  are recorded separately via `omni outcome mark` / `omni outcome mark-from-verify`.
+- Read-only with respect to Cairn Memory state: no writes, no migrations. Outcomes
+  are recorded separately via `cairn outcome mark` / `cairn outcome mark-from-verify`.

@@ -861,7 +861,7 @@ def test_cli_outcome_show_on_outdated_schema_is_read_only_and_exits_clearly(
     check.close()
 
     assert code == 2
-    assert "OmniMemory schema is outdated (found 2, need 8)" in captured.err
+    assert "Cairn Memory schema is outdated (found 2, need 8)" in captured.err
     assert captured.out == ""
     assert version == "2"
 

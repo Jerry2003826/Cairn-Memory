@@ -1,13 +1,13 @@
-# OmniBridge C-2 OpenCode Design
+# Cairn Bridge C-2 OpenCode Design
 
 Date: 2026-06-15
 Status: approved scope for implementation
 
 ## Goal
 
-Prove OmniBridge with one real second engine, OpenCode, without turning
-OmniAgent into an agent runner. OpenCode remains responsible for coding,
-tool-calling, permissions, and model/provider configuration. OmniAgent provides
+Prove Cairn Bridge with one real second engine, OpenCode, without turning
+Cairn Memory into an agent runner. OpenCode remains responsible for coding,
+tool-calling, permissions, and model/provider configuration. Cairn Memory provides
 governed brain-layer context and accepts redacted run evidence through existing
 CLI write paths.
 
@@ -15,15 +15,15 @@ CLI write paths.
 
 C-2 v0 adds only:
 
-1. `omni inject opencode --mode preview|link`
-2. `omni ingest --engine opencode --transcript <utf8-jsonl>`
+1. `cairn inject opencode --mode preview|link`
+2. `cairn ingest --engine opencode --transcript <utf8-jsonl>`
 3. OpenCode transcript normalization for observed `opencode run --format json`
    tool events
 4. documentation and dogfood evidence for a cold/warm OpenCode loop
 
 It adds no new migration, no MCP server, no plugin background process, no
 permission policy, no multi-agent router, and no external write path. All
-database writes still go through `omni ingest`, `omni task *`, `omni outcome *`,
+database writes still go through `cairn ingest`, `cairn task *`, `cairn outcome *`,
 and the existing human-gated memory review commands.
 
 ## Recorded OpenCode Facts
@@ -44,14 +44,14 @@ OpenCode rows continue to fall into the redacted transcript archive.
 
 ## Injection Design
 
-`omni inject opencode --mode link` updates a project-local `opencode.json` file
+`cairn inject opencode --mode link` updates a project-local `opencode.json` file
 so its `instructions` array contains `.omni/generated/memory.md`.
 
 Behavior:
 
 - If `opencode.json` does not exist, create a minimal JSON object with schema and
   instructions.
-- If it exists and has an `instructions` array, append the Omni memory path once.
+- If it exists and has an `instructions` array, append the Cairn memory path once.
 - If the entry already exists, make no write.
 - If the file is invalid JSON or `instructions` is not a list, fail with exit 2
   and leave the file unchanged.
@@ -62,7 +62,7 @@ user-authored `AGENTS.md` content untouched.
 
 ## Capture / Ingest Design
 
-`omni ingest --engine opencode --transcript <path>` records the run engine as
+`cairn ingest --engine opencode --transcript <path>` records the run engine as
 `opencode` in `runs.engine` and parses UTF-8 JSONL output produced by
 `opencode run --format json`.
 
@@ -89,12 +89,12 @@ storage remain the only persistence path.
 - Redaction-before-write remains mandatory for transcript events, archive rows,
   and config diffs. Tests must prove printed `opencode.json` diffs redact
   secret-like existing config values.
-- `omni hook` remains Claude-compatible and always exits 0.
-- OpenCode capture does not write the DB outside `omni ingest`.
+- `cairn hook` remains Claude-compatible and always exits 0.
+- OpenCode capture does not write the DB outside `cairn ingest`.
 - Read-only surfaces remain read-only and migration-free.
-- `omni inject opencode` may edit only `opencode.json`; it never touches global
+- `cairn inject opencode` may edit only `opencode.json`; it never touches global
   OpenCode config.
-- OpenCode remains a read-only consumer of `omni memory read`, `failure read`,
+- OpenCode remains a read-only consumer of `cairn memory read`, `failure read`,
   `verify plan`, and `task read`. Memory activation still requires human review.
 
 ## Acceptance Evidence

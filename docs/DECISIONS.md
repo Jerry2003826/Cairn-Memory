@@ -5,27 +5,27 @@
 Decision: the entire `.omni/` directory is local-only, ignored by git, and
 should not be committed. There are no exceptions for `.omni/project_id`.
 
-Rationale: OmniMemory uses this file as the durable local project identity after
-`omni init`. On first creation, `omni init` bootstraps the value from the git
+Rationale: Cairn Memory uses this file as the durable local project identity after
+`cairn init`. On first creation, `cairn init` bootstraps the value from the git
 remote origin hash when a `git remote origin` URL is available; otherwise it
 creates a random `proj_` id. After the file exists, the file wins over git
 remote origin so moving the repo path or changing the remote later does not
 silently change `project_id`.
 
-Decision: CLI commands, including `omni init`, discover the project root by
+Decision: CLI commands, including `cairn init`, discover the project root by
 walking upward to the nearest existing `.omni/` or `.git`.
 
-Rationale: running Omni from a package subdirectory should operate on the
+Rationale: running cairn from a package subdirectory should operate on the
 repository's single local `.omni/` tree instead of silently creating nested
 state. Users with `$HOME` or another parent directory managed as a git repo
-should run `omni init` from the intended project root if no closer `.git` or
+should run `cairn init` from the intended project root if no closer `.git` or
 `.omni/` exists.
 
 Decision: command footprints are proportional to the action requested. Bare
-`omni init` may ensure `.omni/` is ignored by git, and
-`omni init --install-claude-hooks` may additionally ignore hook-owned temporary
-and legacy backup paths. Non-init commands such as `omni ingest` and
-`omni audit secrets` never modify user files while ensuring the `.omni/`
+`cairn init` may ensure `.omni/` is ignored by git, and
+`cairn init --install-claude-hooks` may additionally ignore hook-owned temporary
+and legacy backup paths. Non-init commands such as `cairn ingest` and
+`cairn audit secrets` never modify user files while ensuring the `.omni/`
 layout.
 
 Rationale: routine commands should not create surprise working-tree diffs in
@@ -81,14 +81,14 @@ Rationale: copying `.claude/settings.json` into `.omni/` would violate
 redaction-before-write and create an original vault. Atomic replace covers the
 main corruption risk without storing raw user-local configuration.
 
-Decision: `omni status` computes hook latency p50/p95 by scanning hook spool
+Decision: `cairn status` computes hook latency p50/p95 by scanning hook spool
 files in Week-1.
 
 Rationale: this is acceptable for short sandbox runs. Future versions should
 summarize on ingest or archive processed spool files so status does not scan an
 ever-growing spool tree.
 
-Decision: `omni ingest` runs the stale-run watchdog after ingesting queued or
+Decision: `cairn ingest` runs the stale-run watchdog after ingesting queued or
 manual events and before committing the SQLite transaction.
 
 Rationale: `runs.status` should not be dead state that only changes when a
@@ -96,7 +96,7 @@ developer calls an internal helper. Ingest is the durable maintenance boundary
 already allowed to write SQLite, so it is the narrowest place to close open runs
 whose transcript path is missing or stale.
 
-Decision: `omni ingest` prunes redacted hook files under
+Decision: `cairn ingest` prunes redacted hook files under
 `.omni/spool/processed/` after acknowledging consumed hook records. The default
 retention keeps processed hook files for up to 7 days or 128 MiB, whichever
 limit is hit first.
@@ -107,7 +107,7 @@ per day under heavy use, so retaining about a week by age and volume keeps
 status/debug evidence useful without unbounded local growth. Live spool files,
 bad files, and error logs are not pruned by this maintenance path.
 
-Decision: manual `omni ingest --transcript` is transcript-only unless the user
+Decision: manual `cairn ingest --transcript` is transcript-only unless the user
 also supplies `--run-id`.
 
 Rationale: unscoped hook reconciliation can attach unrelated live-session hook
@@ -115,7 +115,7 @@ spool to a manually ingested transcript. When `--run-id` is provided, Week-1
 treats it as the Claude session id and only reconciles hook records carrying
 that same `session_id`.
 
-Decision: empty-queue `omni ingest` without a run id does not consume live
+Decision: empty-queue `cairn ingest` without a run id does not consume live
 `hook-*.jsonl` files into a synthetic run.
 
 Rationale: live hook records are only authoritative after a Stop/SessionEnd
@@ -125,20 +125,21 @@ an explicit run id, but it only consumes hook records whose payload
 spool for the real scoped request or a correctly scoped recovery. The default
 path should not steal hooks before the real session request arrives.
 
-Decision: `omni init --install-claude-hooks` installs into
+Decision: `cairn init --install-claude-hooks` installs into
 `.claude/settings.local.json` by default. Project-level installation into
 `.claude/settings.json` remains available only with
 `--claude-hooks-scope project`.
 
 Rationale: dogfood hooks are personal capture configuration. Committing them to
-a shared project can either break other users who do not have `omni` installed
+a shared project can either break other users who do not have `cairn` installed
 or silently enable capture for users who do. The local settings target keeps
 dogfood opt-in per checkout while preserving an explicit project-scope escape
 hatch for disposable sandboxes or intentionally single-user repos.
 
-Decision: installed Claude hooks use the portable command `omni hook` by
-default. `OMNI_HOOK_COMMAND` remains the explicit escape hatch for local
-environments that need a fully qualified command.
+Decision: installed Claude hooks use the portable command `cairn hook` by
+default. `CAIRN_HOOK_COMMAND` is the explicit escape hatch for local
+environments that need a fully qualified command; legacy `OMNI_HOOK_COMMAND`
+remains supported for existing local setups.
 
 Rationale: project `.claude/settings.json` may be shared or inspected. A local
 absolute Python path leaks workstation details and breaks on other machines.
@@ -149,7 +150,7 @@ Rationale: it exists only to suppress known audit false positives during local
 validation. It does not change runtime hook, parse, ingest, or render redaction.
 It must not be used to approve real secrets.
 
-Decision: `omni status` hook elapsed percentiles are in-process capture metrics,
+Decision: `cairn status` hook elapsed percentiles are in-process capture metrics,
 not end-to-end process startup latency.
 
 Rationale: the value is written by the hook while handling a payload. Week-1

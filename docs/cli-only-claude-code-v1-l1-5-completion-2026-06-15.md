@@ -5,7 +5,7 @@ Date: 2026-06-15
 ## Purpose
 
 Make the Definition-of-Done for the memory-and-verification base (layers 1–5 of
-the OmniAgent vision) explicit and auditable. This is a closeout check, not a new
+the Cairn Memory vision) explicit and auditable. This is a closeout check, not a new
 feature: it adds no tables, migrations, agents, UI, or memory types, and it stays
 inside the CLI-only Claude Code v1 boundary defined in `AGENTS.md`.
 
@@ -41,7 +41,7 @@ semantics are documented.
 - Real evidence: `docs/cli-only-claude-code-v1-closeout-2026-06-15.md` (rediscovery 10 → 0).
 
 ### Layer 4 — Verify & Outcome
-DoD: `omni verify` is read-only to OmniMemory state, every reason code is
+DoD: `omni verify` is read-only to Cairn Memory state, every reason code is
 documented, and the outcome bridge is stable.
 - `src/omni/verify.py` (read-only connection); `tests/test_verify.py` covers the read-only invariant, every reason code, CLI exit codes, and `ambiguous_qualifier` at the CLI layer.
 - `docs/cli-only-claude-code-v1-verify-reason-codes.md` (new).

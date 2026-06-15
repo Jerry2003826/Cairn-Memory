@@ -27,7 +27,7 @@ Local validation on `main` after PR #39 merged:
 Temporary-project CLI smoke:
 
 - Created a synthetic active `fast_path` experience note in a temporary
-  OmniMemory database.
+  Cairn Memory database.
 - `omni experience note ls` returned the active note with
   `lifecycle.renders=true`.
 - `omni experience note show <note_id>` returned the note and redacted a

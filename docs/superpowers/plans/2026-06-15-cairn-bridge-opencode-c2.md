@@ -1,10 +1,10 @@
-# OmniBridge OpenCode C-2 Implementation Plan
+# Cairn Bridge OpenCode C-2 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the first real second-engine proof point by letting OpenCode consume OmniAgent memory through `opencode.json.instructions` and ingest OpenCode JSONL transcripts as `engine=opencode`.
+**Goal:** Add the first real second-engine proof point by letting OpenCode consume Cairn Memory context through `opencode.json.instructions` and ingest OpenCode JSONL transcripts as `engine=opencode`.
 
-**Architecture:** Keep C-2 as a thin adapter over existing seams. Injection is a new data-backed target in `inject.py`; capture is a new registered engine plus parser normalization for observed OpenCode JSONL rows, with DB writes only through `omni ingest`.
+**Architecture:** Keep C-2 as a thin adapter over existing seams. Injection is a new data-backed target in `inject.py`; capture is a new registered engine plus parser normalization for observed OpenCode JSONL rows, with DB writes only through `cairn ingest`.
 
 **Tech Stack:** Python stdlib, SQLite, pytest, OpenCode CLI JSONL transcripts.
 
@@ -15,7 +15,7 @@
 - Modify: `AGENTS.md`
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
-- Modify: `docs/omniagent-phase-c-charter.md`
+- Modify: `docs/cairn-memory-phase-c-charter.md`
 - Modify: `docs/opencode-dogfood-2026-06-15.md`
 - Modify: `src/omni/capture/__init__.py`
 - Create: `src/omni/capture/opencode.py`
@@ -33,8 +33,8 @@
 
 ## Task 1: Governance And Documentation Approval
 
-- [x] Update `AGENTS.md` so C-2 OpenCode v0 is explicitly approved. The approved scope must name `omni inject opencode` and `omni ingest --engine opencode --transcript <path>`, and must state that OpenCode plugins, MCP, external DB writes, permission tiers, and multi-agent handoff remain deferred.
-- [x] Update `docs/omniagent-phase-c-charter.md`: mark C-2 as approved for OpenCode v0, with no migration and no plugin background process.
+- [x] Update `AGENTS.md` so C-2 OpenCode v0 is explicitly approved. The approved scope must name `cairn inject opencode` and `cairn ingest --engine opencode --transcript <path>`, and must state that OpenCode plugins, MCP, external DB writes, permission tiers, and multi-agent handoff remain deferred.
+- [x] Update `docs/cairn-memory-phase-c-charter.md`: mark C-2 as approved for OpenCode v0, with no migration and no plugin background process.
 - [x] Update `README.md` and `README.zh-CN.md` to show C-2 as approved/in progress without listing not-yet-implemented commands in the current command tables.
 - [x] Update `docs/opencode-dogfood-2026-06-15.md` with the sanitized recorded `tool_use` JSONL row shape that C-2 parser tests will bind to.
 - [x] Run `pytest -q tests/test_docs.py`.
@@ -68,7 +68,7 @@ def test_opencode_link_appends_instruction_once_and_preserves_config(tmp_path: P
 - [x] Implement an OpenCode injection target in `src/omni/inject.py` using the existing `InjectResult` shape. Keep Claude behavior byte-identical.
 - [x] Add tests for invalid JSON and non-list `instructions`, both proving no write occurs.
 - [x] Add a CLI-level redaction test with an existing `opencode.json` containing a secret-like value. The link command must preserve the file value but must not print the raw secret in the diff.
-- [x] Add a symlink rejection test proving `omni inject opencode --mode link` cannot follow `opencode.json` outside the project-local write path.
+- [x] Add a symlink rejection test proving `cairn inject opencode --mode link` cannot follow `opencode.json` outside the project-local write path.
 - [x] Run `pytest -q tests/test_inject.py`.
 - [x] Commit with message `day21: inject — add OpenCode instructions target`.
 
@@ -118,8 +118,8 @@ Expected normalized event: `event_type == "tool_use"`, `tool == "bash"`,
 ## Task 4: CLI Wiring And Smoke Tests
 
 - [x] Add failing CLI tests:
-  - `omni inject opencode --mode preview` exits 0 and prints `.omni/generated/memory.md`
-  - `omni ingest opencode_run --engine opencode --transcript <path>` exits 0 and `run show` displays the nested command preview
+  - `cairn inject opencode --mode preview` exits 0 and prints `.omni/generated/memory.md`
+  - `cairn ingest opencode_run --engine opencode --transcript <path>` exits 0 and `run show` displays the nested command preview
   - unknown `--engine` exits 2 before DB writes
 - [x] Run the focused CLI tests and verify they fail.
 - [x] Add `--engine` to the ingest parser with choices from registered capture engines.
@@ -150,7 +150,7 @@ pytest -q tests/test_capture.py tests/test_inject.py tests/test_parse.py tests/t
 - C-2 is documented as approved and implemented.
 - Claude injection and Claude hook behavior remain compatible.
 - OpenCode injection writes only `opencode.json` and preserves existing config.
-- OpenCode transcript ingest writes only through `omni ingest`.
+- OpenCode transcript ingest writes only through `cairn ingest`.
 - OpenCode run rows store `engine='opencode'`.
 - Unknown OpenCode rows archive redacted content rather than guessing schema.
 - No new migration, MCP, plugin background process, permission layer, UI, or external write path.

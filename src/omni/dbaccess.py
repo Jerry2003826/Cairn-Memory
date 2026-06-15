@@ -20,7 +20,7 @@ def connect_project(
 ) -> sqlite3.Connection:
     db_path = _project_db_path(root)
     if not create_if_missing and not db_path.exists():
-        raise FileNotFoundError(f"OmniMemory database is missing: {db_path}")
+        raise FileNotFoundError(f"Cairn Memory database is missing: {db_path}")
     conn = db.connect(db_path)
     db.migrate(conn)
     return conn
@@ -58,7 +58,7 @@ def _open_readonly(
         if version != db.LATEST_SCHEMA_VERSION:
             conn.close()
             raise ValueError(
-                f"OmniMemory schema is outdated (found {version or 'none'}, "
+                f"Cairn Memory schema is outdated (found {version or 'none'}, "
                 f"need {db.LATEST_SCHEMA_VERSION}){outdated_suffix}"
             )
     return conn
@@ -71,16 +71,16 @@ def connect_project_readonly(
 ) -> sqlite3.Connection:
     return _open_readonly(
         root,
-        missing_prefix="OmniMemory database is missing",
+        missing_prefix="Cairn Memory database is missing",
         check_schema=check_schema,
-        outdated_suffix="; run an approved write command such as 'omni render' to migrate",
+        outdated_suffix="; run an approved write command such as 'cairn render' to migrate",
     )
 
 
 def connect_project_readonly_verify(root: Path | str | None = None) -> sqlite3.Connection:
     return _open_readonly(
         root,
-        missing_prefix="OmniMemory database not found",
+        missing_prefix="Cairn Memory database not found",
         check_schema=True,
     )
 

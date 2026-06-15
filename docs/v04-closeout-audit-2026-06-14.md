@@ -1,4 +1,4 @@
-# OmniMemory v0.4 Closeout Audit
+# Cairn Memory v0.4 Closeout Audit
 
 Date: 2026-06-14 local
 
@@ -11,7 +11,7 @@ Merged PRs:
 
 ## Scope
 
-This closeout covers OmniMemory v0.4 / Verify Polish.
+This closeout covers Cairn Memory v0.4 / Verify Polish.
 
 v0.4 did not add product features, tables, migrations, runtime services,
 automatic success inference, automatic failure memory, or automatic memory
@@ -77,7 +77,7 @@ automatic failure memory, or automatic memory evolution.
 
 ## Closeout Verdict
 
-OmniMemory v0.4 / Verify Polish is ready to close.
+Cairn Memory v0.4 / Verify Polish is ready to close.
 
 The defensible claim is narrow: Verify now has a locked `start_failed` contract,
 centralized reason-code constants, public coverage for blank configured

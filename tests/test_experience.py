@@ -534,8 +534,8 @@ def test_cli_experience_ls_on_outdated_schema_is_read_only_and_exits_clearly(
     check.close()
 
     assert code == 2
-    assert "OmniMemory schema is outdated (found 3, need 8)" in captured.err
-    assert "omni render" in captured.err
+    assert "Cairn Memory schema is outdated (found 3, need 8)" in captured.err
+    assert "cairn render" in captured.err
     assert captured.out == ""
     assert version == "3"
 
@@ -554,7 +554,7 @@ def test_connect_project_readonly_serves_reads_and_blocks_writes(tmp_path: Path)
 
 
 def test_connect_project_readonly_missing_db_raises_file_not_found(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="OmniMemory database is missing"):
+    with pytest.raises(FileNotFoundError, match="Cairn Memory database is missing"):
         connect_project_readonly(tmp_path)
 
 
@@ -884,7 +884,7 @@ def test_note_lifecycle_adds_no_new_tables(tmp_path: Path) -> None:
 
 
 def test_note_readonly_ls_show_do_not_create_omni(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="OmniMemory database is missing"):
+    with pytest.raises(FileNotFoundError, match="Cairn Memory database is missing"):
         connect_project_readonly(tmp_path)
     assert not (tmp_path / ".omni").exists()
 
@@ -977,7 +977,7 @@ def test_cli_note_ls_missing_db_does_not_create_omni(
     code = cli.main(["experience", "note", "ls"])
 
     assert code == 2
-    assert "OmniMemory database is missing" in capsys.readouterr().err
+    assert "Cairn Memory database is missing" in capsys.readouterr().err
     assert not (tmp_path / ".omni").exists()
 
 

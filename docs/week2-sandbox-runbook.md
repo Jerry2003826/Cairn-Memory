@@ -1,6 +1,6 @@
 # Week-2 Sandbox Runbook
 
-This runbook validates Week-1 OmniMemory in a real Claude Code CLI sandbox. It
+This runbook validates Week-1 Cairn Memory in a real Claude Code CLI sandbox. It
 does not replace `docs/demo.md`; use `docs/demo.md` for the authoritative
 cold/warm G6 procedure.
 
@@ -9,16 +9,16 @@ evidence in `docs/week2-spike-report.md`.
 
 ## Baseline
 
-From the OmniMemory checkout:
+From the Cairn Memory checkout:
 
 ```bash
 pytest -q
-omni audit secrets
+cairn audit secrets
 git rev-parse HEAD
 claude --version
 ```
 
-Record the OmniMemory commit and Claude Code version in the spike report.
+Record the Cairn Memory commit and Claude Code version in the spike report.
 
 ## Sandbox Setup
 
@@ -27,23 +27,23 @@ Create the sandbox:
 ```bash
 bash scripts/create_sandbox.sh /tmp/omni-demo-sandbox
 cd /tmp/omni-demo-sandbox
-omni init
-omni audit secrets
-omni init --install-claude-hooks --yes
-omni status
+cairn init
+cairn audit secrets
+cairn init --install-claude-hooks --yes
+cairn status
 ```
 
-Verify `omni` resolves on PATH in the same shell that will launch `claude`.
-The installed hook command is the portable `omni hook`.
+Verify `cairn` resolves on PATH in the same shell that will launch `claude`.
+The installed hook command is the portable `cairn hook`.
 
 ```bash
-command -v omni
+command -v cairn
 ```
 
 On Windows shells:
 
 ```cmd
-where omni
+where cairn
 ```
 
 If hooks do not fire in S1, stop and fix PATH or hook installation before
@@ -51,18 +51,18 @@ blaming capture code.
 
 ## After Every Scenario
 
-Run these commands after the Claude Code scenario ends. For `omni ingest`,
+Run these commands after the Claude Code scenario ends. For `cairn ingest`,
 run it TWICE; the second run MUST report `events_inserted=0`.
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
-omni render
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
+cairn render
 copy .omni/generated/memory.md /tmp/omni-memory-first.md
-omni render
+cairn render
 cmp .omni/generated/memory.md /tmp/omni-memory-first.md
 ```
 
@@ -89,11 +89,11 @@ Troubleshooting UTF-8 spool inspection:
 Record for every scenario:
 
 - the prompt typed into Claude Code
-- both `omni ingest` outputs, including `events_inserted=0` on the second run
+- both `cairn ingest` outputs, including `events_inserted=0` on the second run
 - the `session_id` used as `<run_id>`
-- `omni run show <run_id>` output summary
-- `omni audit secrets` result
-- `omni status` hook p50/p95 and sample count
+- `cairn run show <run_id>` output summary
+- `cairn audit secrets` result
+- `cairn status` hook p50/p95 and sample count
 - pass/fail criteria result
 - fallback used when data was missing
 
@@ -108,11 +108,11 @@ Run the project test command. Before running it, cd into a subdirectory of this 
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -129,7 +129,7 @@ Pass/fail criteria:
 
 Fallback if missing data:
 
-- If hook events are absent, stop and check `command -v omni` / `where omni`, `.claude/settings.json`, and hook install before continuing.
+- If hook events are absent, stop and check `command -v cairn` / `where cairn`, `.claude/settings.json`, and hook install before continuing.
 
 ## S2 Bash failure
 
@@ -142,11 +142,11 @@ Run a Bash command that fails with exit code 7 and prints one line to stderr.
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -175,11 +175,11 @@ Create a small text file, read it back, edit one line, and show the final conten
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -208,11 +208,11 @@ Attempt an operation that requires permission, then deny it when Claude Code ask
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -241,11 +241,11 @@ Try an action that should be blocked before tool execution if the current Claude
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -275,11 +275,11 @@ Use a subagent, if this Claude Code build supports it, to inspect the sandbox te
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -309,11 +309,11 @@ Summarize the current work briefly, then run /compact manually.
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -342,11 +342,11 @@ Continue a long enough sandbox conversation to trigger auto compact if practical
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -376,11 +376,11 @@ Resume the previous sandbox session and run the same test command again.
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -409,11 +409,11 @@ Start a long-running Bash command, then interrupt or kill it from Claude Code.
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -429,7 +429,7 @@ Pass/fail criteria:
 
 Fallback if missing data:
 
-- If no run id is emitted, inspect redacted spool payloads to find `session_id`; use `omni ingest <session_id>` only for recovery.
+- If no run id is emitted, inspect redacted spool payloads to find `session_id`; use `cairn ingest <session_id>` only for recovery.
 
 ## S11 crash / missing SessionEnd
 
@@ -442,28 +442,28 @@ Start a sandbox session, run one simple command, then crash or kill Claude Code 
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
 
 - absence of ingest request file
-- plain `omni ingest` output
-- explicit recovery output from `omni ingest <session_id>`
+- plain `cairn ingest` output
+- explicit recovery output from `cairn ingest <session_id>`
 - how the session id was found
 
 Pass/fail criteria:
 
-- PASS if no ingest request file exists, plain `omni ingest` is a no-op by design, and `omni ingest <session_id>` recovers only matching session hook records
+- PASS if no ingest request file exists, plain `cairn ingest` is a no-op by design, and `cairn ingest <session_id>` recovers only matching session hook records
 - FAIL if unscoped ingest consumes unrelated live hook spool
 
 Fallback if missing data:
 
-- Find `session_id` from redacted spool record payloads or the Claude Code session list, then run `omni ingest <session_id>`.
+- Find `session_id` from redacted spool record payloads or the Claude Code session list, then run `cairn ingest <session_id>`.
 
 ## S12 read .env
 
@@ -476,11 +476,11 @@ Read .env and report whether it contains the planted fake values.
 After scenario commands:
 
 ```bash
-omni ingest
-omni ingest
-omni run show <run_id>
-omni audit secrets
-omni status
+cairn ingest
+cairn ingest
+cairn run show <run_id>
+cairn audit secrets
+cairn status
 ```
 
 What to record:
@@ -488,7 +488,7 @@ What to record:
 - whether the `.env` read event appears as a withheld stub
 - preserved envelope fields: session_id, tool_use_id, tool_name
 - absence of raw planted values under `.omni/**`
-- `omni audit secrets` result
+- `cairn audit secrets` result
 
 Pass/fail criteria:
 
@@ -497,4 +497,4 @@ Pass/fail criteria:
 
 Fallback if missing data:
 
-- Do not expect file content in `omni run show`. A read command like `cat .env` stays visible, but a write command like `echo X > .env` is stubbed.
+- Do not expect file content in `cairn run show`. A read command like `cat .env` stays visible, but a write command like `echo X > .env` is stubbed.

@@ -1,6 +1,6 @@
 # Week-2 Go / No-Go Gates
 
-These gates decide whether OmniMemory can move from sandbox validation to
+These gates decide whether Cairn Memory can move from sandbox validation to
 dogfood. They are evidence gates, not assumptions. Do not mark any gate passed
 until a human-run Claude Code sandbox session provides the evidence in
 `docs/week2-spike-report.md`.
@@ -30,7 +30,7 @@ raw sensitive content.
 
 ## G4: Real-session audit
 
-PASS requires `omni audit secrets` to exit 0 after the real sandbox session and
+PASS requires `cairn audit secrets` to exit 0 after the real sandbox session and
 after S12 planted-secret validation.
 
 FAIL if any raw planted secret or detected secret remains under `.omni/**`.
@@ -59,7 +59,7 @@ the injected command.
 
 ## G7: Hook latency
 
-PASS requires in-process hook capture p95 < 250 ms from `omni status`.
+PASS requires in-process hook capture p95 < 250 ms from `cairn status`.
 
 process-level latency is sampled separately and recorded in
 `docs/week2-spike-report.md`; it is not the G7 gate.
