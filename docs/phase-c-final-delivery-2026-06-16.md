@@ -110,9 +110,9 @@ Read surfaces before OpenCode:
 }
 ```
 
-The fresh sandbox had no active known-failure pattern. That is acceptable for
-this closeout because this sample proves the read surface and sequencing, while
-the earlier C-2 evidence file records a non-empty failure read sample.
+The initial validation/build sandbox had no active known-failure pattern. That
+is acceptable for that sample because it proves the read surface and sequencing;
+the follow-up section below records a fresh non-empty failure-read recovery run.
 
 ### Sample 1: test validation
 
@@ -234,6 +234,218 @@ Outcome evidence:
 Both fresh samples stored `runs.engine = "opencode"` and attached their ingested
 runs to the open task that existed when the transcript was ingested.
 
+## OpenCode follow-up dogfood: bugfix, refactor, and known-failure recovery
+
+Update: the next requested OpenCode dogfood set was run on 2026-06-16 in a
+disposable macOS sandbox. This extends the earlier validation/build evidence
+with three additional task families: bugfix, refactor, and known-failure
+recovery.
+
+The sandbox-local `opencode.json` was copied from the local QwenCode provider
+shape into OpenCode's provider schema. No credential was written to the repo or
+sandbox config; the config kept environment placeholders only:
+
+```json
+{
+  "apiyi_api_key_placeholder": true,
+  "deepseek_api_key_placeholder": true,
+  "instructions": [
+    ".omni/generated/memory.md"
+  ],
+  "model": "qwen-apiyi/glm-5.1",
+  "providers": [
+    "qwen-apiyi",
+    "qwen-deepseek"
+  ]
+}
+```
+
+OpenCode was launched headlessly with:
+
+```powershell
+opencode run --format json --model qwen-apiyi/glm-5.1 --agent build --dangerously-skip-permissions
+```
+
+Because the macOS sandbox had `python3` but not `python`, OpenCode's first
+literal `python -m omni.cli memory read` attempt exited `127` in each follow-up
+sample. The agent recovered by using `python3 -m omni.cli ...`; the successful
+read-surface calls and verification commands below are the counted evidence.
+
+### Follow-up setup: non-empty known failure
+
+Before the recovery sample, a known-failure pattern was created through the
+approved writer path:
+
+```powershell
+python3 -m omni.cli ingest opencode_known_failure_seed --engine opencode --transcript opencode-known-failure-seed.jsonl
+python3 -m omni.cli failure extract opencode_known_failure_seed
+python3 -m omni.cli failure approve failure_cand_aa0596e1256c434c835509be96249c12 --summary "Build can fail when dependency resolution fails while reading the lockfile." --suggested-action "Inspect pnpm-lock.yaml first; preserve pnpm and repair the lockfile before retrying pnpm run build."
+python3 -m omni.cli render
+```
+
+The resulting `failure read` surface was non-empty:
+
+```json
+[
+  {
+    "command_norm": "pnpm run build",
+    "suggested_action": "Inspect pnpm-lock.yaml first; preserve pnpm and repair the lockfile before retrying pnpm run build.",
+    "summary": "Build can fail when dependency resolution fails while reading the lockfile."
+  }
+]
+```
+
+### Follow-up sample 3: bugfix
+
+Intent: OpenCode should read Cairn surfaces, use the bugfix task-aware verify
+plan, observe the failing unit test, repair the smallest code bug, and rerun the
+same selected command.
+
+Run id: `opencode_dogfood_bugfix`.
+
+Transcript ingest:
+
+```text
+run_ids=opencode_dogfood_bugfix events_inserted=21 queue_drained=0
+```
+
+Key `run show` command sequence:
+
+| Seq | Command | Exit |
+|---:|---|---:|
+| 3 | `python3 -m omni.cli memory read` | 0 |
+| 5 | `python3 -m omni.cli failure read` | 0 |
+| 7 | `python3 -m omni.cli verify plan --task bugfix` | 0 |
+| 9 | `python3 -m omni.cli task read` | 0 |
+| 11 | `pnpm run test:unit` | 1 |
+| 16 | edit `math.js` |  |
+| 18 | write corrected `math.js` |  |
+| 20 | `pnpm run test:unit` | 0 |
+
+Outcome evidence:
+
+```json
+{
+  "final_command": "pnpm run test:unit",
+  "run_id": "opencode_dogfood_bugfix",
+  "status": "success",
+  "task_type": "bugfix",
+  "tests_status": "passed"
+}
+```
+
+### Follow-up sample 4: refactor
+
+Intent: OpenCode should read Cairn surfaces, use the refactor verify plan,
+remove duplicate formatting logic without changing exports, and run the selected
+verification command.
+
+Run id: `opencode_dogfood_refactor`.
+
+Transcript ingest:
+
+```text
+run_ids=opencode_dogfood_refactor events_inserted=14 queue_drained=0
+```
+
+Key `run show` command sequence:
+
+| Seq | Command | Exit |
+|---:|---|---:|
+| 3 | `python3 -m omni.cli memory read` | 0 |
+| 4 | `python3 -m omni.cli failure read` | 0 |
+| 5 | `python3 -m omni.cli verify plan --task refactor` | 0 |
+| 6 | `python3 -m omni.cli task read` | 0 |
+| 11 | edit `format.js` |  |
+| 13 | `pnpm run test` | 0 |
+
+Outcome evidence:
+
+```json
+{
+  "final_command": "pnpm run test",
+  "run_id": "opencode_dogfood_refactor",
+  "status": "success",
+  "task_type": "refactor",
+  "tests_status": "passed"
+}
+```
+
+### Follow-up sample 5: known-failure recovery
+
+Intent: OpenCode should read a non-empty `failure read`, run the release build,
+hit the known lockfile failure, inspect `pnpm-lock.yaml`, preserve pnpm, repair
+the lockfile, and rerun the release build successfully.
+
+Run id: `opencode_dogfood_known_failure_recovery`.
+
+Transcript ingest:
+
+```text
+run_ids=opencode_dogfood_known_failure_recovery events_inserted=17 queue_drained=0
+```
+
+Key `run show` command sequence:
+
+| Seq | Command | Exit |
+|---:|---|---:|
+| 3 | `python3 -m omni.cli memory read` | 0 |
+| 5 | `python3 -m omni.cli failure read` | 0 |
+| 7 | `python3 -m omni.cli verify plan --profile release` | 0 |
+| 8 | `python3 -m omni.cli task read` | 0 |
+| 10 | `pnpm run build` | 1 |
+| 12 | read `pnpm-lock.yaml` |  |
+| 14 | edit `pnpm-lock.yaml` |  |
+| 16 | `pnpm run build` | 0 |
+
+Outcome evidence:
+
+```json
+{
+  "final_command": "pnpm run build",
+  "run_id": "opencode_dogfood_known_failure_recovery",
+  "status": "success",
+  "task_type": "validation",
+  "tests_status": "passed"
+}
+```
+
+Follow-up outcome summary:
+
+```json
+{
+  "count": 3,
+  "summary": {
+    "memory_effect": {
+      "neutral": 3
+    },
+    "status": {
+      "success": 3
+    },
+    "task_type": {
+      "bugfix": 1,
+      "refactor": 1,
+      "validation": 1
+    },
+    "tests_status": {
+      "passed": 3
+    }
+  }
+}
+```
+
+Sandbox audit passed after every follow-up ingest and close. Final audit:
+
+```json
+{
+  "fixtures_missing": false,
+  "negative_failures": [],
+  "ok": true,
+  "omni_leaks": [],
+  "positive_failures": []
+}
+```
+
 ### Non-counted invocation failures
 
 Three setup attempts were abandoned before any transcript was ingested. They are
@@ -266,8 +478,8 @@ Repository-level gates for this delivery use:
 |---|---|
 | `npx -y opencode-ai@latest --version` | 1.17.7 |
 | `python -m pytest tests/test_docs.py -q` | 14 passed |
-| `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q` | 131 passed, 3 skipped |
-| `pytest -q` | 622 passed, 3 skipped |
+| `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q` | 134 passed |
+| `pytest -q` | 632 passed |
 | `git diff --check` | pass |
 | `python -m omni.cli audit secrets` | ok=true |
 
@@ -275,8 +487,8 @@ Machine-readable gate anchors:
 
 - `npx -y opencode-ai@latest --version`: 1.17.7
 - `python -m pytest tests/test_docs.py -q`: 14 passed
-- `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 131 passed, 3 skipped
-- `pytest -q`: 622 passed, 3 skipped
+- `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 134 passed
+- `pytest -q`: 632 passed
 - `git diff --check`: pass
 - `python -m omni.cli audit secrets`: ok=true
 
@@ -289,23 +501,25 @@ Machine-readable gate anchors:
   `cairn ingest --engine opencode --transcript`.
 - C-5 Runtime-lite task lifecycle: one open operational task, task read view,
   task close with verify/outcome evidence.
-- OpenCode multi-sample dogfood: two fresh samples in one disposable sandbox,
-  both reading Cairn Memory state before command execution.
+- OpenCode multi-sample dogfood: five bounded samples across validation,
+  release-build validation, bugfix, refactor, and known-failure recovery.
 - Safety gates: sandbox `python -m omni.cli audit secrets` passed after the
   OpenCode ingest and close steps.
 
 This evidence is stronger than the original single C-2 sample because it covers
-two fresh OpenCode runs and two verification profiles: test and release build.
-It still does not prove broad behavioral improvement across many cold/warm
-OpenCode task families.
+five OpenCode runs, two verification profiles, task-aware bugfix/refactor
+selection, and a non-empty known-failure recovery path. It still does not prove
+broad behavioral improvement across many cold/warm OpenCode task families or
+real external repositories.
 
-## Implemented but needs more dogfood samples
+## Remaining caveats after expanded dogfood
 
-- OpenCode v0 is implemented and proved for bounded validation/build tasks, but
-  it needs more dogfood samples across bugfix, refactor, and failure-recovery
-  prompts before claiming broad behavior improvement.
-- Failure read is implemented and previously proved with a non-empty pattern,
-  but this fresh sandbox had no active known-failure pattern.
+- OpenCode v0 is now proved for bounded validation/build, bugfix, refactor, and
+  known-failure recovery prompts in disposable sandboxes, but this is still not
+  broad causal proof across many projects or cold/warm controls.
+- This does not prove broad behavioral improvement.
+- Failure read is now proved both as a non-empty machine surface and as input to
+  a successful recovery run.
 - The task lifecycle is implemented for a single open task; multi-agent handoff
   remains outside this approved slice.
 
@@ -323,13 +537,10 @@ OpenCode task families.
 
 ## Next smallest high-value tasks
 
-1. Run three more OpenCode dogfood samples: one bugfix, one refactor, and one
-   known-failure recovery prompt.
-2. Add one fresh non-empty `failure read` OpenCode sample in a sandbox where the
-   known-failure pattern is created through the existing extract and approve
-   writers.
-3. If the charter approves C-4, build only a read-only MCP wrapper over the
-   existing read surfaces, with no DB write capability.
-4. Keep the next adapter work at the same boundary: read governed Cairn Memory
+1. Repeat the expanded OpenCode dogfood pack on a real non-sandbox project only
+   after `cairn audit secrets` passes in both checkouts.
+2. Add controlled cold/warm pairs for bugfix and known-failure recovery before
+   claiming causal behavior improvement.
+3. Keep the next adapter work at the same boundary: read governed Cairn Memory
    state, capture only redacted transcripts, and write only through human-gated
    Cairn CLI commands.

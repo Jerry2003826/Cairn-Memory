@@ -230,9 +230,10 @@ the existing machine-read surfaces.
 
 Phase C final delivery evidence from 2026-06-16 is
 [`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md):
-two fresh OpenCode samples consumed Cairn Memory read surfaces before running
-test and release-build commands, then left `engine=opencode` run, task, and
-outcome evidence through approved CLI writers.
+five bounded OpenCode samples consumed Cairn Memory read surfaces before
+validation, release-build, bugfix, refactor, and known-failure recovery work,
+then left `engine=opencode` run, task, and outcome evidence through approved CLI
+writers.
 
 | ✅ Current repo includes | 🚫 Still out of scope |
 |---|---|
