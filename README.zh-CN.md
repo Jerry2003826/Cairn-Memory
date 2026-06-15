@@ -195,6 +195,23 @@ omni render
 
 权威治理与 non-goals 详见 [`AGENTS.md`](AGENTS.md)。
 
+## 🗺️ 路线图
+
+OmniMemory 是 OmniAgent 更大目标的**第一阶段（内核）**：一个轻量、本地优先、
+受治理的**大脑层，任何 AI Coding Agent 都能接入**——Claude Code、Codex、
+OpenCode、QwenCode、Cursor——在不同引擎间复用同一套记忆、验证与失败治理。
+
+| 阶段 | 新增能力 | 状态 |
+|---|---|:--:|
+| **① OmniMemory 内核** | 捕获 → 脱敏 → 评估 → outcome → 审核后的经验 / 失败记忆 → 验证桥 | ✅ 已交付（本次发布） |
+| **② OmniBridge** | agent-agnostic 的 capture/inject 接缝、只读机器访问接口、只读 MCP server，让其它引擎读取同一个大脑 | 🔜 下一步 —— [Phase C charter](docs/omniagent-phase-c-charter.md)（草案） |
+| **③ OmniRuntime** | task 生命周期（start / verify / close / outcome / evidence）与 multi-agent handoff | 规划中 |
+| **④ Product** | 多 agent 调度、权限分级、审计报告、记忆控制台 | 规划中 |
+
+如今 I/O 仍绑定 Claude Code，但核心大脑（评估、outcome、验证、经验 / 失败记忆、
+渲染）已经与引擎无关——迈向第二阶段主要是给两端加一层 capture/inject 适配接缝，
+再加一个只读访问接口。
+
 ## 🏗️ 架构
 
 状态由一个小型 SQLite 数据库加一个脱敏 spool 组成，全部位于 `.omni/` 下。Hooks

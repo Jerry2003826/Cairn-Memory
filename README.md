@@ -202,6 +202,24 @@ loop works end to end for one local Claude Code user.
 
 See [`AGENTS.md`](AGENTS.md) for the authoritative governance and non-goals.
 
+## 🗺️ Roadmap
+
+OmniMemory is **stage ① (the Kernel)** of OmniAgent's larger goal: a lightweight,
+local-first, governed **brain layer that any AI Coding Agent can plug into** —
+Claude Code, Codex, OpenCode, QwenCode, Cursor — reusing the same memory,
+verification, and failure governance across engines.
+
+| Stage | What it adds | Status |
+|---|---|:--:|
+| **① OmniMemory Kernel** | capture → redact → eval → outcome → reviewed experience / failure memory → verify bridge | ✅ shipped (this release) |
+| **② OmniBridge** | agent-agnostic capture/inject seam, a read-only machine read surface, and a read-only MCP server so other engines read the same brain | 🔜 next — [Phase C charter](docs/omniagent-phase-c-charter.md) (draft) |
+| **③ OmniRuntime** | task lifecycle (start / verify / close / outcome / evidence) and multi-agent handoff | planned |
+| **④ Product** | multi-agent orchestration, permission tiers, audit reports, memory console | planned |
+
+Today the I/O is bound to Claude Code, but the core brain (eval, outcome, verify,
+experience / failure memory, render) is already engine-neutral — the work toward
+stage ② is mostly a capture/inject adapter seam plus a read-only access surface.
+
 ## 🏗️ Architecture
 
 State is a small SQLite database plus a redacted spool, all under `.omni/`.

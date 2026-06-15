@@ -1,5 +1,17 @@
 # OmniAgent Phase B (OmniMemory → OmniAgent transition)
 
+> **Vision update (2026-06-15).** OmniAgent is now scoped as an *agent-agnostic*
+> governed brain layer for **all** AI Coding Agents (Claude Code, Codex, OpenCode,
+> QwenCode, Cursor), delivered in four stages — ① OmniMemory Kernel · ② OmniBridge
+> (multi-engine adapters + a read-only access surface) · ③ OmniRuntime (task
+> lifecycle + multi-agent handoff) · ④ Product. The Kernel (Layers 1–5) is done.
+> The **"MCP server / multi-engine router / task runtime / multi-agent"** items in
+> the Non-goals below are **no longer permanent non-goals — they are approved
+> future direction**, governed one stage at a time starting with
+> [`docs/omniagent-phase-c-charter.md`](docs/omniagent-phase-c-charter.md) (DRAFT).
+> Until Phase C is approved and merged, the Phase B boundaries below remain in
+> force and **every safety invariant is unchanged**.
+
 ## Goal
 
 **Completed:** OmniMemory CLI-only Claude Code v1 (Layers 1–5). See
@@ -20,6 +32,8 @@ Phase B adds, without breaking safety invariants:
 - multi-project read-only status overview
 
 ## Non-goals, hard this phase
+
+*(Hard for **Phase B**. Per the Vision update at the top, MCP server / multi-engine router / task runtime / multi-agent are reclassified as approved future direction under Phase C — they stay unimplemented until that charter is approved and merged.)*
 
 NO LLM extractors.  
 NO MCP server.  
