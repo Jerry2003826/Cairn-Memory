@@ -205,38 +205,26 @@ def list_outcomes(
 ) -> dict[str, Any]:
     """Return recorded outcomes plus a per-field tally (read-only)."""
 
+    # One declarative pass drives validation, the echoed `filters`, and the SQL
+    # WHERE clause together, so adding a filter column touches exactly one spot.
+    filter_specs = (
+        ("task_type", task_type, TASK_TYPE_VALUES),
+        ("status", status, OUTCOME_STATUS_VALUES),
+        ("tests_status", tests_status, TESTS_STATUS_VALUES),
+        ("memory_effect", memory_effect, MEMORY_EFFECT_VALUES),
+    )
     filters: dict[str, str] = {}
-    if task_type is not None:
-        validate_choice("task_type", task_type, TASK_TYPE_VALUES)
-        filters["task_type"] = task_type
-    if status is not None:
-        validate_choice("status", status, OUTCOME_STATUS_VALUES)
-        filters["status"] = status
-    if tests_status is not None:
-        validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
-        filters["tests_status"] = tests_status
-    if memory_effect is not None:
-        validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
-        filters["memory_effect"] = memory_effect
-
     where_clauses: list[str] = []
     params: list[str] = []
-    if task_type is not None:
-        where_clauses.append("task_type = ?")
-        params.append(task_type)
-    if status is not None:
-        where_clauses.append("status = ?")
-        params.append(status)
-    if tests_status is not None:
-        where_clauses.append("tests_status = ?")
-        params.append(tests_status)
-    if memory_effect is not None:
-        where_clauses.append("memory_effect = ?")
-        params.append(memory_effect)
+    for column, value, allowed in filter_specs:
+        if value is None:
+            continue
+        validate_choice(column, value, allowed)
+        filters[column] = value
+        where_clauses.append(f"{column} = ?")
+        params.append(value)
 
-    where_sql = ""
-    if where_clauses:
-        where_sql = "WHERE " + " AND ".join(where_clauses)
+    where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
     rows = conn.execute(
         f"""
