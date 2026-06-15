@@ -22,6 +22,7 @@ from omni.config import ensure_project_layout
 from omni.ids import project_id_for_path
 from omni.parse import NormalizedEvent, parse_transcript
 from omni.redact import redact
+from omni.task import current_task_id_for_ingest
 from omni.spool import (
     HookRecord,
     ack_hook_records,
@@ -276,10 +277,13 @@ def _ingest_one(
 
 
 def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: Path | None) -> None:
+    task_id = current_task_id_for_ingest(conn)
     conn.execute(
         """
-        INSERT OR IGNORE INTO runs(run_id, project_id, cwd, transcript_path, snapshot_seq, status)
-        VALUES(?,?,?,?,?,?)
+        INSERT OR IGNORE INTO runs(
+          run_id, project_id, cwd, transcript_path, snapshot_seq, status, task_id
+        )
+        VALUES(?,?,?,?,?,?,?)
         """,
         (
             run_id,
@@ -288,8 +292,14 @@ def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: P
             str(transcript) if transcript is not None else None,
             0,
             "open",
+            task_id,
         ),
     )
+    if task_id is not None:
+        conn.execute(
+            "UPDATE runs SET task_id = ? WHERE run_id = ? AND task_id IS NULL",
+            (task_id, run_id),
+        )
 
 
 def _transcript_candidates(conn: sqlite3.Connection, root: Path, path: Path) -> list[EventCandidate]:
