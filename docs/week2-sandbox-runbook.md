@@ -25,8 +25,8 @@ Record the Cairn Memory commit and Claude Code version in the spike report.
 Create the sandbox:
 
 ```bash
-bash scripts/create_sandbox.sh /tmp/omni-demo-sandbox
-cd /tmp/omni-demo-sandbox
+bash scripts/create_sandbox.sh /tmp/cairn-demo-sandbox
+cd /tmp/cairn-demo-sandbox
 cairn init
 cairn audit secrets
 cairn init --install-claude-hooks --yes

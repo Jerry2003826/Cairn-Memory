@@ -70,7 +70,7 @@ def test_week2_sandbox_runbook_covers_required_scenarios() -> None:
         "cairn audit secrets",
         "git rev-parse HEAD",
         "claude --version",
-        "bash scripts/create_sandbox.sh /tmp/omni-demo-sandbox",
+        "bash scripts/create_sandbox.sh /tmp/cairn-demo-sandbox",
         "cairn init --install-claude-hooks --yes",
         "cairn status",
         "command -v cairn",

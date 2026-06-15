@@ -2,6 +2,9 @@
 
 Date: 2026-06-15
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original closeout run.
+
 ## Local Verification
 
 - `pytest -q`: 480 passed, 3 skipped, 1 warning

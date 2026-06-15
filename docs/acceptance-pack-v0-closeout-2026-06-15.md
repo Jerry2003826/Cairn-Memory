@@ -2,6 +2,9 @@
 
 Date: 2026-06-15 local
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original closeout run.
+
 ## Scope decision
 
 This stage chose **Scope A (docs-only)**. It adds no runtime code.

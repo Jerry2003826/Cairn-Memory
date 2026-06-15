@@ -85,11 +85,14 @@ def test_top_level_help_keeps_internal_commands_hidden(
 def test_version_uses_cairn_memory_package_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    version = pyproject["project"]["version"]
+
     with pytest.raises(SystemExit) as exc:
         cli.main(["--version"])
 
     assert exc.value.code == 0
-    assert capsys.readouterr().out == "cairn-memory 0.1.0\n"
+    assert capsys.readouterr().out == f"cairn-memory {version}\n"
 
 
 def test_audit_and_ingest_help_are_discoverable(

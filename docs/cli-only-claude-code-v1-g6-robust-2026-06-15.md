@@ -2,6 +2,9 @@
 
 Date: 2026-06-15
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original evidence run.
+
 ## What this records
 
 This is corroborating harness evidence that the Week-1 Definition of Done G6

@@ -2,6 +2,9 @@
 
 Date: 2026-06-15
 
+Note: Cairn Memory is the current product name. Literal commands below preserve
+the legacy `omni` CLI spelling from the original evidence run.
+
 ## What this records
 
 Phase B (real-usage quality governance) evidence that the failure-memory half of
