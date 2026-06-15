@@ -225,6 +225,7 @@ register(
     CaptureEngine(
         name="claude",
         ingest_events=INGEST_EVENTS,
+        run_engine="claude_code",
         install=install_claude_hooks,
         event_roles=EVENT_ROLES,
     )

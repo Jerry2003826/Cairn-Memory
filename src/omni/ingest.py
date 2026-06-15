@@ -13,6 +13,7 @@ from typing import Any
 from omni import dbaccess
 from omni import gate
 from omni.capture import default as default_capture_engine
+from omni.capture import get as capture_engine
 from omni._common import (
     is_redaction_placeholder as _is_redaction_placeholder,
     merge_redaction_status as _merge_redaction_status,
@@ -106,8 +107,12 @@ def ingest(
     *,
     run_id: str | None = None,
     transcript: Path | str | None = None,
+    engine: str = "claude",
 ) -> IngestResult:
     base = Path(root or Path.cwd()).resolve()
+    selected_engine = capture_engine(engine)
+    if selected_engine.name != "claude" and transcript is None:
+        raise ValueError(f"engine {selected_engine.name} requires transcript ingest")
     ensure_project_layout(base)
     conn = dbaccess.connect_project_migrate(base)
     try:
@@ -124,8 +129,9 @@ def ingest(
                 base,
                 rid,
                 Path(transcript),
-                include_hooks=manual_session_id is not None,
+                include_hooks=manual_session_id is not None and selected_engine.name == "claude",
                 session_id=manual_session_id,
+                run_engine=selected_engine.run_engine,
             )
             total_inserted += inserted
             consumed_hook_paths.update(hook_paths)
@@ -148,6 +154,7 @@ def ingest(
                         path,
                         include_hooks=True,
                         session_id=request_session_id,
+                        run_engine=selected_engine.run_engine,
                     )
                     total_inserted += inserted
                     consumed_hook_paths.update(hook_paths)
@@ -161,6 +168,7 @@ def ingest(
                         None,
                         include_hooks=True,
                         session_id=run_id,
+                        run_engine=selected_engine.run_engine,
                     )
                     total_inserted += inserted
                     consumed_hook_paths.update(hook_paths)
@@ -256,17 +264,23 @@ def _ingest_one(
     *,
     include_hooks: bool,
     session_id: str | None = None,
+    run_engine: str,
 ) -> tuple[int, set[Path]]:
     transcript_events: list[EventCandidate] = []
     if transcript is not None and transcript.exists():
-        transcript_events = _transcript_candidates(conn, root, transcript)
+        transcript_events = _transcript_candidates(
+            conn,
+            root,
+            transcript,
+            engine=run_engine,
+        )
 
     if include_hooks:
         hook_events, hook_paths = _hook_candidates(conn, root, session_id=session_id)
     else:
         hook_events, hook_paths = [], set()
     candidates = _reconcile_candidates(transcript_events, hook_events)
-    _ensure_run(conn, root, run_id, transcript)
+    _ensure_run(conn, root, run_id, transcript, run_engine=run_engine)
 
     inserted = 0
     for seq, candidate in enumerate(candidates, start=1):
@@ -276,14 +290,21 @@ def _ingest_one(
     return inserted, hook_paths
 
 
-def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: Path | None) -> None:
+def _ensure_run(
+    conn: sqlite3.Connection,
+    root: Path,
+    run_id: str,
+    transcript: Path | None,
+    *,
+    run_engine: str,
+) -> None:
     conn.execute(
         """
         INSERT OR IGNORE INTO runs(
-          run_id, project_id, cwd, transcript_path, snapshot_seq, status, task_id
+          run_id, project_id, engine, cwd, transcript_path, snapshot_seq, status, task_id
         )
         VALUES(
-          ?,?,?,?,?,?,
+          ?,?,?,?,?,?,?,
           (
             SELECT meta.value
             FROM meta
@@ -296,6 +317,7 @@ def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: P
         (
             run_id,
             project_id_for_path(root),
+            run_engine,
             str(root),
             str(transcript) if transcript is not None else None,
             0,
@@ -322,8 +344,14 @@ def _ensure_run(conn: sqlite3.Connection, root: Path, run_id: str, transcript: P
     )
 
 
-def _transcript_candidates(conn: sqlite3.Connection, root: Path, path: Path) -> list[EventCandidate]:
-    parsed = parse_transcript(path)
+def _transcript_candidates(
+    conn: sqlite3.Connection,
+    root: Path,
+    path: Path,
+    *,
+    engine: str,
+) -> list[EventCandidate]:
+    parsed = parse_transcript(path, engine=engine)
     if parsed.archive is not None:
         put_artifact(
             root,
@@ -754,13 +782,24 @@ def _command_preview(meta_json: str | None) -> str:
     return str(command).replace("\r", " ").replace("\n", " ")[:160]
 
 
-def _nested_command(value: Any) -> Any:
+def _nested_command(value: Any, *, depth: int = 0) -> Any:
+    if depth > 8:
+        return None
     if isinstance(value, dict):
         for key in ("command", "cmd"):
             if key in value:
                 return value[key]
         for key in ("input", "tool_input", "parameters", "args"):
-            found = _nested_command(value.get(key))
+            found = _nested_command(value.get(key), depth=depth + 1)
+            if found is not None:
+                return found
+        for nested in value.values():
+            found = _nested_command(nested, depth=depth + 1)
+            if found is not None:
+                return found
+    if isinstance(value, list):
+        for nested in value:
+            found = _nested_command(nested, depth=depth + 1)
             if found is not None:
                 return found
     return None

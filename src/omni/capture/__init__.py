@@ -19,6 +19,7 @@ class InstallResult:
 class CaptureEngine:
     name: str
     ingest_events: frozenset[str]
+    run_engine: str = "claude_code"
     install: Callable[..., InstallResult] | None = None
     event_roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
@@ -40,8 +41,13 @@ def default() -> CaptureEngine:
     return get("claude")
 
 
+def names() -> tuple[str, ...]:
+    return tuple(sorted(_REGISTRY))
+
+
 def _load_engines() -> None:
     from omni.capture import claude as _claude  # noqa: F401
+    from omni.capture import opencode as _opencode  # noqa: F401
 
 
 _load_engines()

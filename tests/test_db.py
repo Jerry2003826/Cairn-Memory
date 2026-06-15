@@ -465,6 +465,102 @@ def test_ingest_transcript_is_idempotent_and_redacts_db_content(
     assert github_secret.encode("utf-8") not in omni_bytes
 
 
+def test_ingest_open_code_transcript_records_engine(tmp_path: Path) -> None:
+    transcript = tmp_path / "opencode.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "part": {
+                    "type": "tool",
+                    "tool": "bash",
+                    "callID": "call_e413",
+                    "state": {
+                        "input": {"command": "pnpm run test"},
+                        "metadata": {"exit": 0},
+                        "time": {"start": 1781497265149, "end": 1781497265183},
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = ingest.ingest(
+        root=tmp_path,
+        run_id="open_run",
+        transcript=transcript,
+        engine="opencode",
+    )
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    run = conn.execute("SELECT engine FROM runs WHERE run_id = 'open_run'").fetchone()
+    event = conn.execute(
+        "SELECT tool, tool_use_id, exit_code, duration_ms FROM events WHERE run_id = 'open_run'"
+    ).fetchone()
+
+    assert result.events_inserted == 1
+    assert run["engine"] == "opencode"
+    assert dict(event) == {
+        "tool": "bash",
+        "tool_use_id": "call_e413",
+        "exit_code": 0,
+        "duration_ms": 34,
+    }
+
+
+def test_ingest_open_code_transcript_does_not_scan_claude_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript = tmp_path / "opencode.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "part": {
+                    "type": "tool",
+                    "tool": "bash",
+                    "callID": "call_e413",
+                    "state": {"metadata": {"exit": 0}},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_hook_scan(*_args, **_kwargs):
+        raise AssertionError("OpenCode transcript ingest must not scan Claude hook spool")
+
+    monkeypatch.setattr(ingest, "_hook_candidates", fail_hook_scan)
+
+    result = ingest.ingest(
+        root=tmp_path,
+        run_id="open_run",
+        transcript=transcript,
+        engine="opencode",
+    )
+
+    assert result.events_inserted == 1
+
+
+def test_ingest_opencode_requires_transcript_before_layout_write(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="requires transcript"):
+        ingest.ingest(root=tmp_path, run_id="open_run", engine="opencode")
+
+    assert not (tmp_path / ".omni").exists()
+
+
+def test_ingest_unknown_engine_fails_before_layout_write(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unknown capture engine"):
+        ingest.ingest(root=tmp_path, run_id="bad_run", engine="missing")
+
+    assert not (tmp_path / ".omni").exists()
+
+
 def test_ingest_stores_transcript_archive_artifact_for_unknown_lines(
     tmp_path: Path, monkeypatch
 ) -> None:

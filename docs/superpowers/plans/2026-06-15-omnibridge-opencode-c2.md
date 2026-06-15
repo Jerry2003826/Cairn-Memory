@@ -74,8 +74,8 @@ def test_opencode_link_appends_instruction_once_and_preserves_config(tmp_path: P
 
 ## Task 3: OpenCode Engine And Transcript Normalization
 
-- [ ] Add failing tests in `tests/test_capture.py` proving `get("opencode").name == "opencode"` and that its run engine is `opencode`.
-- [ ] Add failing parser test in `tests/test_parse.py` using an observed `opencode run --format json` row:
+- [x] Add failing tests in `tests/test_capture.py` proving `get("opencode").name == "opencode"` and that its run engine is `opencode`.
+- [x] Add failing parser test in `tests/test_parse.py` using an observed `opencode run --format json` row:
 
 ```python
 row = {
@@ -98,18 +98,22 @@ row = {
 Expected normalized event: `event_type == "tool_use"`, `tool == "bash"`,
 `tool_use_id == "call_e413"`, `exit_code == 0`, `duration_ms == 34`.
 
-- [ ] Add failing ingest test in `tests/test_db.py` proving
+- [x] Add failing ingest test in `tests/test_db.py` proving
   `ingest.ingest(root=tmp_path, run_id="open_run", transcript=path, engine="opencode")`
   stores `runs.engine = "opencode"`.
-- [ ] Run the focused tests and verify they fail for missing OpenCode support.
-- [ ] Implement `src/omni/capture/opencode.py` and load it from the registry.
-- [ ] Add `run_engine` to `CaptureEngine`, preserving Claude as `claude_code`.
-- [ ] Add `engine` parameter to `ingest.ingest`, `_ingest_one`, and `_ensure_run`,
+- [x] Run the focused tests and verify they fail for missing OpenCode support.
+- [x] Implement `src/omni/capture/opencode.py` and load it from the registry.
+- [x] Add `run_engine` to `CaptureEngine`, preserving Claude as `claude_code`.
+- [x] Add `engine` parameter to `ingest.ingest`, `_ingest_one`, and `_ensure_run`,
   defaulting through the selected capture engine.
-- [ ] Add `parse.py` normalization for observed OpenCode `part.state` tool rows.
-- [ ] Update the command preview path, either by flattening a redacted command field during OpenCode normalization or by making run-show command discovery recursively inspect bounded nested metadata.
-- [ ] Run `pytest -q tests/test_capture.py tests/test_parse.py tests/test_db.py`.
-- [ ] Commit with message `day21: ingest — normalize OpenCode transcripts`.
+- [x] Add `parse.py` normalization for observed OpenCode `part.state` tool rows.
+- [x] Update the command preview path, either by flattening a redacted command field during OpenCode normalization or by making run-show command discovery recursively inspect bounded nested metadata.
+- [x] Add a safety test proving OpenCode transcript ingest does not scan Claude hook spool.
+- [x] Add strict OpenCode archive coverage for unrecorded `tool_use` shapes.
+- [x] Add strict OpenCode archive coverage for incomplete `part.state` tool rows with missing `part.type`, `part.tool`, or `part.callID`.
+- [x] Add safety tests proving OpenCode requires an explicit transcript and unknown engines fail before layout writes.
+- [x] Run `pytest -q tests/test_capture.py tests/test_parse.py tests/test_db.py`.
+- [x] Commit with message `day21: ingest — normalize OpenCode transcripts`.
 
 ## Task 4: CLI Wiring And Smoke Tests
 
