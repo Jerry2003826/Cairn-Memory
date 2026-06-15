@@ -107,6 +107,53 @@ def test_opencode_link_appends_instruction_once_and_preserves_config(tmp_path: P
     assert data["instructions"] == ["README.md", ".omni/generated/memory.md"]
 
 
+def test_opencode_link_accepts_jsonc_comments_and_trailing_commas(tmp_path: Path) -> None:
+    config = tmp_path / "opencode.json"
+    config.write_text(
+        """
+{
+  // OpenCode accepts JSONC project config.
+  "model": "apiyi/qwen3.7-max",
+  "note": "literal // and /* stay */ plus ,]",
+  /* project provider config */
+  "provider": {
+    "apiyi": {
+      "options": {
+        "baseURL": "https://api.apiyi.com/v1", // keep URL slashes intact
+      },
+    },
+  },
+  "instructions": [
+    "README.md",
+  ],
+}
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    result = inject.inject(tmp_path, target="opencode", mode="link")
+    data = json.loads(config.read_text(encoding="utf-8"))
+
+    assert result.wrote is True
+    assert data["model"] == "apiyi/qwen3.7-max"
+    assert data["note"] == "literal // and /* stay */ plus ,]"
+    assert data["provider"]["apiyi"]["options"]["baseURL"] == "https://api.apiyi.com/v1"
+    assert data["instructions"] == ["README.md", ".omni/generated/memory.md"]
+
+
+def test_opencode_link_rejects_unclosed_jsonc_block_comment_without_writing(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "opencode.json"
+    original = '{"instructions": ["README.md"]} /* unfinished\n'
+    config.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"invalid opencode\.json"):
+        inject.inject(tmp_path, target="opencode", mode="link")
+
+    assert config.read_text(encoding="utf-8") == original
+
+
 def test_opencode_link_rejects_invalid_json_without_writing(tmp_path: Path) -> None:
     config = tmp_path / "opencode.json"
     original = "{ invalid json\n"

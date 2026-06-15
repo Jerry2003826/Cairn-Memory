@@ -58,6 +58,7 @@ def test_parse_transcript_normalizes_observed_opencode_tool_use(tmp_path: Path) 
                 "type": "tool_use",
                 "timestamp": 1781497265185,
                 "sessionID": "ses_1367",
+                "input": {"unexpected": "top-level"},
                 "part": {
                     "type": "tool",
                     "tool": "bash",
@@ -82,6 +83,8 @@ def test_parse_transcript_normalizes_observed_opencode_tool_use(tmp_path: Path) 
     assert event.tool_use_id == "call_e413"
     assert event.exit_code == 0
     assert event.duration_ms == 34
+    assert event.meta["input"]["command"] == "pnpm run test"
+    assert event.meta["opencode_raw_input"] == {"unexpected": "top-level"}
     assert event.meta["part"]["state"]["input"]["command"] == "pnpm run test"
 
 

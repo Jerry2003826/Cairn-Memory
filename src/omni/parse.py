@@ -263,6 +263,16 @@ def _normalize_opencode_tool_use(seq: int, row: dict[str, Any]) -> NormalizedEve
     tool, tool_status, tool_detectors = _redacted_optional_str(part.get("tool"))
     tool_use_id, tool_id_status, tool_id_detectors = _redacted_optional_str(part.get("callID"))
     redacted_meta, meta_status, meta_detectors = _redacted_meta(meta)
+    if isinstance(redacted_meta, dict):
+        redacted_state = redacted_meta.get("part", {}).get("state", {})
+        redacted_input = (
+            redacted_state.get("input") if isinstance(redacted_state, dict) else None
+        )
+        if isinstance(redacted_input, dict):
+            original_input = redacted_meta.get("input")
+            if original_input is not None and original_input != redacted_input:
+                redacted_meta["opencode_raw_input"] = original_input
+            redacted_meta["input"] = redacted_input
 
     return NormalizedEvent(
         seq=seq,
