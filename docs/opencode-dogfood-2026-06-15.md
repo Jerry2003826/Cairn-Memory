@@ -147,6 +147,42 @@ The resulting OpenCode transcript contained these tool-use events:
 | 11 | `python -m omni.cli task read` | 0 |
 | 14 | `pnpm run test` | 0 |
 
+## Recorded OpenCode JSONL Row Shape
+
+The transcript contained UTF-8 JSONL rows. The following row is a sanitized
+representative `tool_use` event shape used for C-2 adapter tests. Long command
+output is omitted from this excerpt.
+
+```json
+{
+  "type": "tool_use",
+  "timestamp": 1781497265185,
+  "sessionID": "ses_1367d86d0ffep4T5zaOMjixQrq",
+  "part": {
+    "type": "tool",
+    "tool": "bash",
+    "callID": "call_e413706dd6e54e838c221941",
+    "state": {
+      "status": "completed",
+      "input": {
+        "command": "pnpm run test",
+        "description": "Run pnpm test as selected",
+        "timeout": 60000
+      },
+      "metadata": {
+        "exit": 0,
+        "description": "Run pnpm test as selected",
+        "truncated": false
+      },
+      "time": {
+        "start": 1781497265149,
+        "end": 1781497265183
+      }
+    }
+  }
+}
+```
+
 The final test output was:
 
 ```text

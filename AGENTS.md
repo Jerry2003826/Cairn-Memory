@@ -7,8 +7,9 @@
 > lifecycle + multi-agent handoff) · ④ Product. The Kernel (Layers 1–5) is done;
 > Phase B is done; Phase C has partial approvals. OmniBridge foundation
 > (capture/inject seams + machine read) and OmniRuntime C-5 task lifecycle have
-> landed. A second engine, read-only MCP, multi-agent handoff, permission tiers,
-> and UI remain governed future work. **Every safety invariant is unchanged.**
+> landed. C-2 OpenCode v0 is now approved for implementation as the first real
+> second-engine proof. Read-only MCP, multi-agent handoff, permission tiers, and
+> UI remain governed future work. **Every safety invariant is unchanged.**
 
 ## Goal
 
@@ -36,6 +37,14 @@ Phase C approved and landed so far:
   `omni verify plan`)
 - OmniRuntime C-5: `008_task_runtime.sql` and `omni task *` lifecycle commands
   for a single open task; multi-agent handoff remains deferred
+
+Phase C approved next:
+
+- C-2 OpenCode v0: `omni inject opencode --mode preview|link` may update only
+  project-local `opencode.json` to add `.omni/generated/memory.md` to OpenCode's
+  `instructions` list; `omni ingest --engine opencode --transcript <path>` may
+  ingest UTF-8 `opencode run --format json` transcripts through the existing
+  redacted ingest path. No new migration is approved.
 
 ## Non-goals, hard this phase
 
@@ -70,11 +79,19 @@ Phase C approved and landed:
   (`task close` requires an explicit `--success`, `--failed`, or `--unknown`;
   `task read` exposes only the current project's open task view)
 
+Phase C approved for the current implementation branch:
+
+- C-2 OpenCode v0: one second engine via OpenCode config injection and
+  transcript ingest only. OpenCode remains the coding agent; OmniAgent only
+  supplies governed context and redacted evidence capture through existing CLI
+  writers.
+
 Still deferred beyond the current Phase C approvals:
 
 - automatic/default observed_command extractor behavior
 - additional memory types beyond the one approved Sub-C type
-- second-engine adapter and read-only MCP wrapper until explicitly approved
+- OpenCode plugin background capture, Codex/QwenCode/Cursor adapters, and the
+  read-only MCP wrapper until explicitly approved
 - multi-agent orchestration / handoff, permission tiers, UI (Layer 6–9 beyond task lifecycle)
 
 If a task needs something outside the charter, STOP and leave a TODO comment.
