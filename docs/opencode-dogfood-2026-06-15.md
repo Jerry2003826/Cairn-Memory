@@ -404,3 +404,8 @@ This still does not prove broad behavioral improvement across multiple
 OpenCode cold/warm samples. It proves the governed second-engine path is clear,
 read-only from the agent side, and effective for one validation task without
 adding MCP, background capture, permission tiers, or external DB writes.
+
+Follow-up: `docs/phase-c-final-delivery-2026-06-16.md` records two additional
+fresh OpenCode samples in a disposable sandbox. Those later samples strengthen
+the C-2 evidence from one validation task to a bounded multi-sample validation
+and release-build loop, while still avoiding a broad behavior-improvement claim.

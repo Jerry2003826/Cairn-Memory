@@ -565,6 +565,67 @@ def test_acceptance_pack_v0_closeout_records_scope_and_validation() -> None:
     assert "Jiarui" not in text
 
 
+def test_phase_c_final_delivery_doc_records_multisample_opencode_proof() -> None:
+    doc = REPO_ROOT / "docs" / "phase-c-final-delivery-2026-06-16.md"
+    plan = REPO_ROOT / "docs" / "superpowers" / "plans" / "2026-06-16-phase-c-final-delivery.md"
+
+    text = doc.read_text(encoding="utf-8")
+    plan_text = plan.read_text(encoding="utf-8")
+
+    for phrase in (
+        "Cairn Memory Phase C Final Delivery Evidence",
+        "Scope: approved Phase C only",
+        "OpenCode multi-sample dogfood",
+        "read-only consumer",
+        "No MCP server",
+        "No external write path",
+        "redaction-before-write",
+        "hook never writes DB",
+        "read-only commands never migrate",
+        "human-gated CLI writer",
+        "cairn memory read",
+        "cairn failure read",
+        "cairn verify plan",
+        "cairn task read",
+        "cairn ingest --engine opencode --transcript",
+        "runs.engine = \"opencode\"",
+        "Resolved OpenCode version: `1.17.7`",
+        "`phasec_opencode_test`",
+        "`phasec_opencode_build`",
+        "Canonical observed writer path",
+        "`python -m pytest tests/test_docs.py -q`: 14 passed",
+        "`python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 131 passed, 3 skipped",
+        "`pytest -q`: 622 passed, 3 skipped",
+        "`git diff --check`: pass",
+        "`python -m omni.cli audit secrets`: ok=true",
+        "`npx -y opencode-ai@latest --version`: 1.17.7",
+        "evidence is stronger than the original single C-2 sample",
+        "does not prove broad behavioral improvement",
+        "Implemented and verified",
+        "Implemented but needs more dogfood samples",
+        "Explicitly not implemented",
+        "Next smallest high-value tasks",
+    ):
+        assert phrase in text
+
+    for command in (
+        "pytest -q",
+        "git diff --check",
+        "python -m omni.cli audit secrets",
+        "python -m omni.cli memory read",
+        "python -m omni.cli failure read",
+        "python -m omni.cli verify plan",
+        "python -m omni.cli task read",
+    ):
+        assert command in text
+
+    assert "PENDING" not in text
+    assert "C:\\Users" not in text
+    assert "Jiarui" not in text
+    assert "C:\\Users" not in plan_text
+    assert "Jiarui" not in plan_text
+
+
 def test_minimal_linux_ci_workflow_runs_pytest_on_311_and_312() -> None:
     workflow = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
