@@ -231,13 +231,17 @@ def _selection_mode(
 def _active_command_rows(conn: sqlite3.Connection, predicate: str) -> list[sqlite3.Row]:
     return conn.execute(
         """
-        SELECT qualifier, object_norm
+        SELECT subject, qualifier, object_norm
         FROM facts
         WHERE retired_seq IS NULL
           AND scope = 'project'
-          AND subject = '.'
           AND predicate = ?
-        ORDER BY qualifier, created_seq, object_norm
+        ORDER BY
+          CASE WHEN subject = '.' THEN 0 ELSE 1 END,
+          subject,
+          qualifier,
+          created_seq,
+          object_norm
         """,
         (predicate,),
     ).fetchall()
@@ -249,16 +253,19 @@ def _active_test_command_rows(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 def _command_candidates(rows: list[sqlite3.Row]) -> list[dict[str, str]]:
     candidates: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for row in rows:
         command = _normalize_command(str(row["object_norm"]))
         qualifier = _normalize_qualifier(str(row["qualifier"] or "default"))
-        key = (qualifier, command)
+        subject = _normalize_subject(str(row["subject"] or "."))
+        key = (subject, qualifier, command)
         if key in seen:
             continue
         seen.add(key)
         candidates.append(
             {
+                "subject": _safe_text(subject, MAX_COMMAND_CHARS),
+                "_subject_raw": subject,
                 "qualifier": _safe_text(qualifier, MAX_COMMAND_CHARS),
                 "_qualifier_raw": qualifier,
                 "command": _safe_text(command, MAX_COMMAND_CHARS),
@@ -280,7 +287,7 @@ def _selected(
         candidate for candidate in candidates_to_pick_from if candidate["_command_raw"] == command
     )
     limited, omitted = _limit_candidates(all_candidates)
-    return {
+    result = {
         "status": "selected",
         "reason_code": REASON_CODE_SELECTED,
         "reason": SELECTION_REASON_SELECTED,
@@ -292,6 +299,9 @@ def _selected(
         "candidate_commands": limited,
         "candidate_commands_omitted": omitted,
     }
+    if selected.get("_subject_raw") != ".":
+        result["subject"] = selected["subject"]
+    return result
 
 
 def _unique_commands(candidates: list[dict[str, str]]) -> list[str]:
@@ -313,13 +323,15 @@ def _available_qualifiers(candidates: list[dict[str, str]]) -> list[str]:
 
 
 def _limit_candidates(candidates: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
-    limited = [
-        {
+    limited: list[dict[str, str]] = []
+    for candidate in candidates[:MAX_CANDIDATE_COMMANDS]:
+        row = {
             "qualifier": candidate["qualifier"],
             "command": candidate["command"],
         }
-        for candidate in candidates[:MAX_CANDIDATE_COMMANDS]
-    ]
+        if candidate.get("_subject_raw") != ".":
+            row = {"subject": candidate["subject"], **row}
+        limited.append(row)
     return limited, max(0, len(candidates) - MAX_CANDIDATE_COMMANDS)
 
 
@@ -329,3 +341,7 @@ def _normalize_command(command: str) -> str:
 
 def _normalize_qualifier(qualifier: str) -> str:
     return qualifier.strip()
+
+
+def _normalize_subject(subject: str) -> str:
+    return subject.strip() or "."

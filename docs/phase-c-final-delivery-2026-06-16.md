@@ -630,6 +630,187 @@ This closes the earlier "real project + controlled cold/warm" gap for one
 OpenCode bugfix and known-failure recovery pair. It does not claim broad
 statistical causality across many repositories.
 
+## Package-local verify planning
+
+Update: after the first real qwen-code pair, `verify plan` was taught to keep
+workspace package commands as project facts with package-local subjects instead
+of flattening all verification commands into the root subject.
+
+The extractor now reads root `package.json` workspace definitions and emits
+package commands like this:
+
+```json
+{
+  "subject": "packages/acp-bridge",
+  "qualifier": "node:@qwen-code/acp-bridge",
+  "command": "npm run test --workspace=@qwen-code/acp-bridge"
+}
+```
+
+The qwen-code target was re-ingested after this change. `cairn verify plan
+--task bugfix` then listed the package-local acp-bridge command alongside other
+workspace commands instead of only root-level commands. This directly closes the
+previous caveat that the qwen-code warm run's single-run eval could not see the
+expected package-local verification command.
+
+Focused repository tests for this change:
+
+```text
+tests/test_extract_scripts.py
+tests/test_verify.py
+tests/test_machine_read.py
+tests/test_mcp.py
+tests/test_eval.py
+139 passed
+```
+
+## OpenCode local repair
+
+Update: the local OpenCode install was also repaired so future dogfood runs do
+not need isolated `XDG_*` state just to bypass a stale global database.
+
+- `opencode --version`: `1.17.7`
+- Old DB error reproduced: `opencode db path` failed with `no such column: name`
+- Old DB files were moved to
+  `/Users/lijiarui/.local/share/opencode/db-backup-20260616-220809`
+- New `opencode db path` returned
+  `/Users/lijiarui/.local/share/opencode/opencode.db`
+- Global OpenCode config was backed up to
+  `/Users/lijiarui/.config/opencode/opencode.json.backup-20260616-221858`
+- Global config now uses the local QwenCode provider shape translated into
+  OpenCode providers for `qwen-apiyi/glm-5.1`
+- Headless smoke result with the global config: `global-config-smoke-ok`
+
+No provider key is printed in this document, and no credential was written to
+the Cairn Memory repository.
+
+## OpenCode second real-project controlled cold/warm dogfood
+
+Update: the "repeat on a second real repository" next step was completed on
+2026-06-16 against a detached Cairn Memory worktree. This was intentionally not
+another toy sandbox.
+
+- Real target: `/Users/lijiarui/Downloads/Cairn-Memory-real-dogfood-2`
+- Source commit: `387ae64`
+- Safety gate: `python3 -m omni.cli audit secrets` returned `ok=true`
+- Controlled regression: `TASK_QUALIFIER_HINTS["bugfix"]` in
+  `src/omni/verify/selection.py` was changed from `node:unit` to `node:e2e`
+- Failing focused test before repair:
+  `tests/test_verify.py::test_verify_preflight_task_bugfix_maps_to_node_unit_qualifier`
+
+### Second real cold run
+
+Run id: `opencode_cairn_self_cold_bugfix`.
+
+Cold conditions:
+
+- no Cairn read-surface instruction in the prompt
+- no project-local `opencode.json` injection
+- prompt only said the checkout had one failing focused verify-selection test
+
+Cold ingest:
+
+```text
+run_ids=opencode_cairn_self_cold_bugfix events_inserted=14 queue_drained=0
+```
+
+The cold run eventually fixed the bug and confirmed:
+
+```text
+2 passed in 0.17s
+```
+
+But it first rediscovered test environment details: `pytest` was missing,
+`pip` was missing, `python3 -m pytest` had no pytest, and it created a temporary
+virtualenv before finding and running the focused tests.
+
+The cold transcript then seeded a governed known-failure pattern through the
+approved writer path:
+
+```text
+python3 -m omni.cli failure extract opencode_cairn_self_cold_bugfix
+python3 -m omni.cli failure approve failure_cand_42c8609aaab14219a63605671d2aeea3 \
+  --summary "Cairn verify-selection bugfix recovery: a focused verify task can fail when TASK_QUALIFIER_HINTS maps bugfix to node:e2e instead of node:unit." \
+  --suggested-action "Inspect src/omni/verify/selection.py and restore TASK_QUALIFIER_HINTS[\"bugfix\"] to \"node:unit\". Then run tests/test_verify.py::test_verify_preflight_task_bugfix_maps_to_node_unit_qualifier and tests/test_verify.py::test_cli_verify_accepts_task_and_profile."
+```
+
+### Second real warm run
+
+Run id: `opencode_cairn_self_warm_bugfix`.
+
+Warm conditions:
+
+- `cairn render`
+- `cairn inject opencode --mode link`
+- the same `node:e2e` regression was reintroduced
+- an open bugfix task existed before ingest
+- the prompt required OpenCode to call the four read-only Cairn surfaces before
+  source inspection
+
+Key observed sequence:
+
+| Seq | Event | Evidence |
+|---:|---|---|
+| 1 | read surface | `PYTHONPATH=src python3 -m omni.cli memory read` |
+| 2 | read surface | `PYTHONPATH=src python3 -m omni.cli failure read` |
+| 3 | read surface | `PYTHONPATH=src python3 -m omni.cli verify plan --task bugfix` |
+| 4 | read surface | `PYTHONPATH=src python3 -m omni.cli task read` |
+| 6 | known-failure content | `failure read` returned the `node:e2e` to `node:unit` recovery action |
+| 7 | source read | `src/omni/verify/selection.py` |
+| 11 | focused failing tests | two verify-selection tests failed |
+| 12 | agent rationale | "machine-read surfaces all confirmed this" |
+| 13 | fix | restore `TASK_QUALIFIER_HINTS["bugfix"]` to `node:unit` |
+| 15 | verification | two focused tests passed |
+
+Warm ingest:
+
+```text
+run_ids=opencode_cairn_self_warm_bugfix events_inserted=13 queue_drained=0
+```
+
+Warm eval:
+
+```json
+{
+  "machine_read_context_seen": true,
+  "machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "memory_effect": "helped",
+  "expected_verification_executed": true,
+  "first_expected_command_position": 5
+}
+```
+
+Pairwise dogfood result:
+
+```json
+{
+  "cold_comparable": true,
+  "command_adopted": true,
+  "improvement": true,
+  "machine_read_adopted": true,
+  "memory_context_adopted": true,
+  "warm_machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "warm_rediscovery_count": 0
+}
+```
+
+Outcome and task close were recorded through approved writers:
+
+```text
+python3 -m omni.cli outcome mark opencode_cairn_self_warm_bugfix --success --tests-passed --memory-effect helped --task-type bugfix
+python3 -m omni.cli task close --success
+```
+
 ## Verification Evidence
 
 Sandbox audit after each successful OpenCode ingest and task close:
@@ -651,7 +832,7 @@ Repository-level gates for this delivery use:
 | `npx -y opencode-ai@latest --version` | 1.17.7 |
 | `python -m pytest tests/test_docs.py -q` | 14 passed |
 | `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q` | 134 passed |
-| `pytest -q` | 634 passed |
+| `pytest -q` | 637 passed |
 | `git diff --check` | pass |
 | `python -m omni.cli audit secrets` | ok=true |
 
@@ -660,7 +841,7 @@ Machine-readable gate anchors:
 - `npx -y opencode-ai@latest --version`: 1.17.7
 - `python -m pytest tests/test_docs.py -q`: 14 passed
 - `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 134 passed
-- `pytest -q`: 634 passed
+- `pytest -q`: 637 passed
 - `git diff --check`: pass
 - `python -m omni.cli audit secrets`: ok=true
 
@@ -677,6 +858,11 @@ Machine-readable gate anchors:
   release-build validation, bugfix, refactor, and known-failure recovery.
 - OpenCode real-project controlled cold/warm dogfood: one detached qwen-code
   bugfix plus known-failure recovery pair with `improvement=true`.
+- OpenCode second real-project controlled cold/warm dogfood: one detached Cairn
+  Memory self-dogfood bugfix pair with `memory_effect=helped` and
+  `improvement=true`.
+- Package-local workspace verify planning: monorepo package commands now retain
+  package subjects and are visible to `verify plan`.
 - Behavior eval recognizes Phase C machine-read surfaces (`memory_read`,
   `failure_read`, `verify_plan`, `task_read`) as memory context.
 - Safety gates: sandbox `python -m omni.cli audit secrets` passed after the
@@ -684,22 +870,23 @@ Machine-readable gate anchors:
 
 This evidence is stronger than the original single C-2 sample because it covers
 five sandbox OpenCode runs, two verification profiles, task-aware
-bugfix/refactor selection, a non-empty known-failure recovery path, and one
-real-project controlled cold/warm pair. It still does not prove broad behavior
-improvement across many OpenCode task families or repositories.
+bugfix/refactor selection, a non-empty known-failure recovery path,
+package-local verify planning, and two real controlled pairs.
+
+The delivery now includes two real-project controlled cold/warm pairs. It still
+does not prove broad behavior improvement across many OpenCode task families or
+repositories.
 
 ## Remaining caveats after expanded dogfood
 
 - OpenCode v0 is now proved for bounded validation/build, bugfix, refactor, and
-  known-failure recovery prompts in disposable sandboxes, plus one real
-  qwen-code controlled cold/warm pair. This is still not broad causal proof
-  across many projects and does not prove broad behavioral improvement.
+  known-failure recovery prompts in disposable sandboxes, plus two real
+  controlled cold/warm pairs. This is still not broad causal proof across many
+  projects and does not prove broad behavioral improvement.
 - Failure read is now proved both as a non-empty machine surface and as input to
   successful sandbox and real-project recovery runs.
-- The real pair uses one package-local Vitest workflow; `eval run` still reports
-  the single warm run as `unknown` because the active expected command facts are
-  coarse project commands. The pairwise dogfood metric is the stronger result
-  for this task.
+- The qwen-code real pair now has package-local verify planning support, but it
+  remains one package-local Vitest workflow rather than broad monorepo coverage.
 - The task lifecycle is implemented for a single open task; multi-agent handoff
   remains outside this approved slice.
 
@@ -717,10 +904,11 @@ improvement across many OpenCode task families or repositories.
 
 ## Next smallest high-value tasks
 
-1. Repeat the controlled OpenCode cold/warm pack on a second real repository to
-   test whether the qwen-code result generalizes.
-2. Teach verify planning about package-local workspace commands before claiming
-   single-run `memory_effect=helped` for monorepo subpackage tasks.
+1. Repeat the controlled OpenCode cold/warm pack across more repositories and
+   task families before claiming broad behavior improvement.
+2. Add a small MCP client acceptance harness that calls `memory_read`,
+   `failure_read`, `verify_plan`, and `task_read` over stdio without adding any
+   write tool.
 3. Keep the next adapter work at the same boundary: read governed Cairn Memory
    state, capture only redacted transcripts, and write only through human-gated
    Cairn CLI commands.

@@ -103,6 +103,55 @@ def test_verify_preflight_prefers_unscoped_qualifier_over_scoped_commands(
     assert result["stdout_excerpt"] == "base"
 
 
+def test_verify_plan_includes_package_local_workspace_commands(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "npm run test", qualifier="node")
+    _insert_fact(
+        conn,
+        "npm run test --workspace=@qwen-code/acp-bridge",
+        qualifier="node:@qwen-code/acp-bridge",
+        subject="packages/acp-bridge",
+    )
+
+    result = verify.plan_view(conn)
+
+    assert result["candidate_commands"] == [
+        {"qualifier": "node", "command": "npm run test"},
+        {
+            "subject": "packages/acp-bridge",
+            "qualifier": "node:@qwen-code/acp-bridge",
+            "command": "npm run test --workspace=@qwen-code/acp-bridge",
+        },
+    ]
+
+
+def test_verify_preflight_runs_explicit_package_local_qualifier(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    package_dir = tmp_path / "packages" / "acp-bridge"
+    package_dir.mkdir(parents=True)
+    script = _script(package_dir, "verify_pkg.py", "print('pkg ok')\n")
+    _insert_fact(
+        conn,
+        _python_command(script),
+        qualifier="node:@qwen-code/acp-bridge",
+        subject="packages/acp-bridge",
+    )
+
+    result = verify.run_preflight(
+        conn,
+        tmp_path,
+        qualifier="node:@qwen-code/acp-bridge",
+    )
+
+    assert result["status"] == "passed"
+    assert result["qualifier"] == "node:@qwen-code/acp-bridge"
+    assert result["stdout_excerpt"] == "pkg ok"
+
+
 def test_verify_preflight_reports_unknown_for_ambiguous_test_commands(
     tmp_path: Path,
 ) -> None:
@@ -857,8 +906,9 @@ def _insert_fact(
     *,
     qualifier: str = "node",
     predicate: str = "uses_test_command",
+    subject: str = ".",
 ) -> None:
-    safe_id = "".join(ch if ch.isalnum() else "_" for ch in f"{qualifier}_{command}")[:80]
+    safe_id = "".join(ch if ch.isalnum() else "_" for ch in f"{subject}_{qualifier}_{command}")[:80]
     conn.execute(
         """
         INSERT INTO facts(
@@ -870,7 +920,7 @@ def _insert_fact(
         (
             f"fact_{safe_id}",
             "project",
-            ".",
+            subject,
             predicate,
             qualifier,
             command,

@@ -28,6 +28,18 @@ def command_facts(conn: sqlite3.Connection) -> dict[tuple[str, str], str]:
     return {(row["predicate"], row["qualifier"]): row["object_norm"] for row in rows}
 
 
+def command_fact_rows(conn: sqlite3.Connection) -> list[dict[str, str]]:
+    rows = conn.execute(
+        """
+        SELECT subject, predicate, qualifier, object_norm
+        FROM facts
+        WHERE predicate LIKE 'uses_%_command' AND retired_seq IS NULL
+        ORDER BY subject, predicate, qualifier, object_norm
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def test_a2_a3_node_pnpm_test_and_build_commands(tmp_path: Path) -> None:
     commands = command_facts(process_repo(tmp_path, "node-pnpm"))
 
@@ -71,3 +83,16 @@ def test_a10_a11_make_only_commands(tmp_path: Path) -> None:
 
     assert commands[("uses_test_command", "default")] == "make test"
     assert commands[("uses_build_command", "default")] == "make build"
+
+
+def test_monorepo_workspace_package_test_command_uses_package_subject(
+    tmp_path: Path,
+) -> None:
+    rows = command_fact_rows(process_repo(tmp_path, "monorepo-pnpm"))
+
+    assert {
+        "subject": "packages/app",
+        "predicate": "uses_test_command",
+        "qualifier": "node:app",
+        "object_norm": "pnpm --dir packages/app run test",
+    } in rows

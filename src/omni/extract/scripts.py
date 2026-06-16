@@ -34,7 +34,7 @@ SCRIPT_MAP = {
 
 
 def detect(root: Path) -> list[FactCandidate]:
-    commands: dict[tuple[str, str], FactCandidate] = {}
+    commands: dict[tuple[str, str, str], FactCandidate] = {}
     node_pm = _node_pm(root)
     python_pm = _python_pm(root)
 
@@ -67,43 +67,176 @@ def _python_pm(root: Path) -> str | None:
     return candidates[0].object_norm if len(candidates) == 1 else None
 
 
-def _node_commands(root: Path, pm_name: str) -> dict[tuple[str, str], FactCandidate]:
+def _node_commands(root: Path, pm_name: str) -> dict[tuple[str, str, str], FactCandidate]:
     package_json = root / "package.json"
     if not package_json.exists():
         return {}
     package = _read_json(package_json)
+    commands = _node_commands_for_package(
+        root,
+        package_json=package_json,
+        package=package,
+        package_dir=root,
+        pm_name=pm_name,
+        subject=".",
+        qualifier_suffix=None,
+    )
+    commands.update(_workspace_node_commands(root, package, pm_name))
+    return commands
+
+
+def _node_commands_for_package(
+    root: Path,
+    *,
+    package_json: Path,
+    package: dict[str, Any],
+    package_dir: Path,
+    pm_name: str,
+    subject: str,
+    qualifier_suffix: str | None,
+) -> dict[tuple[str, str, str], FactCandidate]:
     scripts = package.get("scripts")
     if not isinstance(scripts, dict):
         return {}
-
-    commands: dict[tuple[str, str], FactCandidate] = {}
+    commands: dict[tuple[str, str, str], FactCandidate] = {}
     for script_name, mapped in SCRIPT_MAP.items():
         if script_name not in scripts:
             continue
         if script_name == "test" and str(scripts[script_name]).strip() == NPM_DEFAULT_TEST:
             continue
-        commands[mapped] = _candidate(
+        qualifier = _scoped_qualifier(mapped[1], qualifier_suffix)
+        key = (mapped[0], qualifier, subject)
+        commands[key] = _candidate(
             root,
             predicate=mapped[0],
-            qualifier=mapped[1],
-            object_norm=f"{pm_name} run {script_name}",
+            qualifier=qualifier,
+            object_norm=_node_run_command(
+                pm_name,
+                script_name,
+                package_dir=package_dir,
+                package=package,
+                root=root,
+            ),
+            subject=subject,
             evidence_paths=[package_json],
         )
 
     dev_script = "dev" if "dev" in scripts else "start" if "start" in scripts else None
     if dev_script:
-        key = ("uses_dev_command", "node")
+        qualifier = _scoped_qualifier("node", qualifier_suffix)
+        key = ("uses_dev_command", qualifier, subject)
         commands[key] = _candidate(
             root,
-            predicate=key[0],
-            qualifier=key[1],
-            object_norm=f"{pm_name} run {dev_script}",
+            predicate="uses_dev_command",
+            qualifier=qualifier,
+            object_norm=_node_run_command(
+                pm_name,
+                dev_script,
+                package_dir=package_dir,
+                package=package,
+                root=root,
+            ),
+            subject=subject,
             evidence_paths=[package_json],
         )
     return commands
 
 
-def _python_commands(root: Path, pm_name: str) -> dict[tuple[str, str], FactCandidate]:
+def _workspace_node_commands(
+    root: Path, root_package: dict[str, Any], pm_name: str
+) -> dict[tuple[str, str, str], FactCandidate]:
+    commands: dict[tuple[str, str, str], FactCandidate] = {}
+    for package_dir in _workspace_package_dirs(root, root_package):
+        package_json = package_dir / "package.json"
+        package = _read_json(package_json)
+        if not package:
+            continue
+        subject = str(package_dir.relative_to(root)).replace("\\", "/")
+        suffix = _workspace_qualifier_suffix(package, subject)
+        commands.update(
+            _node_commands_for_package(
+                root,
+                package_json=package_json,
+                package=package,
+                package_dir=package_dir,
+                pm_name=pm_name,
+                subject=subject,
+                qualifier_suffix=suffix,
+            )
+        )
+    return commands
+
+
+def _workspace_package_dirs(root: Path, package: dict[str, Any]) -> list[Path]:
+    patterns = _workspace_patterns(package.get("workspaces"))
+    dirs: list[Path] = []
+    for pattern in patterns:
+        if pattern.startswith("/") or ".." in Path(pattern).parts or "**" in pattern:
+            continue
+        for candidate in sorted(root.glob(pattern)):
+            if (
+                candidate.is_dir()
+                and not candidate.is_symlink()
+                and (candidate / "package.json").is_file()
+            ):
+                dirs.append(candidate)
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for directory in dirs:
+        resolved = directory.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(directory)
+    return unique
+
+
+def _workspace_patterns(workspaces: Any) -> list[str]:
+    if isinstance(workspaces, list):
+        return [item for item in workspaces if isinstance(item, str)]
+    if isinstance(workspaces, dict):
+        packages = workspaces.get("packages")
+        if isinstance(packages, list):
+            return [item for item in packages if isinstance(item, str)]
+    return []
+
+
+def _workspace_qualifier_suffix(package: dict[str, Any], subject: str) -> str:
+    name = package.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return subject
+
+
+def _scoped_qualifier(base: str, suffix: str | None) -> str:
+    return base if suffix is None else f"{base}:{suffix}"
+
+
+def _node_run_command(
+    pm_name: str,
+    script_name: str,
+    *,
+    package_dir: Path,
+    package: dict[str, Any],
+    root: Path,
+) -> str:
+    if package_dir == root:
+        return f"{pm_name} run {script_name}"
+    subject = str(package_dir.relative_to(root)).replace("\\", "/")
+    name = package.get("name")
+    workspace = name.strip() if isinstance(name, str) and name.strip() else subject
+    if pm_name == "npm":
+        return f"npm run {script_name} --workspace={workspace}"
+    if pm_name == "pnpm":
+        return f"pnpm --dir {subject} run {script_name}"
+    if pm_name == "yarn":
+        return f"yarn workspace {workspace} {script_name}"
+    if pm_name == "bun":
+        return f"bun --cwd {subject} run {script_name}"
+    return f"{pm_name} run {script_name}"
+
+
+def _python_commands(root: Path, pm_name: str) -> dict[tuple[str, str, str], FactCandidate]:
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
         return {}
@@ -117,7 +250,7 @@ def _python_commands(root: Path, pm_name: str) -> dict[tuple[str, str], FactCand
             return {}
         key = ("uses_test_command", "python")
         return {
-            key: _candidate(
+            (*key, "."): _candidate(
                 root,
                 predicate=key[0],
                 qualifier=key[1],
@@ -128,18 +261,18 @@ def _python_commands(root: Path, pm_name: str) -> dict[tuple[str, str], FactCand
     return {}
 
 
-def _make_commands(root: Path) -> dict[tuple[str, str], FactCandidate]:
+def _make_commands(root: Path) -> dict[tuple[str, str, str], FactCandidate]:
     makefile = root / "Makefile"
     if not makefile.exists():
         return {}
     targets = _make_targets(makefile)
-    commands: dict[tuple[str, str], FactCandidate] = {}
+    commands: dict[tuple[str, str, str], FactCandidate] = {}
     for target, key in {
         "test": ("uses_test_command", "default"),
         "build": ("uses_build_command", "default"),
     }.items():
         if target in targets:
-            commands[key] = _candidate(
+            commands[(*key, ".")] = _candidate(
                 root,
                 predicate=key[0],
                 qualifier=key[1],
@@ -156,15 +289,16 @@ def _candidate(
     qualifier: str,
     object_norm: str,
     evidence_paths: list[Path],
+    subject: str = ".",
 ) -> FactCandidate:
     return FactCandidate(
         scope="project",
-        subject=".",
+        subject=subject,
         predicate=predicate,
         qualifier=qualifier,
         object_norm=object_norm,
         value_type="string",
-        claim=f"Project {predicate.replace('_', ' ')}: {object_norm}",
+        claim=f"Project {predicate.replace('_', ' ')} for {subject}: {object_norm}",
         trust=2,
         sensitivity="low",
         origin=ORIGIN,
