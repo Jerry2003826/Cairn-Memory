@@ -458,6 +458,178 @@ not counted as dogfood samples:
 
 Each was closed with `task abandon`; none was marked as successful evidence.
 
+## OpenCode real-project controlled cold/warm dogfood
+
+Update: the requested real-project controlled pair was run on 2026-06-16
+against a detached qwen-code worktree, not a disposable toy sandbox.
+
+- Real target: `/Users/lijiarui/Downloads/qwen-code-cairn-real-dogfood`
+- Source checkout: `/Users/lijiarui/qwen-code-src`
+- Target commit: `9ec5bf2a2`
+- Package under test: `@qwen-code/acp-bridge`
+- Baseline verification: `npm run test --workspace=@qwen-code/acp-bridge`
+  passed with 3 files and 44 tests.
+- Safety gate: `python3 -m omni.cli audit secrets` returned `ok=true` in the
+  target before real dogfood.
+
+The user's dirty source checkout was not edited. The dogfood target was a
+separate detached worktree with its own `.omni/` state.
+
+OpenCode's existing global DB failed before launch with `no such column: name`,
+so the run used isolated `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME` paths. The provider config was copied from the local QwenCode
+APIYI/DeepSeek provider shape into a temporary OpenCode config under `/tmp`;
+API keys stayed in environment variables and no credential was written to the
+Cairn Memory repo or the qwen-code target.
+
+### Controlled pair setup
+
+The controlled regression removed `'EPERM'` from
+`packages/acp-bridge/src/status.ts`:
+
+```text
+npm run test --workspace=@qwen-code/acp-bridge
+1 failed | 43 passed
+failing test: mapDomainErrorToErrorKind classifies fs ENOENT/EACCES/EPERM as missing_file
+```
+
+### Cold bugfix run
+
+Run id: `opencode_real_cold_bugfix`.
+
+Cold conditions:
+
+- no project-local `opencode.json` injection
+- no instruction to read Cairn surfaces
+- prompt only said to diagnose and fix the acp-bridge failing test
+
+Key observed sequence:
+
+| Seq | Event | Evidence |
+|---:|---|---|
+| 1 | rediscovery | `Glob packages/acp-bridge/**/*.test.ts` |
+| 3 | failed verification | `cd packages/acp-bridge && npx vitest run 2>&1` exited 1 |
+| 9 | source search | grep for `mapDomainErrorToErrorKind` |
+| 12 | source read | `packages/acp-bridge/src/status.ts` |
+| 22 | fix | add `'EPERM'` to `FS_MISSING_CODES` |
+| 26 | focused verify | `cd packages/acp-bridge && npx vitest run src/status.test.ts` passed |
+
+The full package verification after the cold repair also passed:
+
+```text
+npm run test --workspace=@qwen-code/acp-bridge
+3 passed, 44 passed
+```
+
+Cold eval before the Phase C eval update:
+
+```json
+{
+  "run_id": "opencode_real_cold_bugfix",
+  "expected_verification_executed": false,
+  "rediscovery_count": 1,
+  "observed_commands": [
+    "npx vitest run 2>&1",
+    "npx vitest run src/status.test.ts 2>&1"
+  ]
+}
+```
+
+The cold failed command was then turned into a governed known-failure pattern
+through the approved CLI writer path:
+
+```text
+python3 -m omni.cli failure extract opencode_real_cold_bugfix
+python3 -m omni.cli failure approve failure_cand_f7d56639ea3547c7b43b4c8f5e2c051d \
+  --summary "acp-bridge status tests fail when EPERM is omitted from FS_MISSING_CODES." \
+  --suggested-action "For this failure, inspect packages/acp-bridge/src/status.ts and restore EPERM in FS_MISSING_CODES, then run the acp-bridge Vitest package tests."
+```
+
+The approved pattern id was
+`failure_pattern_23325bdf07d344368a3e66721d1ea3ac`.
+
+### Warm bugfix plus known-failure recovery run
+
+Run id: `opencode_real_warm_bugfix`.
+
+Warm conditions:
+
+- `cairn render`
+- `cairn inject opencode --mode link`
+- the same EPERM regression was reintroduced
+- an open bugfix task existed before ingest
+- prompt required OpenCode to call the four read-only Cairn surfaces before
+  source inspection
+
+Key observed sequence:
+
+| Seq | Event | Evidence |
+|---:|---|---|
+| 2 | read surface | `python3 -m omni.cli memory read` |
+| 3 | read surface | `python3 -m omni.cli failure read` |
+| 4 | read surface | `python3 -m omni.cli verify plan --task bugfix` |
+| 5 | read surface | `python3 -m omni.cli task read` |
+| 6 | known-failure content | `failure read` returned the EPERM recovery action |
+| 14 | first source read | `packages/acp-bridge/src/status.ts` |
+| 15 | agent rationale | "Cairn surfaces are clear: EPERM is missing..." |
+| 22 | fix | add `'EPERM'` to `FS_MISSING_CODES` |
+| 28 | verification | `cd packages/acp-bridge && npx vitest run` passed |
+
+External verification after the warm repair:
+
+```text
+npm run test --workspace=@qwen-code/acp-bridge
+3 passed, 44 passed
+```
+
+The warm run was ingested and marked through approved writers:
+
+```text
+python3 -m omni.cli ingest opencode_real_warm_bugfix --engine opencode --transcript .dogfood-evidence/opencode-warm-bugfix.jsonl
+python3 -m omni.cli outcome mark opencode_real_warm_bugfix --success --tests-passed --memory-effect helped --task-type bugfix
+python3 -m omni.cli task close --success
+```
+
+### Controlled pair result
+
+This dogfood run exposed a real Phase C evaluation gap: the old behavior eval
+recognized `CLAUDE.md` and `.omni/generated/memory.md` reads but did not
+recognize the approved C-4 machine-read surfaces. The evaluator now records:
+
+- `machine_read_surfaces`
+- `machine_read_context_seen`
+- `memory_context_seen`
+- `machine_read_adopted`
+
+The resulting read-only dogfood comparison is now reproducible:
+
+```text
+python3 -m omni.cli dogfood --warm opencode_real_warm_bugfix --cold opencode_real_cold_bugfix
+```
+
+Key result:
+
+```json
+{
+  "cold_rediscovery_count": 1,
+  "warm_rediscovery_count": 0,
+  "machine_read_adopted": true,
+  "memory_context_adopted": true,
+  "warm_machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "improvement": true,
+  "summary": "warm used machine-read surfaces and reduced rediscovery"
+}
+```
+
+This closes the earlier "real project + controlled cold/warm" gap for one
+OpenCode bugfix and known-failure recovery pair. It does not claim broad
+statistical causality across many repositories.
+
 ## Verification Evidence
 
 Sandbox audit after each successful OpenCode ingest and task close:
@@ -479,7 +651,7 @@ Repository-level gates for this delivery use:
 | `npx -y opencode-ai@latest --version` | 1.17.7 |
 | `python -m pytest tests/test_docs.py -q` | 14 passed |
 | `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q` | 134 passed |
-| `pytest -q` | 632 passed |
+| `pytest -q` | 634 passed |
 | `git diff --check` | pass |
 | `python -m omni.cli audit secrets` | ok=true |
 
@@ -488,7 +660,7 @@ Machine-readable gate anchors:
 - `npx -y opencode-ai@latest --version`: 1.17.7
 - `python -m pytest tests/test_docs.py -q`: 14 passed
 - `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 134 passed
-- `pytest -q`: 632 passed
+- `pytest -q`: 634 passed
 - `git diff --check`: pass
 - `python -m omni.cli audit secrets`: ok=true
 
@@ -503,23 +675,31 @@ Machine-readable gate anchors:
   task close with verify/outcome evidence.
 - OpenCode multi-sample dogfood: five bounded samples across validation,
   release-build validation, bugfix, refactor, and known-failure recovery.
+- OpenCode real-project controlled cold/warm dogfood: one detached qwen-code
+  bugfix plus known-failure recovery pair with `improvement=true`.
+- Behavior eval recognizes Phase C machine-read surfaces (`memory_read`,
+  `failure_read`, `verify_plan`, `task_read`) as memory context.
 - Safety gates: sandbox `python -m omni.cli audit secrets` passed after the
   OpenCode ingest and close steps.
 
 This evidence is stronger than the original single C-2 sample because it covers
-five OpenCode runs, two verification profiles, task-aware bugfix/refactor
-selection, and a non-empty known-failure recovery path. It still does not prove
-broad behavioral improvement across many cold/warm OpenCode task families or
-real external repositories.
+five sandbox OpenCode runs, two verification profiles, task-aware
+bugfix/refactor selection, a non-empty known-failure recovery path, and one
+real-project controlled cold/warm pair. It still does not prove broad behavior
+improvement across many OpenCode task families or repositories.
 
 ## Remaining caveats after expanded dogfood
 
 - OpenCode v0 is now proved for bounded validation/build, bugfix, refactor, and
-  known-failure recovery prompts in disposable sandboxes, but this is still not
-  broad causal proof across many projects or cold/warm controls.
-- This does not prove broad behavioral improvement.
+  known-failure recovery prompts in disposable sandboxes, plus one real
+  qwen-code controlled cold/warm pair. This is still not broad causal proof
+  across many projects and does not prove broad behavioral improvement.
 - Failure read is now proved both as a non-empty machine surface and as input to
-  a successful recovery run.
+  successful sandbox and real-project recovery runs.
+- The real pair uses one package-local Vitest workflow; `eval run` still reports
+  the single warm run as `unknown` because the active expected command facts are
+  coarse project commands. The pairwise dogfood metric is the stronger result
+  for this task.
 - The task lifecycle is implemented for a single open task; multi-agent handoff
   remains outside this approved slice.
 
@@ -537,10 +717,10 @@ real external repositories.
 
 ## Next smallest high-value tasks
 
-1. Repeat the expanded OpenCode dogfood pack on a real non-sandbox project only
-   after `cairn audit secrets` passes in both checkouts.
-2. Add controlled cold/warm pairs for bugfix and known-failure recovery before
-   claiming causal behavior improvement.
+1. Repeat the controlled OpenCode cold/warm pack on a second real repository to
+   test whether the qwen-code result generalizes.
+2. Teach verify planning about package-local workspace commands before claiming
+   single-run `memory_effect=helped` for monorepo subpackage tasks.
 3. Keep the next adapter work at the same boundary: read governed Cairn Memory
    state, capture only redacted transcripts, and write only through human-gated
    Cairn CLI commands.

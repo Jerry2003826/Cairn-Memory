@@ -15,6 +15,7 @@ from omni.eval.command_match import (
     _path_in_text,
     _target_detail,
 )
+from omni.eval.machine_read import surface_from_command
 from omni.eval.meta import (
     _decode_meta,
     _input_metadata,
@@ -81,8 +82,11 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
     rediscovery = _rediscovery_before(events, first_expected_seq, project_root=project_root)
     claude_md_read = any(_mentions_path(event, "CLAUDE.md") for event in events)
     memory_md_read = any(_mentions_path(event, MEMORY_PATH) for event in events)
+    machine_read_surfaces = _machine_read_surfaces(events, project_root=project_root)
+    machine_read_context_seen = bool(machine_read_surfaces)
+    memory_context_seen = claude_md_read or memory_md_read or machine_read_context_seen
     memory_context_seen_but_no_expected = (
-        (claude_md_read or memory_md_read) and first_expected is None
+        memory_context_seen and first_expected is None
     )
     observed_report, observed_omitted = _limit_observed_commands(observed_commands)
     rediscovery_report, rediscovery_omitted = _limit_report_items(
@@ -93,6 +97,9 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
         "run_id": run_id,
         "claude_md_read": claude_md_read,
         "memory_md_read": memory_md_read,
+        "machine_read_surfaces": machine_read_surfaces,
+        "machine_read_context_seen": machine_read_context_seen,
+        "memory_context_seen": memory_context_seen,
         "active_expected_commands": expected_commands,
         "observed_commands": observed_report,
         "observed_commands_omitted": observed_omitted,
@@ -134,14 +141,32 @@ def evaluate_dogfood(
     rediscovery_improved = (
         cold_comparable and warm["rediscovery_count"] < cold["rediscovery_count"]
     )
+    memory_context_adopted = (
+        cold_comparable
+        and not bool(cold.get("memory_context_seen"))
+        and bool(warm.get("memory_context_seen"))
+    )
+    machine_read_adopted = (
+        cold_comparable
+        and not bool(cold.get("machine_read_context_seen"))
+        and bool(warm.get("machine_read_context_seen"))
+    )
     warm_executed_expected = bool(warm["expected_verification_executed"])
+    machine_read_recovery_improved = bool(machine_read_adopted and rediscovery_improved)
     improvement = bool(
         cold_comparable
-        and warm_executed_expected
-        and (command_adopted or rediscovery_improved or position_improved)
+        and (
+            (
+                warm_executed_expected
+                and (command_adopted or rediscovery_improved or position_improved)
+            )
+            or machine_read_recovery_improved
+        )
     )
     if not cold_comparable:
         summary = "cold run not comparable"
+    elif machine_read_recovery_improved and not warm_executed_expected:
+        summary = "warm used machine-read surfaces and reduced rediscovery"
     elif improvement:
         summary = "warm adopted expected command or reduced rediscovery"
     else:
@@ -156,6 +181,9 @@ def evaluate_dogfood(
         "cold_first_expected_command_position": cold_position,
         "warm_first_expected_command_position": warm_position,
         "command_adopted": command_adopted,
+        "memory_context_adopted": memory_context_adopted,
+        "machine_read_adopted": machine_read_adopted,
+        "warm_machine_read_surfaces": warm.get("machine_read_surfaces", []),
         "improvement": improvement,
         "memory_effect_summary": {
             "cold": cold["memory_effect"],
@@ -300,6 +328,17 @@ def _observed_commands(
     return observed
 
 
+def _machine_read_surfaces(
+    events: list[dict[str, Any]], *, project_root: Path
+) -> list[str]:
+    surfaces: list[str] = []
+    for command in _observed_commands(events, project_root=project_root):
+        surface = surface_from_command(command["command"])
+        if surface is not None and surface not in surfaces:
+            surfaces.append(surface)
+    return surfaces
+
+
 def _first_expected_command(
     observed_commands: list[dict[str, Any]], expected_norm: list[str]
 ) -> dict[str, Any] | None:
@@ -425,7 +464,7 @@ def _classify(
     if not has_expected or not has_events:
         return ("unknown", "insufficient evidence: no active expected facts or no events")
     if result["expected_verification_executed"] and result["rediscovery_count"] == 0:
-        if not (result["claude_md_read"] or result["memory_md_read"]):
+        if not result["memory_context_seen"]:
             return (
                 "neutral",
                 "expected command executed before rediscovery, but memory context not observed",
@@ -441,10 +480,10 @@ def _classify(
             f"{result['first_expected_command']}; rediscovery before expected command: "
             f"{_rediscovery_kinds(result)}",
         )
-    if (result["claude_md_read"] or result["memory_md_read"]) and result["rediscovery_count"] > 0:
+    if result["memory_context_seen"] and result["rediscovery_count"] > 0:
         return (
             "failed_to_help",
-            "CLAUDE.md or memory context was seen if detectable; "
+            "memory context was seen if detectable; "
             f"expected commands include {_expected_commands_summary(result)}; "
             "no expected verification command executed; "
             f"rediscovery occurred before expected command: {_rediscovery_kinds(result)}",
@@ -514,6 +553,9 @@ def _unknown_result(run_id: str, reason: str) -> dict[str, Any]:
         "run_id": run_id,
         "claude_md_read": False,
         "memory_md_read": False,
+        "machine_read_surfaces": [],
+        "machine_read_context_seen": False,
+        "memory_context_seen": False,
         "active_expected_commands": {predicate: [] for predicate in EXPECTED_PREDICATES},
         "observed_commands": [],
         "observed_commands_omitted": 0,

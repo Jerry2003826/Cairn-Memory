@@ -74,6 +74,48 @@ def test_eval_run_reads_opencode_normalized_input_command(tmp_path: Path) -> Non
     assert result["first_expected_command_position"] == 1
 
 
+def test_eval_run_treats_machine_read_surfaces_as_memory_context(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "uses_test_command", "pnpm run test")
+    _insert_event(
+        conn,
+        "machine_read_run",
+        1,
+        tool="bash",
+        meta={
+            "tool_input": {
+                "command": (
+                    "PYTHONPATH=/repo/src python3 -m omni.cli memory read"
+                )
+            }
+        },
+    )
+    _insert_event(
+        conn,
+        "machine_read_run",
+        2,
+        tool="bash",
+        meta={"tool_input": {"command": "cairn verify plan --task bugfix"}},
+    )
+    _insert_event(
+        conn,
+        "machine_read_run",
+        3,
+        tool="bash",
+        meta={"tool_input": {"command": "pnpm run test"}},
+    )
+    conn.commit()
+
+    result = eval_module.evaluate_run(tmp_path, "machine_read_run")
+
+    assert result["machine_read_surfaces"] == ["memory_read", "verify_plan"]
+    assert result["machine_read_context_seen"] is True
+    assert result["memory_context_seen"] is True
+    assert result["memory_effect"] == "helped"
+
+
 def test_eval_run_reports_failed_to_help_for_unihack_style_negative_sample(
     tmp_path: Path,
 ) -> None:
@@ -99,7 +141,7 @@ def test_eval_run_reports_failed_to_help_for_unihack_style_negative_sample(
         "broad_scan",
     ]
     assert result["memory_effect"] == "failed_to_help"
-    assert "CLAUDE.md or memory context was seen" in result["reason"]
+    assert "memory context was seen" in result["reason"]
     assert "expected commands include pnpm run test" in result["reason"]
     assert "no expected verification command executed" in result["reason"]
     assert "README.md" in result["reason"]
@@ -591,6 +633,63 @@ def test_eval_dogfood_reports_improvement_when_warm_adopts_command_after_cold_mi
     assert result["memory_effect_summary"]["summary"] == (
         "warm adopted expected command or reduced rediscovery"
     )
+
+
+def test_eval_dogfood_reports_improvement_when_warm_uses_machine_read_recovery(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "uses_test_command", "npm run test")
+    _insert_event(
+        conn,
+        "cold_run",
+        1,
+        tool="Glob",
+        meta={"tool_input": {"pattern": "packages/acp-bridge/**/*.test.ts"}},
+    )
+    _insert_event(
+        conn,
+        "cold_run",
+        2,
+        tool="bash",
+        meta={"tool_input": {"command": "npx vitest run 2>&1"}},
+    )
+    _insert_event(
+        conn,
+        "warm_run",
+        1,
+        tool="bash",
+        meta={
+            "tool_input": {
+                "command": "python3 -m omni.cli failure read"
+            }
+        },
+    )
+    _insert_event(
+        conn,
+        "warm_run",
+        2,
+        tool="bash",
+        meta={"tool_input": {"command": "npx vitest run"}},
+    )
+    conn.commit()
+
+    result = eval_module.evaluate_dogfood(
+        tmp_path,
+        cold_run_id="cold_run",
+        warm_run_id="warm_run",
+    )
+
+    assert result["cold_rediscovery_count"] == 1
+    assert result["warm_rediscovery_count"] == 0
+    assert result["command_adopted"] is False
+    assert result["machine_read_adopted"] is True
+    assert result["improvement"] is True
+    assert result["memory_effect_summary"] == {
+        "cold": "unknown",
+        "warm": "unknown",
+        "summary": "warm used machine-read surfaces and reduced rediscovery",
+    }
 
 
 def test_eval_dogfood_does_not_improve_when_cold_run_is_missing(
