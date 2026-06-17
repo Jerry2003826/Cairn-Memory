@@ -275,6 +275,15 @@ project-local `opencode.json` instructions plus UTF-8 JSONL transcript ingest;
 `cairn mcp serve` exposes `memory_read`, `failure_read`, `verify_plan`, and
 `task_read` as read-only stdio MCP tools.
 
+The MCP server also has a real stdio client acceptance harness:
+
+```powershell
+python scripts/mcp_client_acceptance.py --root <project>
+```
+
+It launches `cairn mcp serve`, initializes the MCP session, lists tools, and
+calls all four read-only tools through stdin/stdout.
+
 ## 🏗️ Architecture
 
 State is a small SQLite database plus a redacted spool, all under `.omni/`.

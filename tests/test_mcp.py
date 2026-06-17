@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -9,6 +10,7 @@ from typing import Any
 
 from omni import mcp
 from omni import db
+from omni import task
 from omni import verify
 from tests.leak_helpers import assert_no_metadata_leak
 
@@ -52,6 +54,39 @@ def seed_project_facts(conn: sqlite3.Connection) -> None:
             None,
             "2026-06-13T00:00:00Z",
             "{}",
+        ),
+    )
+    conn.commit()
+
+
+def seed_failure_pattern(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        INSERT INTO failure_patterns(
+          pattern_id, source_failure_cand_id, scope, command_norm, failure_kind,
+          error_signature, error_signature_hash, summary, suggested_action, trust,
+          status, evidence, created_seq, retired_seq, superseded_by, created_at,
+          updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "failure_pattern_mcp",
+            "failure_cand_mcp",
+            "project",
+            "pnpm run test",
+            "command_failed",
+            "exit 1",
+            "hash_mcp",
+            "Tests can fail when setup is incomplete.",
+            "Run the project test command after fixing setup.",
+            2,
+            "active",
+            "{}",
+            1,
+            None,
+            None,
+            "2026-06-17T00:00:00+00:00",
+            "2026-06-17T00:00:00+00:00",
         ),
     )
     conn.commit()
@@ -227,6 +262,59 @@ def test_mcp_serve_stdio_smoke(tmp_path: Path) -> None:
     assert responses[2]["result"]["structuredContent"]["candidate_commands"] == [
         {"qualifier": "node", "command": "pnpm run test"}
     ]
+
+
+def test_mcp_client_acceptance_harness_calls_all_read_tools(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    seed_failure_pattern(conn)
+    task.start_task(conn, tmp_path, "acceptance task", task_type="bugfix")
+    conn.close()
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "mcp_client_acceptance.py"),
+            "--root",
+            str(tmp_path),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["tools"] == [
+        "memory_read",
+        "failure_read",
+        "verify_plan",
+        "task_read",
+    ]
+
+    calls = payload["calls"]
+    assert calls["memory_read"]["structuredContent"]["schema_version"] == 1
+    assert calls["failure_read"]["structuredContent"][0]["command_norm"] == "pnpm run test"
+    assert calls["verify_plan"]["structuredContent"]["candidate_commands"] == [
+        {"qualifier": "node", "command": "pnpm run test"}
+    ]
+    assert calls["task_read"]["structuredContent"]["tasks"] == [
+        {
+            "run_count": 0,
+            "status": "open",
+            "task_type": "bugfix",
+            "title": "acceptance task",
+        }
+    ]
+    for name in payload["tools"]:
+        assert_no_metadata_leak(calls[name]["structuredContent"])
 
 
 def test_mcp_tool_errors_are_tool_results(tmp_path: Path) -> None:

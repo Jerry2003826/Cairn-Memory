@@ -811,6 +811,54 @@ python3 -m omni.cli outcome mark opencode_cairn_self_warm_bugfix --success --tes
 python3 -m omni.cli task close --success
 ```
 
+## MCP client acceptance harness
+
+Update: the read-only MCP wrapper is now checked by a real stdio client harness,
+not only direct server-function tests or static stdin smoke tests.
+
+Harness:
+
+```text
+scripts/mcp_client_acceptance.py
+```
+
+The harness starts `python -m omni.cli mcp serve`, sends `initialize`, sends
+`notifications/initialized`, calls `tools/list`, verifies the exact read-only
+tool list, then calls every tool through `tools/call`:
+
+```json
+[
+  "memory_read",
+  "failure_read",
+  "verify_plan",
+  "task_read"
+]
+```
+
+Manual acceptance command against a temporary Cairn project:
+
+```text
+python scripts/mcp_client_acceptance.py --root <initialized-project>
+```
+
+Observed acceptance result:
+
+```json
+{
+  "ok": true,
+  "tools": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ]
+}
+```
+
+The harness asserts that every tool returns a non-error `tools/call` result with
+`structuredContent`. It does not add any write-capable MCP tool, HTTP transport,
+new migration, or SDK dependency.
+
 ## Verification Evidence
 
 Sandbox audit after each successful OpenCode ingest and task close:
@@ -832,7 +880,7 @@ Repository-level gates for this delivery use:
 | `npx -y opencode-ai@latest --version` | 1.17.7 |
 | `python -m pytest tests/test_docs.py -q` | 14 passed |
 | `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q` | 134 passed |
-| `pytest -q` | 637 passed |
+| `pytest -q` | 638 passed |
 | `git diff --check` | pass |
 | `python -m omni.cli audit secrets` | ok=true |
 
@@ -841,7 +889,7 @@ Machine-readable gate anchors:
 - `npx -y opencode-ai@latest --version`: 1.17.7
 - `python -m pytest tests/test_docs.py -q`: 14 passed
 - `python -m pytest tests/test_cli_smoke.py tests/test_db.py tests/test_task.py -q`: 134 passed
-- `pytest -q`: 637 passed
+- `pytest -q`: 638 passed
 - `git diff --check`: pass
 - `python -m omni.cli audit secrets`: ok=true
 
@@ -863,6 +911,9 @@ Machine-readable gate anchors:
   `improvement=true`.
 - Package-local workspace verify planning: monorepo package commands now retain
   package subjects and are visible to `verify plan`.
+- MCP client acceptance harness: a real stdio client launches `cairn mcp serve`,
+  lists tools, and calls `memory_read`, `failure_read`, `verify_plan`, and
+  `task_read`.
 - Behavior eval recognizes Phase C machine-read surfaces (`memory_read`,
   `failure_read`, `verify_plan`, `task_read`) as memory context.
 - Safety gates: sandbox `python -m omni.cli audit secrets` passed after the
@@ -906,9 +957,8 @@ repositories.
 
 1. Repeat the controlled OpenCode cold/warm pack across more repositories and
    task families before claiming broad behavior improvement.
-2. Add a small MCP client acceptance harness that calls `memory_read`,
-   `failure_read`, `verify_plan`, and `task_read` over stdio without adding any
-   write tool.
+2. Run the MCP client acceptance harness against one external MCP-capable agent
+   configuration after choosing that agent's approved local config path.
 3. Keep the next adapter work at the same boundary: read governed Cairn Memory
    state, capture only redacted transcripts, and write only through human-gated
    Cairn CLI commands.
