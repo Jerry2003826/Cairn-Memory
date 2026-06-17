@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from unittest import mock
 
 from omni import jsonio
+from omni.redact import RedactionResult
 
 
 def test_redact_text_returns_none_for_none_input() -> None:
@@ -47,3 +49,29 @@ def test_as_json_redacts_and_formats_output() -> None:
     assert rendered.endswith("\n")
     parsed = json.loads(rendered)
     assert "REDACTED:" in parsed["message"]
+
+
+def test_dump_json_fails_closed_when_blob_redaction_withheld() -> None:
+    """I-01: when the whole-blob redact() returns a failure wrapper, dump_json
+    must NOT fall back to the original (unredacted) content."""
+    secret = "sk-failclosed-supersecret-0987654321"
+    wrapper = b'{"byte_len":99,"error":"redaction_failed","payload_sha256":"deadbeef"}'
+
+    with mock.patch(
+        "omni.jsonio.redact",
+        return_value=RedactionResult(
+            data=wrapper, status="withheld", detectors=("withheld",)
+        ),
+    ):
+        # No string_sanitizer -> encoded holds the raw secret; the buggy
+        # fallback would leak it.
+        rendered = jsonio.dump_json({"token": secret})
+
+    assert secret not in rendered
+    assert "redaction_failed" in rendered
+
+
+def test_is_redaction_wrapper_returns_false_for_invalid_json() -> None:
+    """I-01 supporting fix: invalid JSON is not a redaction wrapper."""
+    assert jsonio.is_redaction_wrapper("not json at all") is False
+    assert jsonio.is_redaction_wrapper("") is False

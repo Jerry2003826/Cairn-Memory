@@ -38,7 +38,7 @@ def is_redaction_wrapper(value: str) -> bool:
     try:
         decoded = json.loads(value)
     except json.JSONDecodeError:
-        return True
+        return False
     return isinstance(decoded, dict) and decoded.get("error") in {
         "payload_truncated",
         "redaction_failed",
@@ -69,8 +69,8 @@ def dump_json(
     sanitized = _sanitize_for_json(value, string_sanitizer=string_sanitizer)
     encoded = json.dumps(sanitized, indent=2, sort_keys=True).encode("utf-8")
     defended = redact(encoded).data.decode("utf-8", errors="replace")
-    if is_redaction_wrapper(defended):
-        return encoded.decode("utf-8", errors="replace") + "\n"
+    # Fail closed: if whole-blob redaction returned a failure/withheld wrapper,
+    # emit the wrapper itself. Never fall back to the un-redacted `encoded`.
     return defended + "\n"
 
 
