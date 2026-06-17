@@ -7,6 +7,7 @@ import sqlite3
 from typing import Any
 
 from omni._common import collapse_whitespace_command
+from omni._event_meta import nested_command as _nested_command
 from omni.gate import FactCandidate
 
 ORIGIN = "observed_command@1"
@@ -72,27 +73,6 @@ def _command_from_meta(meta_json: str | None) -> str | None:
     if command is None:
         return None
     return str(command)
-
-
-def _nested_command(value: Any) -> Any:
-    if isinstance(value, dict):
-        for key in ("command", "cmd"):
-            if key in value:
-                return value[key]
-        for key in ("input", "tool_input", "parameters", "args"):
-            found = _nested_command(value.get(key))
-            if found is not None:
-                return found
-        for child in value.values():
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    if isinstance(value, list):
-        for child in value:
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    return None
 
 
 def _classify(command: str) -> tuple[str, str] | None:

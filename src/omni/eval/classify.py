@@ -8,6 +8,9 @@ from typing import Any
 
 from omni import db
 from omni._common import truncate_with_suffix
+from omni.eval.dogfood_signals import DogfoodSignals as _DogfoodSignals
+from omni.eval.dogfood_signals import improvement_summary as _improvement_summary
+from omni.eval.dogfood_signals import is_improvement as _is_improvement
 from omni.eval.command_match import (
     _contains_path,
     _has_unresolved_directory_change_prefix,
@@ -158,26 +161,18 @@ def evaluate_dogfood(
         and not bool(cold.get("machine_read_context_seen"))
         and bool(warm.get("machine_read_context_seen"))
     )
-    warm_executed_expected = bool(warm["expected_verification_executed"])
-    machine_read_recovery_improved = bool(machine_read_adopted and rediscovery_improved)
-    improvement = bool(
-        cold_comparable
-        and (
-            (
-                warm_executed_expected
-                and (command_adopted or rediscovery_improved or position_improved)
-            )
-            or machine_read_recovery_improved
-        )
+    signals = _DogfoodSignals(
+        cold_comparable=cold_comparable,
+        warm_executed_expected=bool(warm["expected_verification_executed"]),
+        command_adopted=command_adopted,
+        rediscovery_improved=rediscovery_improved,
+        position_improved=position_improved,
+        machine_read_recovery_improved=bool(
+            machine_read_adopted and rediscovery_improved
+        ),
     )
-    if not cold_comparable:
-        summary = "cold run not comparable"
-    elif machine_read_recovery_improved and not warm_executed_expected:
-        summary = "warm used machine-read surfaces and reduced rediscovery"
-    elif improvement:
-        summary = "warm adopted expected command or reduced rediscovery"
-    else:
-        summary = "no measurable warm-run improvement"
+    improvement = _is_improvement(signals)
+    summary = _improvement_summary(signals, improvement=improvement)
 
     return {
         "cold_run_id": cold_run_id,

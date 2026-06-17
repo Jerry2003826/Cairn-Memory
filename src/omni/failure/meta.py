@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable, Iterable
+
+from omni._event_meta import decode_meta as _decode_meta
 
 INPUT_CONTAINER_KEYS = ("tool_input", "input", "parameters", "args")
 INPUT_WRAPPER_KEYS = ("hook",)
@@ -119,15 +120,5 @@ def _is_shell_tool(tool: Any) -> bool:
         "cmd",
         "run_shell_command",
     }
-
-
-def _decode_meta(meta_json: str | None) -> dict[str, Any]:
-    if not meta_json:
-        return {}
-    try:
-        decoded = json.loads(meta_json)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return decoded if isinstance(decoded, dict) else {}
 
 

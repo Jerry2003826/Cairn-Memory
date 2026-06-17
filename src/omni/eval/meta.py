@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
+
+from omni._event_meta import decode_meta as _decode_meta
+from omni._event_meta import nested_command as _nested_command
 
 INPUT_KEYS = {"args", "input", "parameters", "tool_input"}
 INPUT_WRAPPER_KEYS = {"hook"}
@@ -18,37 +20,6 @@ INPUT_FIELD_KEYS = {
 INPUT_KEY_LOOKUP = {key.lower() for key in INPUT_KEYS}
 INPUT_WRAPPER_KEY_LOOKUP = {key.lower() for key in INPUT_WRAPPER_KEYS}
 INPUT_FIELD_KEY_LOOKUP = {key.lower() for key in INPUT_FIELD_KEYS}
-
-
-def _decode_meta(meta_json: str | None) -> dict[str, Any]:
-    if not meta_json:
-        return {}
-    try:
-        decoded = json.loads(meta_json)
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return decoded if isinstance(decoded, dict) else {}
-
-
-def _nested_command(value: Any) -> Any:
-    if isinstance(value, dict):
-        for key in ("command", "cmd"):
-            if key in value:
-                return value[key]
-        for key in ("input", "tool_input", "parameters", "args"):
-            found = _nested_command(value.get(key))
-            if found is not None:
-                return found
-        for child in value.values():
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    if isinstance(value, list):
-        for child in value:
-            found = _nested_command(child)
-            if found is not None:
-                return found
-    return None
 
 
 def _input_metadata(value: Any) -> Any:
