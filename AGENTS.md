@@ -8,9 +8,10 @@
 > Phase B is done; Phase C has partial approvals. Cairn Bridge foundation
 > (capture/inject seams + machine read) and Cairn Runtime C-5 task lifecycle have
 > landed. C-2 OpenCode v0 has landed as the first real second-engine proof.
-> Read-only MCP has landed as a thin wrapper over existing machine-read
-> surfaces. Multi-agent handoff, permission tiers, and UI remain governed future
-> work. **Every safety invariant is unchanged.**
+> QwenCode v0 has landed as the next narrow adapter. Read-only MCP has landed
+> as a thin wrapper over existing machine-read surfaces. Multi-agent handoff,
+> permission tiers, and UI remain governed future work. **Every safety invariant
+> is unchanged.**
 
 ## Goal
 
@@ -43,6 +44,11 @@ Phase C approved and landed so far:
   `instructions` list; `cairn ingest --engine opencode --transcript <path>` may
   ingest UTF-8 `opencode run --format json` transcripts through the existing
   redacted ingest path. No new migration was added.
+- QwenCode v0: `cairn inject qwen --mode preview|link` may update only
+  project-local `QWEN.md` managed regions to add `@.omni/generated/memory.md`;
+  `cairn ingest --engine qwen --transcript <path>` may ingest UTF-8
+  `qwen --output-format stream-json` transcripts through the existing redacted
+  ingest path. No new migration was added.
 - C-4 read-only MCP: `cairn mcp serve` exposes only `memory_read`,
   `failure_read`, `verify_plan`, and `task_read` over stdio JSON-RPC. It has no
   write tools, no HTTP transport, and no new migration.
@@ -88,6 +94,10 @@ Phase C approved and landed in the current implementation branch:
   transcript ingest only. OpenCode remains the coding agent; Cairn Memory only
   supplies governed context and redacted evidence capture through existing CLI
   writers.
+- QwenCode v0: next narrow adapter via project-local `QWEN.md` managed-region
+  injection and `qwen --output-format stream-json` transcript ingest only.
+  QwenCode remains the coding agent; Cairn Memory only supplies governed
+  context and redacted evidence capture through existing CLI writers.
 - C-4 read-only MCP: external agents may call only the existing read surfaces
   through stdio MCP tools. Cairn Memory still exposes no external write path.
 
@@ -95,7 +105,7 @@ Still deferred beyond the current Phase C approvals:
 
 - automatic/default observed_command extractor behavior
 - additional memory types beyond the one approved Sub-C type
-- OpenCode plugin background capture and Codex/QwenCode/Cursor adapters until
+- OpenCode/QwenCode plugin background capture and Codex/Cursor adapters until
   explicitly approved
 - multi-agent orchestration / handoff, permission tiers, UI (Layer 6–9 beyond task lifecycle)
 

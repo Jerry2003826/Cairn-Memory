@@ -92,6 +92,8 @@ cairn inject claude --mode preview      # preview the CLAUDE.md change
 cairn inject claude --mode link         # link memory.md into CLAUDE.md
 cairn inject opencode --mode preview    # preview opencode.json instructions
 cairn inject opencode --mode link       # add memory.md to OpenCode instructions
+cairn inject qwen --mode preview        # preview QWEN.md managed region
+cairn inject qwen --mode link           # link memory.md into QWEN.md
 ```
 
 For OpenCode, `link` accepts JSON or JSONC input but writes back normalized JSON;
@@ -111,6 +113,7 @@ comments, trailing commas, and original key order/formatting are not preserved.
 ```powershell
 cairn ingest                            # import redacted traces -> note the run_id
 cairn ingest <run_id> --engine opencode --transcript <utf8-jsonl>
+cairn ingest <run_id> --engine qwen --transcript <utf8-jsonl>
 cairn audit secrets
 cairn status
 cairn eval run <run_id>                 # how did this run behave?
@@ -157,8 +160,9 @@ cairn render
 | | `cairn audit secrets` | R | Safety gate — scans the whole `.omni/` tree for leaks |
 | | `cairn inject claude --mode preview\|link` | — | Manage the `CLAUDE.md` managed region |
 | | `cairn inject opencode --mode preview\|link` | — | Add `.omni/generated/memory.md` to project-local `opencode.json` instructions |
+| | `cairn inject qwen --mode preview\|link` | — | Manage the project-local `QWEN.md` managed region |
 | **Capture** | `cairn hook` *(auto-invoked)* | — | Redacts hook input and appends to the spool; always exits `0` |
-| | `cairn ingest [--engine claude\|opencode]` | W | Import redacted traces into the local store |
+| | `cairn ingest [--engine claude\|opencode\|qwen]` | W | Import redacted traces into the local store |
 | | `cairn status` | R | Project health: link, database, generated memory |
 | | `cairn status --all` | R | Read-only multi-project status overview |
 | | `cairn doctor` | R | Read-only project diagnostics |
@@ -225,8 +229,10 @@ Phase C slices that are already present in code.
 Phase C C-2 is implemented and dogfooded in this branch for OpenCode v0. It adds
 project-local `opencode.json` instruction injection and UTF-8 `opencode run
 --format json` transcript ingest, with no plugin background process and no new
-migration. C-4 now adds `cairn mcp serve`, a read-only stdio MCP wrapper over
-the existing machine-read surfaces.
+migration. QwenCode v0 now adds project-local `QWEN.md` managed-region injection
+and UTF-8 `qwen --output-format stream-json` transcript ingest under the same
+no-background-process/no-new-migration boundary. C-4 now adds `cairn mcp serve`,
+a read-only stdio MCP wrapper over the existing machine-read surfaces.
 
 Phase C final delivery evidence from 2026-06-16 is
 [`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md):
@@ -246,6 +252,7 @@ now also surfaces package-local workspace commands such as
 | Project-local `.omni/` state | Background service |
 | Claude Code hook capture behind a capture-engine seam | Write-capable MCP server |
 | OpenCode v0 config injection and transcript ingest | OpenCode plugin background capture |
+| QwenCode v0 `QWEN.md` injection and transcript ingest | QwenCode plugin/background capture or global `~/.qwen` edits |
 | `cairn audit secrets` safety gate | Dashboard / TUI |
 | Ingest, behavior eval, dogfood comparison | Multi-agent orchestration / handoff |
 | User-marked outcomes | LLM extractors |
@@ -267,14 +274,16 @@ verification, and failure governance across engines.
 | Stage | What it adds | Status |
 |---|---|:--:|
 | **① Cairn Memory Kernel** | capture → redact → eval → outcome → reviewed experience / failure memory → verify bridge | ✅ done |
-| **② Cairn Bridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; C-4 wraps read surfaces as MCP tools | ✅ foundation shipped; C-2 shipped; C-4 shipped |
+| **② Cairn Bridge** | agent-agnostic capture/inject seam and a read-only machine read surface; OpenCode v0 proves the first second-engine path; QwenCode v0 adds the next narrow adapter; C-4 wraps read surfaces as MCP tools | ✅ foundation shipped; C-2 shipped; QwenCode v0 shipped; C-4 shipped |
 | **③ Cairn Runtime** | task lifecycle (`start/status/ls/show/close/abandon/read`) plus verify/outcome close bridge; multi-agent handoff later | ✅ C-5 partial shipped |
 | **④ Product** | multi-agent orchestration, permission tiers, audit reports, memory console | planned |
 
 Claude remains the only hook-installed capture target today. OpenCode v0 uses
-project-local `opencode.json` instructions plus UTF-8 JSONL transcript ingest;
-`cairn mcp serve` exposes `memory_read`, `failure_read`, `verify_plan`, and
-`task_read` as read-only stdio MCP tools.
+project-local `opencode.json` instructions plus UTF-8 JSONL transcript ingest.
+QwenCode v0 uses project-local `QWEN.md` managed-region injection plus
+`qwen --output-format stream-json` transcript ingest. `cairn mcp serve` exposes
+`memory_read`, `failure_read`, `verify_plan`, and `task_read` as read-only stdio
+MCP tools.
 
 The MCP server also has a real stdio client acceptance harness:
 

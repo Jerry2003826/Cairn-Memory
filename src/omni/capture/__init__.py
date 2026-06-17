@@ -48,6 +48,7 @@ def names() -> tuple[str, ...]:
 def _load_engines() -> None:
     from omni.capture import claude as _claude  # noqa: F401
     from omni.capture import opencode as _opencode  # noqa: F401
+    from omni.capture import qwen as _qwen  # noqa: F401
 
 
 _load_engines()

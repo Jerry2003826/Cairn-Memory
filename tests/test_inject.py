@@ -196,6 +196,53 @@ def test_opencode_link_rejects_symlink_without_writing(
     assert not config.exists()
 
 
+def test_qwen_preview_prints_managed_region_without_writing(tmp_path: Path) -> None:
+    result = inject.inject(tmp_path, target="qwen", mode="preview")
+
+    assert result.body == MANAGED_REGION
+    assert result.wrote is False
+    assert not (tmp_path / "QWEN.md").exists()
+
+
+def test_qwen_link_writes_managed_region_and_preserves_user_content(
+    tmp_path: Path,
+) -> None:
+    qwen_md = tmp_path / "QWEN.md"
+    qwen_md.write_text("# Project Qwen context\n\nKeep this.\n", encoding="utf-8")
+
+    first = inject.inject(tmp_path, target="qwen", mode="link")
+    second = inject.inject(tmp_path, target="qwen", mode="link")
+    text = qwen_md.read_text(encoding="utf-8")
+
+    assert first.wrote is True
+    assert second.wrote is False
+    assert text.startswith("# Project Qwen context")
+    assert "Keep this." in text
+    assert MANAGED_REGION in text
+    assert text.count("<!-- omni:begin -->") == 1
+    assert text.count("<!-- omni:end -->") == 1
+
+
+def test_qwen_link_rejects_symlink_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    qwen_md = tmp_path / "QWEN.md"
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == qwen_md:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="symlinks are not allowed"):
+        inject.inject(tmp_path, target="qwen", mode="link")
+
+    assert not qwen_md.exists()
+
+
 def test_inject_cli_unknown_target_returns_exit_2(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "inject", "unknown", "--mode", "preview")
     assert result.returncode == 2

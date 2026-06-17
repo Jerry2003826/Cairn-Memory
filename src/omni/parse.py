@@ -110,11 +110,7 @@ def parse_transcript(
                 continue
 
             if not isinstance(parsed, dict) or not _event_type(parsed):
-                reason = (
-                    "unknown_opencode_shape"
-                    if engine == "opencode"
-                    else "unknown_transcript_shape"
-                )
+                reason = _unknown_shape_reason(engine)
                 record, status, detectors = _archive_record(
                     line_no, reason, raw_line
                 )
@@ -128,7 +124,7 @@ def parse_transcript(
 
             normalized = _normalize_event(len(events) + 1, parsed, engine=engine)
             if normalized is None:
-                reason = "unknown_opencode_shape" if engine == "opencode" else "unknown_transcript_shape"
+                reason = _unknown_shape_reason(engine)
                 record, status, detectors = _archive_record(line_no, reason, raw_line)
                 archive_line_count += 1
                 archive_payload_bytes, archive_omitted_lines = _append_archive_record(
@@ -136,6 +132,9 @@ def parse_transcript(
                 )
                 archive_status = _merge_status(archive_status, status)
                 archive_detectors.extend(detectors)
+                continue
+            if isinstance(normalized, list):
+                events.extend(normalized)
                 continue
 
             events.append(normalized)
@@ -178,9 +177,11 @@ def _normalize_event(
     row: dict[str, Any],
     *,
     engine: str,
-) -> NormalizedEvent | None:
+) -> NormalizedEvent | list[NormalizedEvent] | None:
     if engine == "opencode":
         return _normalize_opencode_tool_use(seq, row)
+    if engine == "qwen":
+        return _normalize_qwen_tool_events(seq, row)
 
     return _normalize_generic_event(seq, row)
 
@@ -303,6 +304,163 @@ def _normalize_opencode_tool_use(seq: int, row: dict[str, Any]) -> NormalizedEve
     )
 
 
+def _normalize_qwen_tool_events(seq: int, row: dict[str, Any]) -> list[NormalizedEvent] | None:
+    event_type = row.get("type")
+    if event_type == "assistant":
+        return _normalize_qwen_assistant_tool_uses(seq, row)
+    if event_type == "user":
+        return _normalize_qwen_user_tool_results(seq, row)
+    if event_type == "tool_use":
+        return _normalize_qwen_direct_tool_use(seq, row)
+    if event_type in {"result", "system", "stream_event"}:
+        return []
+    return None
+
+
+def _normalize_qwen_assistant_tool_uses(
+    seq: int,
+    row: dict[str, Any],
+) -> list[NormalizedEvent]:
+    events: list[NormalizedEvent] = []
+    for index, block in enumerate(_qwen_message_content(row)):
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        tool = block.get("name")
+        tool_use_id = block.get("id")
+        if not isinstance(tool, str) or not tool:
+            continue
+        if not isinstance(tool_use_id, str) or not tool_use_id:
+            continue
+        event = _qwen_normalized_event(
+            seq + len(events),
+            row,
+            event_type="tool_use",
+            tool=tool,
+            tool_use_id=tool_use_id,
+            meta=_qwen_block_meta(row, block, index=index),
+        )
+        events.append(event)
+    return events
+
+
+def _normalize_qwen_user_tool_results(
+    seq: int,
+    row: dict[str, Any],
+) -> list[NormalizedEvent]:
+    events: list[NormalizedEvent] = []
+    for index, block in enumerate(_qwen_message_content(row)):
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        tool_use_id = block.get("tool_use_id")
+        if not isinstance(tool_use_id, str) or not tool_use_id:
+            continue
+        event = _qwen_normalized_event(
+            seq + len(events),
+            row,
+            event_type="tool_result",
+            tool=None,
+            tool_use_id=tool_use_id,
+            meta=_qwen_block_meta(row, block, index=index),
+        )
+        events.append(event)
+    return events
+
+
+def _normalize_qwen_direct_tool_use(
+    seq: int,
+    row: dict[str, Any],
+) -> list[NormalizedEvent] | None:
+    tool = row.get("name") or row.get("tool") or row.get("tool_name")
+    tool_use_id = row.get("tool_use_id") or row.get("id")
+    if not isinstance(tool, str) or not tool:
+        return None
+    if not isinstance(tool_use_id, str) or not tool_use_id:
+        return None
+    meta = {key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS}
+    return [
+        _qwen_normalized_event(
+            seq,
+            row,
+            event_type="tool_use",
+            tool=tool,
+            tool_use_id=tool_use_id,
+            meta=meta,
+        )
+    ]
+
+
+def _qwen_message_content(row: dict[str, Any]) -> list[Any]:
+    message = row.get("message")
+    if not isinstance(message, dict):
+        return []
+    content = message.get("content")
+    if isinstance(content, list):
+        return content
+    return []
+
+
+def _qwen_block_meta(
+    row: dict[str, Any],
+    block: dict[str, Any],
+    *,
+    index: int,
+) -> dict[str, Any]:
+    meta = {key: value for key, value in row.items() if key not in KNOWN_EVENT_KEYS}
+    meta["qwen_content_index"] = index
+    meta["qwen_content_block"] = block
+    input_payload = block.get("input")
+    if isinstance(input_payload, dict):
+        meta["input"] = input_payload
+    return meta
+
+
+def _qwen_normalized_event(
+    seq: int,
+    row: dict[str, Any],
+    *,
+    event_type: str,
+    tool: str | None,
+    tool_use_id: str | None,
+    meta: dict[str, Any],
+) -> NormalizedEvent:
+    ts, ts_status, ts_detectors = _redacted_str(
+        row.get("timestamp") or row.get("ts") or row.get("created_at") or ""
+    )
+    redacted_event_type, event_status, event_detectors = _redacted_str(event_type)
+    redacted_tool, tool_status, tool_detectors = _redacted_optional_str(tool)
+    redacted_tool_use_id, tool_id_status, tool_id_detectors = _redacted_optional_str(
+        tool_use_id
+    )
+    redacted_meta, meta_status, meta_detectors = _redacted_meta(meta)
+    return NormalizedEvent(
+        seq=seq,
+        ts=ts,
+        event_type=redacted_event_type,
+        tool=redacted_tool,
+        tool_use_id=redacted_tool_use_id,
+        exit_code=None,
+        duration_ms=None,
+        source="transcript",
+        meta=redacted_meta,
+        redaction_status=_merge_redaction_status(
+            ts_status,
+            event_status,
+            tool_status,
+            tool_id_status,
+            meta_status,
+        ),
+        detectors=tuple(
+            dict.fromkeys(
+                ts_detectors
+                + event_detectors
+                + tool_detectors
+                + tool_id_detectors
+                + meta_detectors
+            )
+        ),
+    )
+
+
 def _duration_ms(start: Any, end: Any) -> int | None:
     start_ms = _optional_int(start)
     end_ms = _optional_int(end)
@@ -346,6 +504,14 @@ def _redacted_optional_str(value: Any) -> tuple[str | None, str, tuple[str, ...]
 
 def _event_type(row: dict[str, Any]) -> Any:
     return row.get("type") or row.get("event_type") or row.get("hook_event_name")
+
+
+def _unknown_shape_reason(engine: str) -> str:
+    if engine == "opencode":
+        return "unknown_opencode_shape"
+    if engine == "qwen":
+        return "unknown_qwen_shape"
+    return "unknown_transcript_shape"
 
 
 def _optional_str(value: Any) -> str | None:

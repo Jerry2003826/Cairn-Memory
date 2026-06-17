@@ -49,3 +49,13 @@ def test_opencode_engine_is_registered_for_run_metadata() -> None:
     assert engine.ingest_events == frozenset()
     assert engine.install is None
     assert engine.event_roles == {}
+
+
+def test_qwen_engine_is_registered_for_run_metadata() -> None:
+    engine = get("qwen")
+
+    assert engine.name == "qwen"
+    assert engine.run_engine == "qwen"
+    assert engine.ingest_events == frozenset()
+    assert engine.install is None
+    assert engine.event_roles == {}

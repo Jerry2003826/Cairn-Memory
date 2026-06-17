@@ -532,6 +532,59 @@ def test_ingest_open_code_transcript_records_engine(tmp_path: Path) -> None:
     }
 
 
+def test_ingest_qwen_transcript_records_engine(tmp_path: Path) -> None:
+    transcript = tmp_path / "qwen.jsonl"
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "uuid": "msg_qwen",
+                "session_id": "ses_qwen",
+                "parent_tool_use_id": None,
+                "message": {
+                    "id": "msg_qwen",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "qwen3-coder",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_qwen",
+                            "name": "run_shell_command",
+                            "input": {"command": "pnpm run test"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 2},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = ingest.ingest(
+        root=tmp_path,
+        run_id="qwen_run",
+        transcript=transcript,
+        engine="qwen",
+    )
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    run = conn.execute("SELECT engine FROM runs WHERE run_id = 'qwen_run'").fetchone()
+    event = conn.execute(
+        "SELECT tool, tool_use_id, exit_code, duration_ms, meta "
+        "FROM events WHERE run_id = 'qwen_run'"
+    ).fetchone()
+
+    assert result.events_inserted == 1
+    assert run["engine"] == "qwen"
+    assert event["tool"] == "run_shell_command"
+    assert event["tool_use_id"] == "toolu_qwen"
+    assert event["exit_code"] is None
+    assert event["duration_ms"] is None
+    assert json.loads(event["meta"])["input"]["command"] == "pnpm run test"
+
+
 def test_ingest_open_code_transcript_does_not_scan_claude_hooks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

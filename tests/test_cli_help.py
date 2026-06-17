@@ -108,6 +108,7 @@ def test_audit_and_ingest_help_are_discoverable(
     assert "--engine" in ingest_output
     assert "claude" in ingest_output
     assert "opencode" in ingest_output
+    assert "qwen" in ingest_output
 
 
 def test_packaging_exposes_cairn_command_with_omni_compatibility() -> None:

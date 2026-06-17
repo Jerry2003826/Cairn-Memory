@@ -991,6 +991,14 @@ def test_opencode_inject_cli_preview(tmp_path: Path) -> None:
     assert not (tmp_path / "opencode.json").exists()
 
 
+def test_qwen_inject_cli_preview(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "inject", "qwen", "--mode", "preview")
+
+    assert result.returncode == 0, result.stderr
+    assert "@.omni/generated/memory.md" in result.stdout
+    assert not (tmp_path / "QWEN.md").exists()
+
+
 def test_ingest_cli_accepts_opencode_engine_and_run_show_nested_command(
     tmp_path: Path,
 ) -> None:
@@ -1035,6 +1043,89 @@ def test_ingest_cli_accepts_opencode_engine_and_run_show_nested_command(
     assert "pnpm run test" in show_result.stdout
 
 
+def test_ingest_cli_accepts_qwen_engine_and_run_show_nested_command(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "qwen.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "system",
+                        "subtype": "init",
+                        "session_id": "ses_qwen",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "uuid": "msg_qwen",
+                        "session_id": "ses_qwen",
+                        "parent_tool_use_id": None,
+                        "message": {
+                            "id": "msg_qwen",
+                            "type": "message",
+                            "role": "assistant",
+                            "model": "qwen3-coder",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_qwen",
+                                    "name": "run_shell_command",
+                                    "input": {"command": "pnpm run test"},
+                                }
+                            ],
+                            "stop_reason": "tool_use",
+                            "usage": {"input_tokens": 1, "output_tokens": 2},
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "uuid": "result_qwen",
+                        "session_id": "ses_qwen",
+                        "parent_tool_use_id": None,
+                        "message": {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "toolu_qwen",
+                                    "content": "tests passed",
+                                    "is_error": False,
+                                }
+                            ],
+                        },
+                    }
+                ),
+                json.dumps({"type": "result", "subtype": "success", "result": "done"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ingest_result = run_omni(
+        tmp_path,
+        "ingest",
+        "qwen_run",
+        "--engine",
+        "qwen",
+        "--transcript",
+        str(transcript),
+    )
+    show_result = run_omni(tmp_path, "run", "show", "qwen_run")
+
+    assert ingest_result.returncode == 0, ingest_result.stderr
+    assert "events_inserted=2" in ingest_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "qwen_run" not in show_result.stdout
+    assert "run_shell_command" in show_result.stdout
+    assert "pnpm run test" in show_result.stdout
+
+
 def test_ingest_cli_unknown_engine_fails_before_layout_write(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "ingest", "bad_run", "--engine", "missing")
 
@@ -1045,6 +1136,14 @@ def test_ingest_cli_unknown_engine_fails_before_layout_write(tmp_path: Path) -> 
 
 def test_ingest_cli_opencode_requires_transcript_before_layout_write(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "ingest", "bad_run", "--engine", "opencode")
+
+    assert result.returncode == 2
+    assert "requires transcript" in result.stderr
+    assert not (tmp_path / ".omni").exists()
+
+
+def test_ingest_cli_qwen_requires_transcript_before_layout_write(tmp_path: Path) -> None:
+    result = run_omni(tmp_path, "ingest", "bad_run", "--engine", "qwen")
 
     assert result.returncode == 2
     assert "requires transcript" in result.stderr

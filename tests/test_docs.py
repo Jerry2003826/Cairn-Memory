@@ -699,6 +699,36 @@ def test_phase_c_final_delivery_doc_records_multisample_opencode_proof() -> None
     assert "Jiarui" not in plan_text
 
 
+def test_qwen_code_v0_adapter_doc_records_boundary_and_acceptance() -> None:
+    doc = REPO_ROOT / "docs" / "qwen-code-v0-adapter-2026-06-17.md"
+
+    text = doc.read_text(encoding="utf-8")
+
+    for phrase in (
+        "QwenCode v0 Adapter Evidence",
+        "cairn inject qwen --mode preview|link",
+        "project-local `QWEN.md` managed-region injection",
+        "cairn ingest --engine qwen --transcript",
+        "qwen --output-format stream-json",
+        "message.content[].type == \"tool_use\"",
+        "message.content[].type == \"tool_result\"",
+        "no QwenCode hook installer",
+        "no global `~/.qwen` edits",
+        "no new migration",
+        "no Codex or Cursor adapter",
+        "visible version: `0.16.2`",
+        "50 passed",
+        "649 passed",
+        "symlinked `QWEN.md` is rejected before write",
+        "run show can display",
+    ):
+        assert phrase in text
+
+    assert "PENDING" not in text
+    assert "C:\\Users" not in text
+    assert "Jiarui" not in text
+
+
 def test_minimal_linux_ci_workflow_runs_pytest_on_311_and_312() -> None:
     workflow = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 

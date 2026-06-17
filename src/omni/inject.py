@@ -39,6 +39,13 @@ TARGETS: dict[str, InjectTarget] = {
         "",
         ".omni/generated/memory.md",
     ),
+    "qwen": InjectTarget(
+        "qwen",
+        "QWEN.md",
+        "<!-- omni:begin -->",
+        "<!-- omni:end -->",
+        "@.omni/generated/memory.md",
+    ),
 }
 MANAGED_REGION = TARGETS["claude"].managed_region
 OPENCODE_SCHEMA = "https://opencode.ai/config.json"
@@ -102,7 +109,7 @@ def _project_local_file(base: Path, target: InjectTarget) -> Path:
         raise ValueError(f"invalid inject filename: {target.filename}")
 
     path = base / filename
-    if target.name == "opencode" and path.is_symlink():
+    if target.name in {"opencode", "qwen"} and path.is_symlink():
         raise ValueError(f"invalid {target.filename}: symlinks are not allowed")
 
     resolved_parent = path.parent.resolve()

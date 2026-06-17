@@ -88,6 +88,101 @@ def test_parse_transcript_normalizes_observed_opencode_tool_use(tmp_path: Path) 
     assert event.meta["part"]["state"]["input"]["command"] == "pnpm run test"
 
 
+def test_parse_transcript_normalizes_observed_qwen_stream_json_tool_use(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "qwen.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "system",
+                "subtype": "init",
+                "session_id": "ses_qwen",
+                "qwen_code_version": "0.16.2",
+            },
+            {
+                "type": "assistant",
+                "uuid": "msg_qwen",
+                "session_id": "ses_qwen",
+                "parent_tool_use_id": None,
+                "message": {
+                    "id": "msg_qwen",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "qwen3-coder",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_qwen",
+                            "name": "run_shell_command",
+                            "input": {"command": "pnpm run test"},
+                        }
+                    ],
+                    "stop_reason": "tool_use",
+                    "usage": {"input_tokens": 1, "output_tokens": 2},
+                },
+            },
+            {
+                "type": "user",
+                "uuid": "result_qwen",
+                "session_id": "ses_qwen",
+                "parent_tool_use_id": None,
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_qwen",
+                            "content": "tests passed",
+                            "is_error": False,
+                        }
+                    ],
+                },
+            },
+            {"type": "result", "subtype": "success", "result": "done"},
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="qwen")
+
+    assert result.archive is None
+    assert [event.event_type for event in result.events] == ["tool_use", "tool_result"]
+    tool_use = result.events[0]
+    tool_result = result.events[1]
+    assert tool_use.tool == "run_shell_command"
+    assert tool_use.tool_use_id == "toolu_qwen"
+    assert tool_use.meta["input"]["command"] == "pnpm run test"
+    assert tool_use.meta["qwen_content_block"]["input"]["command"] == "pnpm run test"
+    assert tool_use.meta["qwen_content_index"] == 0
+    assert tool_result.event_type == "tool_result"
+    assert tool_result.tool_use_id == "toolu_qwen"
+    assert tool_result.meta["qwen_content_block"]["content"] == "tests passed"
+
+
+def test_parse_qwen_archives_unrecorded_direct_tool_use_shape(tmp_path: Path) -> None:
+    transcript = tmp_path / "qwen-unknown.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": "2026-06-17T00:00:00Z",
+                "input": {"command": "pnpm run test"},
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="qwen")
+
+    assert result.events == []
+    assert result.archive is not None
+    assert result.archive.kind == "transcript_archive"
+    assert result.archive.line_count == 1
+    archive_record = json.loads(result.archive.payload.decode("utf-8").splitlines()[0])
+    assert archive_record["reason"] == "unknown_qwen_shape"
+
+
 def test_parse_opencode_archives_unrecorded_tool_use_shape(tmp_path: Path) -> None:
     transcript = tmp_path / "opencode-unknown.jsonl"
     write_jsonl(

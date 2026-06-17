@@ -7,6 +7,13 @@ Update: after this OpenCode/task closeout, C-4 was approved and landed as
 `failure_read`, `verify_plan`, and `task_read`. The historical evidence below
 still describes the earlier OpenCode/task delivery state.
 
+Update 2026-06-17: QwenCode v0 was approved and landed after the OpenCode
+closeout. It adds only project-local `QWEN.md` managed-region injection and
+UTF-8 `qwen --output-format stream-json` transcript ingest through
+`cairn ingest --engine qwen --transcript`; it adds no QwenCode background
+capture, no global `~/.qwen` edits, no write-capable external surface, and no
+new migration. See [`qwen-code-v0-adapter-2026-06-17.md`](qwen-code-v0-adapter-2026-06-17.md).
+
 Scope: approved Phase C only. This closeout covers the already-approved Cairn
 Bridge and Cairn Runtime-lite slices: OpenCode v0 config injection, OpenCode
 UTF-8 JSONL transcript ingest, read-only machine surfaces, task lifecycle, and
