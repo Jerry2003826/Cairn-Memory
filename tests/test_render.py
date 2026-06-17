@@ -1504,3 +1504,38 @@ def test_read_view_truncation_stays_leak_free(
     view = render.read_view(conn)
     assert view["schema_version"] == render.READ_VIEW_SCHEMA_VERSION
     assert_no_metadata_leak(view)
+
+
+def test_with_truncation_notice_drops_orphaned_section_headers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Trimming a section's last entry must also drop its now-empty header.
+
+    Section headers carry no Dependency and were never removable, so when the
+    budget pass deleted every entry under a ``## <Section>`` heading the bare
+    header was left dangling in the rendered body.
+    """
+    lines: list[tuple[str, render.Dependency | None]] = [
+        ("# Project memory", None),
+        ("", None),
+        ("## Project", None),
+        ("- " + "a" * 50, ("fact", "1")),
+        ("", None),
+        ("## Conventions", None),
+        ("- " + "b" * 50, ("fact", "2")),
+        ("", None),
+    ]
+    monkeypatch.setattr(render, "MAX_BODY_CHARS", 70)
+
+    out = render._with_truncation_notice(lines)
+    texts = [text for text, _dep in out]
+
+    # No "## <Section>" header may survive without at least one entry under it.
+    for index, text in enumerate(texts):
+        if text.startswith("## "):
+            following = texts[index + 1 :]
+            next_entry = next(
+                (line for line in following if line and not line.startswith("## ")),
+                None,
+            )
+            assert next_entry is not None, f"orphaned header left: {text!r}"

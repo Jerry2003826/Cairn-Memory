@@ -719,9 +719,47 @@ def _with_truncation_notice(
         if removable is None:
             break
         del trimmed[removable]
+    trimmed = _drop_orphaned_section_headers(trimmed)
     if _body_length(_line_texts(trimmed)) + len(TRUNCATION_NOTICE) + 1 <= MAX_BODY_CHARS:
         trimmed.append((TRUNCATION_NOTICE, None))
     return trimmed
+
+
+def _drop_orphaned_section_headers(
+    lines: list[tuple[str, Dependency | None]],
+) -> list[tuple[str, Dependency | None]]:
+    """Remove ``## <Section>`` headers that have no dependency-backed entries.
+
+    Trimming for the size budget only deletes lines that carry a Dependency,
+    so a section can be emptied while its structural header and trailing
+    blank line survive. Drop those orphans and collapse the resulting gap.
+    """
+    kept: list[tuple[str, Dependency | None]] = []
+    index = 0
+    count = len(lines)
+    while index < count:
+        text, dep = lines[index]
+        if dep is None and text.startswith("## "):
+            has_entry = False
+            lookahead = index + 1
+            while lookahead < count:
+                next_text, next_dep = lines[lookahead]
+                if next_dep is None and next_text.startswith("## "):
+                    break
+                if next_dep is not None:
+                    has_entry = True
+                    break
+                lookahead += 1
+            if not has_entry:
+                # Skip the header and any trailing blank separators that
+                # belonged to this now-empty section.
+                index += 1
+                while index < count and lines[index][1] is None and lines[index][0] == "":
+                    index += 1
+                continue
+        kept.append((text, dep))
+        index += 1
+    return kept
 
 
 def _sha256(value: str) -> str:
