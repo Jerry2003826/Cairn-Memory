@@ -37,6 +37,7 @@ def connect_readonly(path: Path | str) -> sqlite3.Connection:
     # Without a busy timeout a read can fail immediately with SQLITE_BUSY while
     # an approved write command is committing.
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 

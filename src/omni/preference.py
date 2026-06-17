@@ -100,37 +100,55 @@ def approve_candidate(
     *,
     suggested_action: str | None = None,
 ) -> dict[str, Any]:
-    candidate = show_candidate(conn, pref_cand_id)
-    if candidate["state"] == "approved":
-        raise ValueError(f"preference candidate already approved: {pref_cand_id}")
-    if candidate["state"] == "rejected":
-        raise ValueError(f"rejected preference candidate cannot be approved: {pref_cand_id}")
-    if candidate["state"] != "pending":
-        raise ValueError(f"preference candidate is not pending: {pref_cand_id}")
-    note_id = _create_preference_note(
-        conn,
-        candidate,
-        suggested_action=suggested_action or candidate["suggested_action"],
-    )
-    now = now_iso()
-    updated = conn.execute(
-        """
-        UPDATE preference_candidates
-        SET state = 'approved', reviewed_at = ?, review_note = NULL
-        WHERE pref_cand_id = ? AND state = 'pending'
-        """,
-        (now, pref_cand_id),
-    )
-    if updated.rowcount == 0:
-        conn.rollback()
-        current = show_candidate(conn, pref_cand_id)
-        if current["state"] == "rejected":
-            raise ValueError(f"rejected preference candidate cannot be approved: {pref_cand_id}")
-        if current["state"] == "approved":
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        candidate = show_candidate(conn, pref_cand_id)
+        if candidate["state"] == "approved":
             raise ValueError(f"preference candidate already approved: {pref_cand_id}")
-        raise ValueError(f"preference candidate is not pending: {pref_cand_id}")
-    conn.commit()
-    return show_note(conn, note_id)
+        if candidate["state"] == "rejected":
+            raise ValueError(
+                f"rejected preference candidate cannot be approved: {pref_cand_id}"
+            )
+        if candidate["state"] != "pending":
+            raise ValueError(f"preference candidate is not pending: {pref_cand_id}")
+        note_id = _create_preference_note(
+            conn,
+            candidate,
+            suggested_action=suggested_action or candidate["suggested_action"],
+        )
+        updated = conn.execute(
+            """
+            UPDATE preference_candidates
+            SET state = 'approved', reviewed_at = ?, review_note = NULL
+            WHERE pref_cand_id = ? AND state = 'pending'
+            """,
+            (now_iso(), pref_cand_id),
+        )
+        if updated.rowcount == 0:
+            conn.rollback()
+            current = show_candidate(conn, pref_cand_id)
+            if current["state"] == "rejected":
+                raise ValueError(
+                    f"rejected preference candidate cannot be approved: {pref_cand_id}"
+                )
+            if current["state"] == "approved":
+                raise ValueError(f"preference candidate already approved: {pref_cand_id}")
+            raise ValueError(f"preference candidate is not pending: {pref_cand_id}")
+        conn.commit()
+        return show_note(conn, note_id)
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        note_id = _active_note_id_for_candidate(conn, pref_cand_id)
+        if note_id is not None:
+            current = show_candidate(conn, pref_cand_id)
+            if current["state"] == "approved":
+                return show_note(conn, note_id)
+        raise
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
 
 
 def reject_candidate(conn: sqlite3.Connection, pref_cand_id: str) -> dict[str, Any]:
@@ -273,6 +291,29 @@ def _create_preference_note(
         ),
     )
     return note_id
+
+
+def _active_note_id_for_candidate(
+    conn: sqlite3.Connection,
+    pref_cand_id: str,
+) -> str | None:
+    candidate = conn.execute(
+        "SELECT source_cand_id FROM preference_candidates WHERE pref_cand_id = ?",
+        (pref_cand_id,),
+    ).fetchone()
+    if candidate is None or candidate["source_cand_id"] is None:
+        return None
+    row = conn.execute(
+        """
+        SELECT note_id
+        FROM preference_notes
+        WHERE source_cand_id = ? AND status = 'active'
+        ORDER BY created_seq, note_id
+        LIMIT 1
+        """,
+        (candidate["source_cand_id"],),
+    ).fetchone()
+    return None if row is None else str(row["note_id"])
 
 
 def _candidate_from_row(row: sqlite3.Row) -> dict[str, Any]:

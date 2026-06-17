@@ -52,9 +52,15 @@ def put_artifact(
     )
     conn.execute(
         """
-        INSERT OR IGNORE INTO artifacts(
+        INSERT INTO artifacts(
           hash, kind, byte_len, line_count, redaction_status, redaction_ver, created_at
         ) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(hash) DO UPDATE SET
+          kind = excluded.kind,
+          byte_len = excluded.byte_len,
+          line_count = excluded.line_count,
+          redaction_status = excluded.redaction_status,
+          redaction_ver = excluded.redaction_ver
         """,
         (
             artifact.hash,

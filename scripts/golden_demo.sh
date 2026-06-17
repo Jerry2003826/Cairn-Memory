@@ -34,7 +34,8 @@ PY
 sandbox="$("$repo_root/scripts/create_sandbox.sh" "$target")"
 cd "$sandbox"
 
-run_omni init --install-claude-hooks --yes >/dev/null
+run_omni audit secrets >/dev/null
+run_omni init --install-claude-hooks >/dev/null
 
 cold_id="$(new_uuid)"
 "$claude_bin" \

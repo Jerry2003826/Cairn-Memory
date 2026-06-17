@@ -23,6 +23,7 @@ def _first_error_line(meta: dict[str, Any]) -> str | None:
             container.get("stderr"),
             _nested_get(container.get("tool_response"), "stderr"),
             _nested_get(container.get("toolUseResult"), "stderr"),
+            _nested_get(container.get("part"), "output"),
         ):
             line = _first_meaningful_line(value)
             if line is not None:

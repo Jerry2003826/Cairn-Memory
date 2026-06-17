@@ -772,5 +772,8 @@ def test_minimal_linux_ci_workflow_runs_pytest_on_311_and_312() -> None:
         "3.12",
         'pip install -e ".[dev]"',
         "pytest -q",
+        "scripts/create_sandbox.sh",
+        "python -m omni.cli audit secrets",
+        "test_mcp_client_acceptance_harness_calls_all_read_tools",
     ):
         assert phrase in text

@@ -218,7 +218,7 @@ def reject_candidate(conn: sqlite3.Connection, failure_cand_id: str) -> dict[str
             f"approved failure candidate cannot be rejected in v0: {failure_cand_id}"
         )
     validate_choice("state", row["state"], STATE_VALUES)
-    conn.execute(
+    updated = conn.execute(
         """
         UPDATE failure_candidates
         SET state = 'rejected', reviewed_at = ?
@@ -226,6 +226,16 @@ def reject_candidate(conn: sqlite3.Connection, failure_cand_id: str) -> dict[str
         """,
         (now_iso(), failure_cand_id),
     )
+    if updated.rowcount != 1:
+        conn.rollback()
+        current = show_candidate(conn, failure_cand_id)
+        if current["state"] == "rejected":
+            return current
+        if current["state"] == "approved":
+            raise ValueError(
+                f"approved failure candidate cannot be rejected in v0: {failure_cand_id}"
+            )
+        raise ValueError(f"failure candidate could not be rejected: {failure_cand_id}")
     conn.commit()
     return show_candidate(conn, failure_cand_id)
 

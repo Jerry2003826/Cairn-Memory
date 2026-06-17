@@ -116,6 +116,36 @@ def test_eval_run_treats_machine_read_surfaces_as_memory_context(
     assert result["memory_effect"] == "helped"
 
 
+def test_eval_run_treats_qwen_and_opencode_injection_files_as_memory_context(
+    tmp_path: Path,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "uses_test_command", "pnpm run test")
+    _insert_event(
+        conn,
+        "qwen_context_run",
+        1,
+        tool="Read",
+        meta={"tool_input": {"file_path": "QWEN.md"}},
+    )
+    _insert_event(
+        conn,
+        "opencode_context_run",
+        1,
+        tool="Read",
+        meta={"tool_input": {"file_path": "opencode.json"}},
+    )
+    conn.commit()
+
+    qwen = eval_module.evaluate_run(tmp_path, "qwen_context_run")
+    opencode = eval_module.evaluate_run(tmp_path, "opencode_context_run")
+
+    assert qwen["qwen_md_read"] is True
+    assert qwen["memory_context_seen"] is True
+    assert opencode["opencode_config_read"] is True
+    assert opencode["memory_context_seen"] is True
+
+
 def test_eval_run_reports_failed_to_help_for_unihack_style_negative_sample(
     tmp_path: Path,
 ) -> None:
@@ -284,6 +314,9 @@ def test_eval_run_matches_expected_commands_after_existing_cd_wrapper(
 
     assert result["expected_verification_executed"] is matches
     assert result["first_expected_command_position"] == (2 if matches else None)
+    if matches:
+        assert result["first_expected_command"] == tail
+        assert result["observed_commands"][0]["command"] == tail
 
 
 def test_eval_run_does_not_match_expected_command_after_missing_cd_wrapper(

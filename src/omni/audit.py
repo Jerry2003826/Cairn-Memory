@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from omni.redact import is_skiplisted_path, redact, redact_path
 
 _STREAM_SCAN_CHUNK_BYTES = 512 * 1024
 _STREAM_SCAN_OVERLAP_BYTES = 4096
+_PRIVATE_KEY_MARKER_OVERLAP_BYTES = 128
+_PRIVATE_KEY_BEGIN_RE = re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_PRIVATE_KEY_END_RE = re.compile(rb"-----END [A-Z ]*PRIVATE KEY-----")
 
 
 @dataclass(frozen=True)
@@ -168,6 +172,9 @@ def _path_contains_literal(path: Path, literals: tuple[bytes, ...]) -> bool:
 
 
 def _path_has_stream_redaction(path: Path, allow_values: set[str]) -> bool:
+    if _path_has_stream_private_key(path):
+        return True
+
     tail = b""
     with path.open("rb") as handle:
         while chunk := handle.read(_STREAM_SCAN_CHUNK_BYTES):
@@ -177,6 +184,27 @@ def _path_has_stream_redaction(path: Path, allow_values: set[str]) -> bool:
                 return True
             tail = window[-_STREAM_SCAN_OVERLAP_BYTES:]
     return False
+
+
+def _path_has_stream_private_key(path: Path) -> bool:
+    tail = b""
+    in_private_key = False
+    with path.open("rb") as handle:
+        while chunk := handle.read(_STREAM_SCAN_CHUNK_BYTES):
+            window = tail + chunk
+            if in_private_key:
+                if _PRIVATE_KEY_END_RE.search(window) is not None:
+                    return True
+                tail = window[-_PRIVATE_KEY_MARKER_OVERLAP_BYTES:]
+                continue
+
+            begin = _PRIVATE_KEY_BEGIN_RE.search(window)
+            if begin is not None:
+                if _PRIVATE_KEY_END_RE.search(window, begin.end()) is not None:
+                    return True
+                in_private_key = True
+            tail = window[-_PRIVATE_KEY_MARKER_OVERLAP_BYTES:]
+    return in_private_key
 
 
 def _positive_fixture_literals(fixtures_root: Path, allow_values: set[str]) -> tuple[bytes, ...]:

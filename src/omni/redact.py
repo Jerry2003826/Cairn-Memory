@@ -250,14 +250,14 @@ def _looks_like_path_value(value: str) -> bool:
 
 
 def _should_redact_secret(secret: bytes, detector: str, allow_values: set[bytes]) -> bool:
-    if secret in allow_values:
-        return False
     if _looks_like_redaction_placeholder(secret):
         return False
     if detector == "secret_assignment" and _looks_like_function_call(secret):
         return False
     if detector in _ALWAYS_REDACT_DETECTORS:
         return True
+    if secret in allow_values:
+        return False
     if detector == "high_entropy" and not _looks_high_entropy(secret):
         return False
     if detector == "high_entropy":

@@ -86,6 +86,58 @@ def test_preference_approve_render_and_retire(tmp_path: Path) -> None:
     assert "Keep pull requests small." not in rerendered.body
 
 
+def test_preference_approve_rolls_back_note_when_pending_update_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = _fixture_db(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO preference_candidates(
+          pref_cand_id, source_cand_id, scope, kind, predicate, qualifier,
+          body, suggested_action, evidence, state, created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "pref_cand_txn",
+            None,
+            "project",
+            "prefers",
+            "prefers_small_prs",
+            "default",
+            "prefers small prs: true",
+            "Keep pull requests small.",
+            "{}",
+            "pending",
+            "2026-06-15T00:00:00Z",
+        ),
+    )
+    conn.commit()
+    original_create = preference._create_preference_note
+
+    def create_then_clear_pending(
+        conn: sqlite3.Connection,
+        candidate: dict[str, object],
+        *,
+        suggested_action: str,
+    ) -> str:
+        note_id = original_create(conn, candidate, suggested_action=suggested_action)
+        conn.execute(
+            "UPDATE preference_candidates SET state = 'rejected' WHERE pref_cand_id = ?",
+            ("pref_cand_txn",),
+        )
+        return note_id
+
+    monkeypatch.setattr(preference, "_create_preference_note", create_then_clear_pending)
+
+    with pytest.raises(ValueError, match="preference candidate is not pending"):
+        preference.approve_candidate(conn, "pref_cand_txn")
+
+    candidate = preference.show_candidate(conn, "pref_cand_txn")
+    assert candidate["state"] == "pending"
+    assert conn.execute("SELECT COUNT(*) FROM preference_notes").fetchone()[0] == 0
+
+
 def test_approved_preference_note_renders_without_internal_metadata(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     conn.execute(

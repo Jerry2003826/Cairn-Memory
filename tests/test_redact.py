@@ -227,14 +227,14 @@ def test_large_single_line_payload_keeps_nonempty_safe_truncation_sample() -> No
 
 
 def test_false_positive_guards_and_allow_values_do_not_redact() -> None:
-    allowed = "ghp_allowedallowedallowedallowedallowedallowed12"
+    allowed = "AllowListedBuildValue1234567890ABCDEF"
     payload = "\n".join(
         [
             "commit 0123456789abcdef0123456789abcdef01234567",
             "HEAD detached at 0123456789abcdef0123456789abcdef01234567",
             "sha512-deadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabe",
             "artifact=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            f"token={allowed}",
+            f"tool --token {allowed}",
         ]
     ).encode("utf-8")
 
@@ -245,7 +245,16 @@ def test_false_positive_guards_and_allow_values_do_not_redact() -> None:
     assert result.data == payload
 
 
-def test_contextual_hex_api_key_token_or_secret_is_redacted_unless_allowlisted() -> None:
+def test_allow_values_do_not_bypass_always_redact_detectors() -> None:
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    result = redact_mod.redact(f"token={secret}".encode("utf-8"), allow_values={secret})
+
+    assert result.status == "redacted"
+    assert "github_token" in result.detectors
+    assert secret.encode("utf-8") not in result.data
+
+
+def test_contextual_hex_api_key_token_or_secret_stays_redacted_when_allowlisted() -> None:
     hex40 = "0123456789abcdef0123456789abcdef01234567"
     hex64 = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
     secret_hex = "fedcba9876543210fedcba9876543210fedcba98"
@@ -261,9 +270,11 @@ def test_contextual_hex_api_key_token_or_secret_is_redacted_unless_allowlisted()
 
     allowed = redact_mod.redact(payload, allow_values={hex40, hex64, secret_hex})
 
-    assert allowed.status == "clean"
-    assert allowed.detectors == ()
-    assert allowed.data == payload
+    assert allowed.status == "redacted"
+    assert "secret_assignment" in allowed.detectors
+    assert hex40.encode("utf-8") not in allowed.data
+    assert hex64.encode("utf-8") not in allowed.data
+    assert secret_hex.encode("utf-8") not in allowed.data
 
 
 def test_authorization_bearer_hex_tokens_are_contextual_secrets() -> None:

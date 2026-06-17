@@ -1457,6 +1457,16 @@ def test_golden_demo_script_evaluator_handles_nested_meta_and_allowed_prelude() 
     assert '"git status"' in script
 
 
+def test_golden_demo_script_audits_before_installing_hooks() -> None:
+    script = (REPO_ROOT / "scripts" / "golden_demo.sh").read_text(encoding="utf-8")
+
+    first_audit = script.index("run_omni audit secrets")
+    install_hooks = script.index("run_omni init --install-claude-hooks")
+
+    assert first_audit < install_hooks
+    assert script.count("run_omni audit secrets") >= 2
+
+
 def test_golden_demo_script_runs_with_fake_claude(tmp_path: Path) -> None:
     bash_check = subprocess.run(
         ["bash", "-lc", "true"],

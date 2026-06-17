@@ -82,14 +82,18 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
     first_expected_seq = None if first_expected is None else first_expected["seq"]
     rediscovery = _rediscovery_before(events, first_expected_seq, project_root=project_root)
     claude_md_read = any(_mentions_path(event, "CLAUDE.md") for event in events)
+    qwen_md_read = any(_mentions_path(event, "QWEN.md") for event in events)
+    opencode_config_read = any(_mentions_path(event, "opencode.json") for event in events)
     memory_md_read = any(_mentions_path(event, MEMORY_PATH) for event in events)
     machine_read_surfaces = _machine_read_surfaces(events, project_root=project_root)
     machine_read_context_seen = bool(machine_read_surfaces)
-    memory_context_seen = claude_md_read or memory_md_read or machine_read_context_seen
+    memory_context_seen = any(
+        (claude_md_read, qwen_md_read, opencode_config_read, memory_md_read, machine_read_context_seen)
+    )
     memory_context_seen_but_no_expected = (
         memory_context_seen and first_expected is None
     )
-    observed_report, observed_omitted = _limit_observed_commands(observed_commands)
+    observed_report, observed_omitted = _limit_observed_commands(observed_commands, project_root=project_root)
     rediscovery_report, rediscovery_omitted = _limit_report_items(
         rediscovery, MAX_REDISCOVERY_EVENTS
     )
@@ -97,6 +101,8 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
     result = {
         "run_id": run_id,
         "claude_md_read": claude_md_read,
+        "qwen_md_read": qwen_md_read,
+        "opencode_config_read": opencode_config_read,
         "memory_md_read": memory_md_read,
         "machine_read_surfaces": machine_read_surfaces,
         "machine_read_context_seen": machine_read_context_seen,
@@ -106,7 +112,7 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
         "observed_commands_omitted": observed_omitted,
         "first_expected_command_position": first_expected_seq,
         "first_expected_command": (
-            None if first_expected is None else _safe_command(first_expected["command"])
+            None if first_expected is None else _safe_command(first_expected["command"], project_root=project_root)
         ),
         "rediscovery_events_before_first_expected_command": rediscovery_report,
         "rediscovery_events_omitted": rediscovery_omitted,
@@ -381,6 +387,7 @@ def _rediscovery_for_event(
                     event,
                     filename,
                     _detail_for(event, filename, input_meta, project_root=project_root),
+                    project_root=project_root,
                 )
             )
 
@@ -388,17 +395,17 @@ def _rediscovery_for_event(
         event, command, strings, input_meta, project_root=project_root
     )
     if broad_detail is not None:
-        found.append(_rediscovery_event(event, "broad_scan", broad_detail))
+        found.append(_rediscovery_event(event, "broad_scan", broad_detail, project_root=project_root))
 
     return found
 
 
-def _rediscovery_event(event: dict[str, Any], kind: str, detail: str) -> dict[str, Any]:
+def _rediscovery_event(event: dict[str, Any], kind: str, detail: str, *, project_root: Path) -> dict[str, Any]:
     return {
         "seq": event["seq"],
         "kind": kind,
         "tool": event["tool"],
-        "detail": _safe_detail(detail),
+        "detail": _safe_detail(detail, project_root=project_root),
     }
 
 
@@ -504,29 +511,27 @@ def _classify(
     return ("unknown", "insufficient evidence")
 
 
-def _safe_detail(detail: str) -> str:
-    normalized = _strip_directory_change_prefix(detail)
+def _safe_detail(detail: str, *, project_root: Path | None = None) -> str:
+    normalized = _strip_directory_change_prefix(detail, project_root=project_root)
     if len(normalized) <= MAX_DETAIL_CHARS:
         return normalized
     return truncate_with_suffix(normalized, MAX_DETAIL_CHARS)[0]
 
 
-def _safe_command(command: str) -> str:
+def _safe_command(command: str, *, project_root: Path | None = None) -> str:
     return safe_json_string(
-        _strip_directory_change_prefix(command),
+        _strip_directory_change_prefix(command, project_root=project_root),
         MAX_COMMAND_CHARS,
     )
 
 
-def _limit_observed_commands(
-    commands: list[dict[str, Any]]
-) -> tuple[list[dict[str, Any]], int]:
+def _limit_observed_commands(commands: list[dict[str, Any]], *, project_root: Path) -> tuple[list[dict[str, Any]], int]:
     limited, omitted = _limit_report_items(commands, MAX_OBSERVED_COMMANDS)
     return (
         [
             {
                 **command,
-                "command": _safe_command(str(command["command"])),
+                "command": _safe_command(str(command["command"]), project_root=project_root),
             }
             for command in limited
         ],
@@ -562,6 +567,8 @@ def _unknown_result(run_id: str, reason: str) -> dict[str, Any]:
     return {
         "run_id": run_id,
         "claude_md_read": False,
+        "qwen_md_read": False,
+        "opencode_config_read": False,
         "memory_md_read": False,
         "machine_read_surfaces": [],
         "machine_read_context_seen": False,

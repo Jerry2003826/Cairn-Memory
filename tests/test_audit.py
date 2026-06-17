@@ -115,6 +115,24 @@ def test_audit_fails_on_large_omni_file_secret_after_first_megabyte(
     assert result.omni_leaks == [db_path]
 
 
+def test_audit_fails_on_large_private_key_spanning_stream_windows(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / ".omni" / "omni.sqlite3"
+    db_path.parent.mkdir(parents=True)
+    db_path.write_bytes(
+        b"SQLite format 3\x00"
+        + b"-----BEGIN RSA PRIVATE KEY-----\n"
+        + (b"A" * (audit._STREAM_SCAN_CHUNK_BYTES + audit._STREAM_SCAN_OVERLAP_BYTES + 64))
+        + b"\n-----END RSA PRIVATE KEY-----\n"
+    )
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is False
+    assert result.omni_leaks == [db_path]
+
+
 def test_audit_fails_on_positive_fixture_literal_even_if_redactor_misses(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -142,18 +160,33 @@ def test_audit_fails_on_positive_fixture_literal_even_if_redactor_misses(
 
 
 def test_audit_uses_redaction_allow_file_for_exact_values(tmp_path: Path) -> None:
-    allowed = "ghp_allowedallowedallowedallowedallowedallowed12"
+    allowed = "AllowListedBuildValue1234567890ABCDEF"
     (tmp_path / ".omni").mkdir()
     (tmp_path / ".omni" / "redaction-allow.txt").write_text(allowed + "\n", encoding="utf-8")
     (tmp_path / ".omni" / "spool").mkdir()
     (tmp_path / ".omni" / "spool" / "allowed.jsonl").write_text(
-        f"token={allowed}\n", encoding="utf-8"
+        f"tool --token {allowed}\n", encoding="utf-8"
     )
 
     result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
 
     assert result.ok is True
     assert result.omni_leaks == []
+
+
+def test_audit_allow_file_does_not_exempt_always_redact_tokens(tmp_path: Path) -> None:
+    token = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    (tmp_path / ".omni").mkdir()
+    (tmp_path / ".omni" / "redaction-allow.txt").write_text(token + "\n", encoding="utf-8")
+    (tmp_path / ".omni" / "spool").mkdir()
+    leak = tmp_path / ".omni" / "spool" / "leak.jsonl"
+    leak.write_text(f"token={token}\n", encoding="utf-8")
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is False
+    assert result.omni_leaks == [tmp_path / ".omni" / "redaction-allow.txt", leak]
+    assert not (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
 
 
 def test_audit_accepts_already_redacted_placeholders_on_second_scan(tmp_path: Path) -> None:

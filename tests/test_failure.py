@@ -157,6 +157,34 @@ def test_run_shell_command_nonzero_exit_creates_command_failed(tmp_path: Path) -
     assert candidate["error_signature"] == "FAIL tests/foo.test.ts"
 
 
+def test_opencode_metadata_output_creates_error_signature(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_opencode_fail")
+    _insert_event(
+        conn,
+        "run_opencode_fail",
+        1,
+        tool="bash",
+        tool_use_id="toolu_opencode",
+        exit_code=1,
+        meta={
+            "input": {"command": "pnpm run test -- --watch=false"},
+            "part": {
+                "state": {
+                    "metadata": {"output": "FAIL tests/opencode.test.ts\nexit status 1"}
+                }
+            },
+        },
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_opencode_fail")
+
+    assert candidate["failure_kind"] == "command_failed"
+    assert candidate["command_norm"] == "pnpm run test"
+    assert candidate["exit_code"] == 1
+    assert candidate["error_signature"] == "FAIL tests/opencode.test.ts"
+
+
 def test_reconciled_hook_meta_extracts_command(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_reconciled_hook")
@@ -725,6 +753,31 @@ def test_failure_candidate_state_machine_for_approve_and_reject(tmp_path: Path) 
     assert pending_rejected["state"] == "rejected"
     assert pending_rejected["pattern_id"] is None
     assert failure.list_candidates(conn, state="approved") == [approved]
+
+
+def test_failure_reject_raises_when_pending_update_is_ignored(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    candidate = _create_failure_candidate(conn, run_id="run_reject_ignored")
+    conn.execute(
+        """
+        CREATE TRIGGER ignore_failure_reject
+        BEFORE UPDATE OF state ON failure_candidates
+        WHEN NEW.state = 'rejected'
+        BEGIN
+          SELECT RAISE(IGNORE);
+        END;
+        """
+    )
+    conn.commit()
+
+    with pytest.raises(
+        ValueError,
+        match=f"failure candidate could not be rejected: {candidate['failure_cand_id']}",
+    ):
+        failure.reject_candidate(conn, candidate["failure_cand_id"])
+
+    current = failure.show_candidate(conn, candidate["failure_cand_id"])
+    assert current["state"] == "pending"
 
 
 def test_approve_requires_summary_and_suggested_action(tmp_path: Path) -> None:

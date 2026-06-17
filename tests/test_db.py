@@ -58,6 +58,7 @@ def test_connect_readonly_sets_busy_timeout(tmp_path: Path) -> None:
     readonly = db.connect_readonly(tmp_path / ".omni" / "omni.sqlite3")
     try:
         assert readonly.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        assert readonly.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     finally:
         readonly.close()
 
@@ -390,6 +391,38 @@ def test_content_addressed_artifact_store_redacts_and_deduplicates(
     assert b"store-secret-value-123" not in first.path.read_bytes()
     assert b"REDACTED:env:" in first.path.read_bytes()
     assert conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 1
+
+
+def test_put_artifact_updates_metadata_for_same_hash_different_kind(tmp_path: Path) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+
+    first = store.put_artifact(
+        tmp_path,
+        conn,
+        kind="transcript_event",
+        data=b'{"event":"same"}\n',
+    )
+    second = store.put_artifact(
+        tmp_path,
+        conn,
+        kind="transcript_archive",
+        data=b'{"event":"same"}\n',
+    )
+
+    row = conn.execute(
+        "SELECT kind, byte_len, line_count, redaction_status FROM artifacts WHERE hash = ?",
+        (first.hash,),
+    ).fetchone()
+
+    assert first.hash == second.hash
+    assert conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 1
+    assert dict(row) == {
+        "kind": "transcript_archive",
+        "byte_len": second.byte_len,
+        "line_count": second.line_count,
+        "redaction_status": second.redaction_status,
+    }
 
 
 def test_put_artifact_does_not_commit_open_transaction(tmp_path: Path) -> None:
