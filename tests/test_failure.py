@@ -133,6 +133,76 @@ def test_bash_nonzero_exit_creates_command_failed_candidate(tmp_path: Path) -> N
     assert candidate["error_signature"] == "FAIL tests/foo.test.ts"
 
 
+def test_run_shell_command_nonzero_exit_creates_command_failed(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_qwen_shell")
+    _insert_event(
+        conn,
+        "run_qwen_shell",
+        1,
+        tool="run_shell_command",
+        tool_use_id="toolu_qwen",
+        exit_code=1,
+        meta={
+            "input": {"command": "pnpm run test -- --watch=false"},
+            "tool_response": {"stderr": "FAIL tests/foo.test.ts"},
+        },
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_qwen_shell")
+
+    assert candidate["failure_kind"] == "command_failed"
+    assert candidate["command_norm"] == "pnpm run test"
+    assert candidate["exit_code"] == 1
+    assert candidate["error_signature"] == "FAIL tests/foo.test.ts"
+
+
+def test_reconciled_hook_meta_extracts_command(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_reconciled_hook")
+    _insert_event(
+        conn,
+        "run_reconciled_hook",
+        1,
+        tool="Bash",
+        tool_use_id="toolu_reconciled",
+        exit_code=1,
+        meta={
+            "transcript": {"type": "tool_use", "id": "toolu_reconciled", "name": "Bash"},
+            "hook": {
+                "tool_input": {"command": "pnpm run test -- --watch=false"},
+                "tool_response": {"stderr": "FAIL tests/foo.test.ts"},
+            },
+        },
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_reconciled_hook")
+
+    assert candidate["failure_kind"] == "command_failed"
+    assert candidate["command_norm"] == "pnpm run test"
+    assert candidate["exit_code"] == 1
+    assert candidate["error_signature"] == "FAIL tests/foo.test.ts"
+
+
+def test_command_failed_without_stderr_stays_command_failed(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_no_stderr")
+    _insert_event(
+        conn,
+        "run_no_stderr",
+        1,
+        tool="Bash",
+        exit_code=1,
+        meta={"tool_input": {"command": "pnpm run test"}},
+    )
+
+    [candidate] = failure.extract_candidates(conn, "run_no_stderr")
+
+    assert candidate["failure_kind"] == "command_failed"
+    assert candidate["exit_code"] == 1
+    assert candidate["error_signature"] == "unknown failure"
+
+
 def test_exit_code_is_extracted_from_text_without_event_exit_code(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     _insert_run(conn, "run_exit_text")

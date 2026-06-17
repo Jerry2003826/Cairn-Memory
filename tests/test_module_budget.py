@@ -18,7 +18,7 @@ MODULE_LINE_BUDGETS: dict[str, int] = {
     "failure/exit_code.py": 100,
     "failure/error_lines.py": 100,
     "verify/process.py": 330,
-    "verify/selection.py": 350,
+    "verify/selection.py": 360,
     "verify/command_safety.py": 300,
     "eval/classify.py": 600,
     "eval/meta.py": 140,

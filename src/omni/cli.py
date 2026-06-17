@@ -203,6 +203,8 @@ def _add_eval_parser(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _add_outcome_parser(subcommands: argparse._SubParsersAction) -> None:
+    from omni.verify.inputs import PROFILE_VALUES
+
     outcome_parser = subcommands.add_parser("outcome", help="Record or show run outcomes")
     outcome_subcommands = outcome_parser.add_subparsers(
         dest="outcome_command",
@@ -288,7 +290,7 @@ def _add_outcome_parser(subcommands: argparse._SubParsersAction) -> None:
     outcome_mark_from_verify_parser.add_argument("--qualifier")
     outcome_mark_from_verify_parser.add_argument(
         "--profile",
-        choices=("default", "release", "test"),
+        choices=PROFILE_VALUES,
     )
     outcome_show_parser = outcome_subcommands.add_parser("show")
     outcome_show_parser.add_argument("run_id")
@@ -432,6 +434,7 @@ def _add_preference_parser(subcommands: argparse._SubParsersAction) -> None:
 
 def _add_task_parser(subcommands: argparse._SubParsersAction) -> None:
     from omni.task import LIST_TASK_STATUS_VALUES
+    from omni.verify.inputs import PROFILE_VALUES
 
     task_parser = subcommands.add_parser("task", help="Manage operational task lifecycle")
     task_subcommands = task_parser.add_subparsers(
@@ -465,7 +468,7 @@ def _add_task_parser(subcommands: argparse._SubParsersAction) -> None:
     task_close_parser.add_argument("--qualifier")
     task_close_parser.add_argument(
         "--profile",
-        choices=("default", "release", "test"),
+        choices=PROFILE_VALUES,
     )
     task_close_parser.add_argument("--reason")
     task_abandon_parser = task_subcommands.add_parser("abandon")
@@ -548,11 +551,15 @@ def _run_db_command(
     action: Callable[[Any], Any],
     render: Callable[[Any], str],
 ) -> int:
-    from omni.dbaccess import connect_project, connect_project_readonly
+    from omni.dbaccess import connect_project_migrate, connect_project_readonly
 
     root = project_root()
     try:
-        conn = connect_project_readonly(root) if readonly else connect_project(root)
+        conn = (
+            connect_project_readonly(root)
+            if readonly
+            else connect_project_migrate(root)
+        )
     except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

@@ -202,14 +202,26 @@ def plan_view(
         profile=profile,
         explicit_qualifier=qualifier is not None,
     )
-    return {
+    result: dict[str, Any] = {
         "schema_version": PLAN_VIEW_SCHEMA_VERSION,
         "predicate": predicate,
         "qualifier": effective_qualifier,
         "profile": profile,
-        "candidate_commands": selection.get("candidate_commands", []),
+        "status": selection["status"],
+        "reason_code": selection["reason_code"],
+        "reason": selection["reason"],
         "selection_mode": selection.get("selection_mode"),
+        "candidate_commands": selection.get("candidate_commands", []),
+        "candidate_commands_omitted": selection.get("candidate_commands_omitted", 0),
     }
+    if selection.get("status") == "selected":
+        result["command"] = selection["command"]
+        if "subject" in selection:
+            result["subject"] = selection["subject"]
+    for key in ("disambiguation_hint", "available_qualifiers"):
+        if key in selection:
+            result[key] = selection[key]
+    return result
 
 
 def _selection_mode(

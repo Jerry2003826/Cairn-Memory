@@ -6,17 +6,28 @@ import json
 from typing import Any, Callable, Iterable
 
 INPUT_CONTAINER_KEYS = ("tool_input", "input", "parameters", "args")
+INPUT_WRAPPER_KEYS = ("hook",)
+INPUT_WRAPPER_KEY_LOOKUP = {key.lower() for key in INPUT_WRAPPER_KEYS}
 OUTPUT_CONTAINER_KEYS = ("tool_response", "toolUseResult")
 
 
 def _input_metadata(value: Any) -> Any:
-    if isinstance(value, dict):
-        collected = []
-        for key in INPUT_CONTAINER_KEYS:
-            if key in value:
-                collected.append(value[key])
-        return collected
-    return {}
+    if not isinstance(value, dict):
+        return {}
+    collected: list[Any] = []
+    _append_input_containers(value, collected)
+    for key, child in value.items():
+        if key.lower() in INPUT_WRAPPER_KEY_LOOKUP:
+            _append_input_containers(child, collected)
+    return collected
+
+
+def _append_input_containers(value: Any, collected: list[Any]) -> None:
+    if not isinstance(value, dict):
+        return
+    for key in INPUT_CONTAINER_KEYS:
+        if key in value:
+            collected.append(value[key])
 
 
 def _nested_command(value: Any) -> str | None:
@@ -100,7 +111,14 @@ def _nested_error_strings(value: Any) -> list[str]:
 
 
 def _is_shell_tool(tool: Any) -> bool:
-    return str(tool or "").lower() in {"bash", "shell", "powershell", "pwsh", "cmd"}
+    return str(tool or "").lower() in {
+        "bash",
+        "shell",
+        "powershell",
+        "pwsh",
+        "cmd",
+        "run_shell_command",
+    }
 
 
 def _decode_meta(meta_json: str | None) -> dict[str, Any]:

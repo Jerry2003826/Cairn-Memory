@@ -134,6 +134,42 @@ def test_approved_preference_note_renders_without_internal_metadata(tmp_path: Pa
     assert db_note["updated_at"] not in text
 
 
+def test_approved_preference_candidate_cannot_be_rejected(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO preference_candidates(
+          pref_cand_id, source_cand_id, scope, kind, predicate, qualifier,
+          body, suggested_action, evidence, state, created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "pref_cand_reject_guard",
+            None,
+            "project",
+            "prefers",
+            "prefers_small_prs",
+            "default",
+            "prefers small prs: true",
+            "Keep pull requests small.",
+            "{}",
+            "pending",
+            "2026-06-15T00:00:00Z",
+        ),
+    )
+    conn.commit()
+
+    preference.approve_candidate(conn, "pref_cand_reject_guard")
+
+    with pytest.raises(
+        ValueError,
+        match="approved preference candidate cannot be rejected: pref_cand_reject_guard",
+    ):
+        preference.reject_candidate(conn, "pref_cand_reject_guard")
+
+    assert preference.show_candidate(conn, "pref_cand_reject_guard")["state"] == "approved"
+
+
 def test_cli_preference_extract_outputs_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

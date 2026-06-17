@@ -414,7 +414,10 @@ def test_init_install_claude_hooks_redacts_printed_diff(tmp_path: Path) -> None:
         "init",
         "--install-claude-hooks",
         "--yes",
-        extra_env={"OMNI_HOOK_COMMAND": f"python -m omni.cli hook --token={diff_secret}"},
+        extra_env={
+            "CAIRN_UNSAFE_HOOK_COMMAND": "1",
+            "OMNI_HOOK_COMMAND": f"python -m omni.cli hook --token={diff_secret}",
+        },
     )
 
     assert result.returncode == 0, result.stderr
@@ -429,6 +432,7 @@ def test_init_install_claude_hooks_redacts_printed_diff(tmp_path: Path) -> None:
 def test_install_claude_hooks_returned_diff_is_redacted(tmp_path: Path, monkeypatch) -> None:
     diff_secret = "diff-secret-value-123456"
     monkeypatch.setenv("OMNI_HOOK_COMMAND", f"python -m omni.cli hook --token={diff_secret}")
+    monkeypatch.setenv("CAIRN_UNSAFE_HOOK_COMMAND", "1")
 
     result = hook.install_claude_hooks(tmp_path, yes=True)
 
@@ -508,25 +512,23 @@ def test_init_install_claude_hooks_fails_closed_on_non_object_local_settings(
     assert not (claude_dir / "settings.json.omni-bak").exists()
 
 
-def test_install_claude_hooks_honors_hook_command_override(
+def test_install_claude_hooks_rejects_unsafe_hook_command_override(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("CAIRN_HOOK_COMMAND", "custom cairn hook")
 
     result = hook.install_claude_hooks(tmp_path, yes=True)
-    settings = json.loads(
-        (tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8")
-    )
-    command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
 
-    assert result.ok is True
-    assert command == "custom cairn hook"
+    assert result.ok is False
+    assert "CAIRN_UNSAFE_HOOK_COMMAND=1" in result.message
+    assert not (tmp_path / ".claude" / "settings.local.json").exists()
 
 
-def test_install_claude_hooks_honors_legacy_hook_command_override(
+def test_install_claude_hooks_allows_explicit_unsafe_hook_command_override(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setenv("OMNI_HOOK_COMMAND", "custom omni hook")
+    monkeypatch.setenv("CAIRN_HOOK_COMMAND", "custom cairn hook")
+    monkeypatch.setenv("CAIRN_UNSAFE_HOOK_COMMAND", "1")
 
     result = hook.install_claude_hooks(tmp_path, yes=True)
     settings = json.loads(
@@ -534,7 +536,7 @@ def test_install_claude_hooks_honors_legacy_hook_command_override(
     )
 
     assert result.ok is True
-    assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "custom omni hook"
+    assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "custom cairn hook"
 
 
 def test_install_claude_hooks_replaces_legacy_omni_hook_command(tmp_path: Path) -> None:
@@ -1497,6 +1499,7 @@ echo "fake claude ran tests"
     target = tmp_path / "golden"
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
+    env["PYTHON_BIN"] = sys.executable
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
 
     result = subprocess.run(

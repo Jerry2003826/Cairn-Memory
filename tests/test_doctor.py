@@ -42,6 +42,24 @@ def test_doctor_reports_initialized_project(tmp_path: Path) -> None:
     }
 
 
+def test_doctor_requires_tasks_table(tmp_path: Path) -> None:
+    assert "tasks" in doctor.REQUIRED_TABLES
+
+    (tmp_path / ".omni").mkdir()
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    conn.execute("DROP TABLE tasks")
+    conn.commit()
+    conn.close()
+
+    result = doctor.run(tmp_path)
+    schema_check = next(check for check in result.checks if check.name == "database_schema")
+
+    assert result.ok is False
+    assert schema_check.ok is False
+    assert "tasks" in schema_check.message
+
+
 def test_doctor_reports_outdated_schema_version(tmp_path: Path) -> None:
     (tmp_path / ".omni").mkdir()
     (tmp_path / ".omni" / "config.toml").write_text("", encoding="utf-8")

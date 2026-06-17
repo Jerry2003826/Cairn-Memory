@@ -12,23 +12,34 @@ from omni.failure.meta import _nested_error_strings, _nested_get
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 WINDOWS_ABS_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/][^\s\"']+")
+INPUT_WRAPPER_KEYS = ("hook",)
+INPUT_WRAPPER_KEY_LOOKUP = {key.lower() for key in INPUT_WRAPPER_KEYS}
 
 
 def _first_error_line(meta: dict[str, Any]) -> str | None:
-    for value in (
-        meta.get("error"),
-        meta.get("stderr"),
-        _nested_get(meta.get("tool_response"), "stderr"),
-        _nested_get(meta.get("toolUseResult"), "stderr"),
-    ):
-        line = _first_meaningful_line(value)
-        if line is not None:
-            return line
-    for value in _nested_error_strings(meta):
-        line = _first_meaningful_line(value)
-        if line is not None:
-            return line
+    for container in _meta_containers(meta):
+        for value in (
+            container.get("error"),
+            container.get("stderr"),
+            _nested_get(container.get("tool_response"), "stderr"),
+            _nested_get(container.get("toolUseResult"), "stderr"),
+        ):
+            line = _first_meaningful_line(value)
+            if line is not None:
+                return line
+        for value in _nested_error_strings(container):
+            line = _first_meaningful_line(value)
+            if line is not None:
+                return line
     return None
+
+
+def _meta_containers(meta: dict[str, Any]) -> list[dict[str, Any]]:
+    containers = [meta]
+    for key, child in meta.items():
+        if key.lower() in INPUT_WRAPPER_KEY_LOOKUP and isinstance(child, dict):
+            containers.append(child)
+    return containers
 
 
 def _first_meaningful_line(value: Any) -> str | None:

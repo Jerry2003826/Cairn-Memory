@@ -113,14 +113,22 @@ def approve_candidate(
         suggested_action=suggested_action or candidate["suggested_action"],
     )
     now = now_iso()
-    conn.execute(
+    updated = conn.execute(
         """
         UPDATE preference_candidates
         SET state = 'approved', reviewed_at = ?, review_note = NULL
-        WHERE pref_cand_id = ?
+        WHERE pref_cand_id = ? AND state = 'pending'
         """,
         (now, pref_cand_id),
     )
+    if updated.rowcount == 0:
+        conn.rollback()
+        current = show_candidate(conn, pref_cand_id)
+        if current["state"] == "rejected":
+            raise ValueError(f"rejected preference candidate cannot be approved: {pref_cand_id}")
+        if current["state"] == "approved":
+            raise ValueError(f"preference candidate already approved: {pref_cand_id}")
+        raise ValueError(f"preference candidate is not pending: {pref_cand_id}")
     conn.commit()
     return show_note(conn, note_id)
 
@@ -132,14 +140,20 @@ def reject_candidate(conn: sqlite3.Connection, pref_cand_id: str) -> dict[str, A
     if candidate["state"] == "rejected":
         return candidate
     now = now_iso()
-    conn.execute(
+    updated = conn.execute(
         """
         UPDATE preference_candidates
         SET state = 'rejected', reviewed_at = ?
-        WHERE pref_cand_id = ?
+        WHERE pref_cand_id = ? AND state = 'pending'
         """,
         (now, pref_cand_id),
     )
+    if updated.rowcount == 0:
+        conn.rollback()
+        current = show_candidate(conn, pref_cand_id)
+        if current["state"] == "approved":
+            raise ValueError(f"approved preference candidate cannot be rejected: {pref_cand_id}")
+        return current
     conn.commit()
     return show_candidate(conn, pref_cand_id)
 

@@ -393,7 +393,8 @@ def _candidate_spec(event: sqlite3.Row) -> dict[str, Any] | None:
     error_line = _first_error_line(meta)
     if error_line is None:
         error_line = "unknown failure"
-        failure_kind = "unknown_failure"
+        if failure_kind != "command_failed":
+            failure_kind = "unknown_failure"
     error_signature = _normalize_error_line(error_line)
     # Legacy column name: this stores a redacted signature, not raw stderr.
     stderr_excerpt = truncate_text(redact_text(error_signature), MAX_EXCERPT_CHARS)

@@ -29,6 +29,7 @@ REQUIRED_TABLES = {
     "preference_notes",
     "runs",
     "suppressions",
+    "tasks",
 }
 
 

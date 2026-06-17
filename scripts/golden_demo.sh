@@ -3,7 +3,18 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target="${1:-${TMPDIR:-/tmp}/omni-golden-demo}"
-python_bin="${PYTHON_BIN:-python}"
+
+if [ -n "${PYTHON_BIN:-}" ]; then
+  python_bin="$PYTHON_BIN"
+elif command -v python3 >/dev/null 2>&1; then
+  python_bin="python3"
+elif command -v python >/dev/null 2>&1; then
+  python_bin="python"
+else
+  echo "python3 or python is required" >&2
+  exit 127
+fi
+
 claude_bin="${CLAUDE_BIN:-claude}"
 
 export PYTHON_BIN="$python_bin"

@@ -38,6 +38,26 @@ def test_audit_ignores_own_success_marker(tmp_path: Path) -> None:
     assert result.omni_leaks == []
 
 
+def test_audit_failure_removes_stale_pass_marker(tmp_path: Path) -> None:
+    (tmp_path / ".omni" / "spool").mkdir(parents=True)
+    (tmp_path / ".omni" / "spool" / "hook.jsonl").write_text(
+        '{"payload":"safe redacted text"}\n', encoding="utf-8"
+    )
+    marker = tmp_path / ".omni" / "audit" / "secrets.passed"
+
+    passing = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+    assert passing.ok is True
+    assert marker.is_file()
+
+    leak = tmp_path / ".omni" / "spool" / "leak.jsonl"
+    leak.write_text("token=ghp_abcdefghijklmnopqrstuvwxyz1234567890\n", encoding="utf-8")
+
+    failing = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert failing.ok is False
+    assert not marker.exists()
+
+
 def test_audit_secrets_fails_on_planted_omni_secret(tmp_path: Path) -> None:
     (tmp_path / ".omni" / "spool").mkdir(parents=True)
     leak = tmp_path / ".omni" / "spool" / "leak.jsonl"
@@ -51,6 +71,20 @@ def test_audit_secrets_fails_on_planted_omni_secret(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.omni_leaks == [spike_leak, leak]
     assert not (tmp_path / ".omni" / "audit" / "secrets.passed").exists()
+
+
+def test_audit_failure_removes_stale_success_marker(tmp_path: Path) -> None:
+    marker = tmp_path / ".omni" / "audit" / "secrets.passed"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("ok\n", encoding="utf-8")
+    leak = tmp_path / ".omni" / "spool" / "leak.jsonl"
+    leak.parent.mkdir(parents=True)
+    leak.write_text("token=ghp_abcdefghijklmnopqrstuvwxyz1234567890\n", encoding="utf-8")
+
+    result = audit.audit_secrets(tmp_path, fixtures_root=FIXTURE_ROOT)
+
+    assert result.ok is False
+    assert not marker.exists()
 
 
 def test_audit_accepts_large_clean_sqlite_db(tmp_path: Path) -> None:

@@ -18,7 +18,14 @@ LEGACY_CLI = "omni"
 DEFAULT_HOOK_COMMAND = f"{PRIMARY_CLI} hook"
 HOOK_COMMAND_ENV = "CAIRN_HOOK_COMMAND"
 LEGACY_HOOK_COMMAND_ENV = "OMNI_HOOK_COMMAND"
+UNSAFE_HOOK_COMMAND_ENV = "CAIRN_UNSAFE_HOOK_COMMAND"
 LEGACY_HOOK_COMMANDS = {f"{LEGACY_CLI} hook"}
+ALLOWED_HOOK_COMMANDS = {
+    DEFAULT_HOOK_COMMAND,
+    f"{LEGACY_CLI} hook",
+    "python -m omni.cli hook",
+    "python3 -m omni.cli hook",
+}
 CLAUDE_HOOK_SETTINGS_BY_SCOPE = {
     "local": "settings.local.json",
     "project": "settings.json",
@@ -88,7 +95,10 @@ def install_claude_hooks(
         settings = _parse_settings(original, label=settings_label)
     except ValueError as exc:
         return InstallResult(ok=False, message=str(exc))
-    hook_command = _hook_command()
+    try:
+        hook_command = _hook_command()
+    except ValueError as exc:
+        return InstallResult(ok=False, message=str(exc))
     updated = _settings_with_cairn_hooks(settings, command=hook_command)
     rendered = json.dumps(updated, indent=2, sort_keys=True) + "\n"
     diff = "".join(
@@ -140,11 +150,23 @@ def _settings_with_cairn_hooks(settings: dict[str, object], *, command: str) -> 
 def _hook_command() -> str:
     override = os.environ.get(HOOK_COMMAND_ENV)
     if override:
-        return override
+        return _validated_hook_command(override, env_name=HOOK_COMMAND_ENV)
     legacy_override = os.environ.get(LEGACY_HOOK_COMMAND_ENV)
     if legacy_override:
-        return legacy_override
+        return _validated_hook_command(legacy_override, env_name=LEGACY_HOOK_COMMAND_ENV)
     return DEFAULT_HOOK_COMMAND
+
+
+def _validated_hook_command(command: str, *, env_name: str) -> str:
+    if command in ALLOWED_HOOK_COMMANDS:
+        return command
+    if os.environ.get(UNSAFE_HOOK_COMMAND_ENV) == "1":
+        return command
+    allowed = ", ".join(sorted(ALLOWED_HOOK_COMMANDS))
+    raise ValueError(
+        f"{env_name} is not an approved Cairn hook command; "
+        f"expected one of: {allowed}; set {UNSAFE_HOOK_COMMAND_ENV}=1 to allow it"
+    )
 
 
 def _hook_group(event_name: str, command: str) -> dict[str, object]:

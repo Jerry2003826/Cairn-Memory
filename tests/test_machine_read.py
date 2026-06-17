@@ -162,8 +162,100 @@ def test_verify_plan_view_shape_without_execution(
 
     assert plan["schema_version"] == 1
     assert plan["predicate"] == "uses_test_command"
+    assert plan["status"] == "selected"
+    assert plan["reason_code"] == "selected"
+    assert plan["reason"] == "selected active uses_test_command fact"
+    assert plan["command"] == "pnpm run test"
     assert plan["selection_mode"] == "auto"
     assert plan["candidate_commands"] == [{"qualifier": "node", "command": "pnpm run test"}]
+    assert plan["candidate_commands_omitted"] == 0
+    assert_no_metadata_leak(plan)
+
+
+def test_verify_plan_view_reports_ambiguous_without_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = connect(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO facts(
+          fact_id, scope, subject, predicate, qualifier, object_norm, value_type,
+          claim, trust, confidence, sensitivity, origin, pinned, created_seq,
+          retired_seq, superseded_by, last_confirmed_at, created_at, evidence
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "fact_node",
+            "project",
+            ".",
+            "uses_test_command",
+            "node",
+            "echo node",
+            "string",
+            "Node tests.",
+            2,
+            None,
+            "low",
+            "test",
+            0,
+            1,
+            None,
+            None,
+            None,
+            "2026-06-13T00:00:00Z",
+            "{}",
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO facts(
+          fact_id, scope, subject, predicate, qualifier, object_norm, value_type,
+          claim, trust, confidence, sensitivity, origin, pinned, created_seq,
+          retired_seq, superseded_by, last_confirmed_at, created_at, evidence
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "fact_python",
+            "project",
+            ".",
+            "uses_test_command",
+            "python",
+            "echo python",
+            "string",
+            "Python tests.",
+            2,
+            None,
+            "low",
+            "test",
+            0,
+            2,
+            None,
+            None,
+            None,
+            "2026-06-13T00:00:00Z",
+            "{}",
+        ),
+    )
+    conn.commit()
+
+    def fail_if_spawned(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("verify plan must not spawn a subprocess")
+
+    monkeypatch.setattr(verify, "run_preflight", fail_if_spawned)
+
+    plan = verify.plan_view(conn)
+    conn.close()
+
+    assert plan["status"] == "ambiguous"
+    assert plan["reason_code"] == "ambiguous_active_test_command"
+    assert plan["reason"] == "ambiguous active uses_test_command facts"
+    assert "command" not in plan
+    assert plan["disambiguation_hint"] == verify.DISAMBIGUATION_HINT
+    assert plan["candidate_commands"] == [
+        {"qualifier": "node", "command": "echo node"},
+        {"qualifier": "python", "command": "echo python"},
+    ]
     assert_no_metadata_leak(plan)
 
 

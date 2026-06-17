@@ -55,10 +55,15 @@ def audit_secrets(root: Path | str, fixtures_root: Path | str | None = None) -> 
         omni_leaks=omni_leaks,
         fixtures_missing=fixtures_missing,
     )
+    marker = base / ".omni" / "audit" / "secrets.passed"
     if ok:
-        marker = base / ".omni" / "audit" / "secrets.passed"
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("ok\n", encoding="utf-8")
+    elif marker.is_file():
+        try:
+            marker.unlink()
+        except OSError:
+            pass
     return result
 
 
