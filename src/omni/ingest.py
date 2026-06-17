@@ -12,7 +12,7 @@ from typing import Any
 
 from omni import dbaccess
 from omni import gate
-from omni.capture import default as default_capture_engine
+from omni.capture import CaptureEngine
 from omni.capture import get as capture_engine
 from omni._common import (
     is_redaction_placeholder as _is_redaction_placeholder,
@@ -21,7 +21,7 @@ from omni._common import (
 )
 from omni.config import ensure_project_layout
 from omni.ids import project_id_for_path
-from omni.parse import NormalizedEvent, parse_transcript
+from omni.parse import KNOWN_EVENT_KEYS, NormalizedEvent, parse_transcript
 from omni.redact import redact
 from omni.task import CURRENT_TASK_META_KEY
 from omni.spool import (
@@ -132,6 +132,8 @@ def ingest(
                 include_hooks=manual_session_id is not None and selected_engine.name == "claude",
                 session_id=manual_session_id,
                 run_engine=selected_engine.run_engine,
+                parse_engine=selected_engine.parse_engine,
+                capture_engine_config=selected_engine,
             )
             total_inserted += inserted
             consumed_hook_paths.update(hook_paths)
@@ -155,6 +157,8 @@ def ingest(
                         include_hooks=True,
                         session_id=request_session_id,
                         run_engine=selected_engine.run_engine,
+                        parse_engine=selected_engine.parse_engine,
+                        capture_engine_config=selected_engine,
                     )
                     total_inserted += inserted
                     consumed_hook_paths.update(hook_paths)
@@ -169,6 +173,8 @@ def ingest(
                         include_hooks=True,
                         session_id=run_id,
                         run_engine=selected_engine.run_engine,
+                        parse_engine=selected_engine.parse_engine,
+                        capture_engine_config=selected_engine,
                     )
                     total_inserted += inserted
                     consumed_hook_paths.update(hook_paths)
@@ -265,6 +271,8 @@ def _ingest_one(
     include_hooks: bool,
     session_id: str | None = None,
     run_engine: str,
+    parse_engine: str,
+    capture_engine_config: CaptureEngine,
 ) -> tuple[int, set[Path]]:
     transcript_events: list[EventCandidate] = []
     if transcript is not None and transcript.exists():
@@ -272,11 +280,16 @@ def _ingest_one(
             conn,
             root,
             transcript,
-            engine=run_engine,
+            engine=parse_engine,
         )
 
     if include_hooks:
-        hook_events, hook_paths = _hook_candidates(conn, root, session_id=session_id)
+        hook_events, hook_paths = _hook_candidates(
+            conn,
+            root,
+            session_id=session_id,
+            capture_engine_config=capture_engine_config,
+        )
     else:
         hook_events, hook_paths = [], set()
     candidates = _reconcile_candidates(transcript_events, hook_events)
@@ -394,7 +407,11 @@ def _transcript_unique_key(event: NormalizedEvent) -> str:
 
 
 def _hook_candidates(
-    conn: sqlite3.Connection, root: Path, *, session_id: str | None = None
+    conn: sqlite3.Connection,
+    root: Path,
+    *,
+    session_id: str | None = None,
+    capture_engine_config: CaptureEngine,
 ) -> tuple[list[EventCandidate], set[Path]]:
     records = iter_hook_records(root)
     if session_id is not None:
@@ -406,7 +423,7 @@ def _hook_candidates(
     by_tool: dict[str, list[HookRecord]] = {}
     without_tool: list[HookRecord] = []
     for record in records:
-        tool_use_id, _status = _redacted_optional_str(
+        tool_use_id, _status = _redacted_optional_field(
             record.payload.get("tool_use_id") or record.payload.get("id")
         )
         if tool_use_id:
@@ -416,18 +433,31 @@ def _hook_candidates(
 
     candidates: list[EventCandidate] = []
     for tool_use_id, grouped in by_tool.items():
-        candidates.append(_candidate_from_hook_group(conn, root, tool_use_id, grouped))
+        candidates.append(
+            _candidate_from_hook_group(
+                conn,
+                root,
+                tool_use_id,
+                grouped,
+                capture_engine_config=capture_engine_config,
+            )
+        )
     for record in without_tool:
         candidates.append(_candidate_from_hook_record(conn, root, record, None))
     return candidates, {record.path for record in records}
 
 
 def _candidate_from_hook_group(
-    conn: sqlite3.Connection, root: Path, tool_use_id: str, records: list[HookRecord]
+    conn: sqlite3.Connection,
+    root: Path,
+    tool_use_id: str,
+    records: list[HookRecord],
+    *,
+    capture_engine_config: CaptureEngine,
 ) -> EventCandidate:
     records = sorted(records, key=lambda item: _timestamp(item.payload) or "")
-    preferred = _preferred_hook_record(records)
-    duration = _hook_duration_ms(records)
+    preferred = _preferred_hook_record(records, capture_engine_config=capture_engine_config)
+    duration = _hook_duration_ms(records, capture_engine_config=capture_engine_config)
     candidate = _candidate_from_hook_record(conn, root, preferred, duration)
     return replace(
         candidate,
@@ -440,13 +470,15 @@ def _candidate_from_hook_record(
     conn: sqlite3.Connection, root: Path, record: HookRecord, duration_ms: int | None
 ) -> EventCandidate:
     payload = record.payload
-    event_type, event_status = _redacted_str(
+    event_type, event_status = _redacted_field(
         payload.get("hook_event_name") or payload.get("type") or "hook"
     )
-    tool, tool_status = _redacted_optional_str(
+    tool, tool_status = _redacted_optional_field(
         payload.get("tool") or payload.get("tool_name") or payload.get("name")
     )
-    tool_use_id, tool_id_status = _redacted_optional_str(payload.get("tool_use_id") or payload.get("id"))
+    tool_use_id, tool_id_status = _redacted_optional_field(
+        payload.get("tool_use_id") or payload.get("id")
+    )
     record_status = _record_redaction_status(record)
     artifact = put_artifact(
         root,
@@ -475,20 +507,7 @@ def _candidate_from_hook_record(
                 **{
                     key: value
                     for key, value in payload.items()
-                    if key
-                    not in {
-                        "duration_ms",
-                        "exit_code",
-                        "hook_event_name",
-                        "id",
-                        "name",
-                        "timestamp",
-                        "tool",
-                        "tool_name",
-                        "tool_use_id",
-                        "ts",
-                        "type",
-                    }
+                    if key not in KNOWN_EVENT_KEYS
                 },
             },
             redaction_status=_merge_redaction_status(
@@ -501,16 +520,24 @@ def _candidate_from_hook_record(
     )
 
 
-def _preferred_hook_record(records: list[HookRecord]) -> HookRecord:
-    for name in default_capture_engine().event_roles.get("reconcile_preference", ()):
+def _preferred_hook_record(
+    records: list[HookRecord],
+    *,
+    capture_engine_config: CaptureEngine,
+) -> HookRecord:
+    for name in capture_engine_config.event_roles.get("reconcile_preference", ()):
         for record in reversed(records):
             if record.payload.get("hook_event_name") == name:
                 return record
     return records[-1]
 
 
-def _hook_duration_ms(records: list[HookRecord]) -> int | None:
-    roles = default_capture_engine().event_roles
+def _hook_duration_ms(
+    records: list[HookRecord],
+    *,
+    capture_engine_config: CaptureEngine,
+) -> int | None:
+    roles = capture_engine_config.event_roles
     pre_names = set(roles.get("pre", ()))
     post_names = set(roles.get("post", ()))
     pre = next(
@@ -747,7 +774,7 @@ def _redacted_json(value: Any) -> tuple[str, str]:
     return redaction.data.decode("utf-8", errors="replace"), redaction.status
 
 
-def _redacted_str(value: Any) -> tuple[str, str]:
+def _redacted_field(value: Any) -> tuple[str, str]:
     text = str(value)
     if _is_redaction_placeholder(text):
         return text, "redacted"
@@ -755,10 +782,10 @@ def _redacted_str(value: Any) -> tuple[str, str]:
     return redaction.data.decode("utf-8", errors="replace"), redaction.status
 
 
-def _redacted_optional_str(value: Any) -> tuple[str | None, str]:
+def _redacted_optional_field(value: Any) -> tuple[str | None, str]:
     if value is None:
         return None, "clean"
-    return _redacted_str(value)
+    return _redacted_field(value)
 
 
 def _record_redaction_status(record: HookRecord) -> str:

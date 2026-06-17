@@ -49,6 +49,26 @@ def test_parse_transcript_normalizes_known_jsonl_events(tmp_path: Path) -> None:
     assert result.events[1].event_type == "assistant_message"
 
 
+def test_parse_transcript_treats_claude_code_as_claude_alias(tmp_path: Path) -> None:
+    transcript = tmp_path / "claude-code.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "hook_event_name": "SessionEnd",
+                "timestamp": "2026-06-17T00:00:00Z",
+                "session_id": "s1",
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="claude_code")
+
+    assert result.archive is None
+    assert result.events[0].event_type == "SessionEnd"
+    assert result.events[0].meta == {"session_id": "s1"}
+
+
 def test_parse_transcript_normalizes_observed_opencode_tool_use(tmp_path: Path) -> None:
     transcript = tmp_path / "opencode.jsonl"
     write_jsonl(

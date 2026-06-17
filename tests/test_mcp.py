@@ -312,7 +312,9 @@ def test_mcp_client_acceptance_harness_calls_all_read_tools(tmp_path: Path) -> N
 
     calls = payload["calls"]
     assert calls["memory_read"]["structuredContent"]["schema_version"] == 1
-    assert calls["failure_read"]["structuredContent"][0]["command_norm"] == "pnpm run test"
+    failure_content = calls["failure_read"]["structuredContent"]
+    assert failure_content["schema_version"] == 1
+    assert failure_content["patterns"][0]["command_norm"] == "pnpm run test"
     assert calls["verify_plan"]["structuredContent"]["candidate_commands"] == [
         {"qualifier": "node", "command": "pnpm run test"}
     ]

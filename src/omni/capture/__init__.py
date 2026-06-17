@@ -20,6 +20,7 @@ class CaptureEngine:
     name: str
     ingest_events: frozenset[str]
     run_engine: str = "claude_code"
+    parse_engine: str = "claude"
     install: Callable[..., InstallResult] | None = None
     event_roles: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 

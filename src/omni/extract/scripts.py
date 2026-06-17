@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import tomllib
 from pathlib import Path
 from typing import Any
 
 from omni.extract import pm
+from omni.extract.files import evidence, read_json
 from omni.gate import FactCandidate
 from omni.qualifiers import scoped_qualifier
 
@@ -36,8 +35,8 @@ SCRIPT_MAP = {
 
 def detect(root: Path) -> list[FactCandidate]:
     commands: dict[tuple[str, str, str], FactCandidate] = {}
-    node_pm = _node_pm(root)
-    python_pm = _python_pm(root)
+    node_pm = pm.package_manager_for(root, "node")
+    python_pm = pm.package_manager_for(root, "python")
 
     if node_pm:
         commands.update(_node_commands(root, node_pm))
@@ -50,29 +49,11 @@ def detect(root: Path) -> list[FactCandidate]:
     return list(commands.values())
 
 
-def _node_pm(root: Path) -> str | None:
-    candidates = [
-        candidate
-        for candidate in pm.detect(root)
-        if candidate.qualifier == "node" and not candidate.conflict_with
-    ]
-    return candidates[0].object_norm if len(candidates) == 1 else None
-
-
-def _python_pm(root: Path) -> str | None:
-    candidates = [
-        candidate
-        for candidate in pm.detect(root)
-        if candidate.qualifier == "python" and not candidate.conflict_with
-    ]
-    return candidates[0].object_norm if len(candidates) == 1 else None
-
-
 def _node_commands(root: Path, pm_name: str) -> dict[tuple[str, str, str], FactCandidate]:
     package_json = root / "package.json"
     if not package_json.exists():
         return {}
-    package = _read_json(package_json)
+    package = read_json(package_json)
     commands = _node_commands_for_package(
         root,
         package_json=package_json,
@@ -149,7 +130,7 @@ def _workspace_node_commands(
     commands: dict[tuple[str, str, str], FactCandidate] = {}
     for package_dir in _workspace_package_dirs(root, root_package):
         package_json = package_dir / "package.json"
-        package = _read_json(package_json)
+        package = read_json(package_json)
         if not package:
             continue
         subject = str(package_dir.relative_to(root)).replace("\\", "/")
@@ -299,16 +280,8 @@ def _candidate(
         trust=2,
         sensitivity="low",
         origin=ORIGIN,
-        evidence=_evidence(root, evidence_paths),
+        evidence=evidence(root, evidence_paths),
     )
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _has_pytest_hint(parsed: dict[str, Any]) -> bool:
@@ -393,23 +366,3 @@ def _make_targets(path: Path) -> set[str]:
         if match:
             targets.add(match.group(1))
     return targets
-
-
-def _evidence(root: Path, paths: list[Path]) -> dict[str, object]:
-    return {
-        "files": [
-            {
-                "path": str(path.relative_to(root)).replace("\\", "/"),
-                "hash": _file_hash(path),
-            }
-            for path in paths
-            if path.exists()
-        ]
-    }
-
-
-def _file_hash(path: Path) -> str:
-    try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return ""

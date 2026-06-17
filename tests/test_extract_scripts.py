@@ -5,6 +5,7 @@ from pathlib import Path
 
 from omni import db
 from omni import gate
+from omni.extract import pm
 from omni.extract import scripts
 from omni.qualifiers import is_root_scoped_qualifier, scoped_qualifier
 
@@ -78,6 +79,14 @@ def test_mixed_node_python_repo_preserves_both_test_commands(tmp_path: Path) -> 
 
     assert commands[("uses_test_command", "node")] == "pnpm run test"
     assert commands[("uses_test_command", "python")] == "uv run pytest"
+
+
+def test_package_manager_for_selects_by_qualifier() -> None:
+    root = REPOS / "mixed-node-python"
+
+    assert pm.package_manager_for(root, "node") == "pnpm"
+    assert pm.package_manager_for(root, "python") == "uv"
+    assert pm.package_manager_for(root, "ruby") is None
 
 
 def test_a10_a11_make_only_commands(tmp_path: Path) -> None:

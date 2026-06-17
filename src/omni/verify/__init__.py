@@ -22,10 +22,10 @@ from omni.verify.process import (
     _terminate_process_tree,
     run_preflight,
 )
+from omni.verify.inputs import PROFILE_VALUES
 from omni.verify.selection import (
     DISAMBIGUATION_HINT,
     PROFILE_PREDICATES,
-    PROFILE_VALUES,
     REASON_CODE_AMBIGUOUS_ACTIVE_TEST_COMMAND,
     REASON_CODE_AMBIGUOUS_QUALIFIER,
     REASON_CODE_NO_ACTIVE_TEST_COMMAND,

@@ -134,13 +134,15 @@ def test_failure_read_view_shape_and_leak_free(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     seed_failure_pattern(conn)
 
-    patterns = failure_read_view(conn)
+    view = failure_read_view(conn)
     conn.close()
 
+    assert view["schema_version"] == 1
+    patterns = view["patterns"]
     assert len(patterns) == 1
     assert set(patterns[0]) <= {"summary", "suggested_action", "command_norm"}
     assert "Build failed because dependency resolution failed." in patterns[0]["summary"]
-    assert_no_metadata_leak(patterns)
+    assert_no_metadata_leak(view)
 
 
 def test_verify_plan_view_shape_without_execution(
@@ -208,7 +210,8 @@ def test_cli_failure_read_smoke(tmp_path: Path) -> None:
     result = run_omni(tmp_path, "failure", "read")
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert isinstance(payload, list)
+    assert payload["schema_version"] == 1
+    assert isinstance(payload["patterns"], list)
     assert_no_metadata_leak(payload)
 
 

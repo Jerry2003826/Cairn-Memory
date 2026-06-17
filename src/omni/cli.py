@@ -143,34 +143,37 @@ def _add_inject_parser(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _add_verify_parser(subcommands: argparse._SubParsersAction) -> None:
+    from omni.verify import PROFILE_VALUES
+
     verify_parser = subcommands.add_parser("verify", help="Run the known verification command")
     verify_parser.add_argument("--timeout-seconds", type=int, default=120)
-    verify_parser.add_argument("--qualifier")
-    verify_parser.add_argument(
-        "--task",
-        choices=TASK_TYPE_VALUES,
-        help="Map task type to a preferred verification qualifier when --qualifier is omitted",
-    )
-    verify_parser.add_argument(
-        "--profile",
-        choices=("default", "release", "test"),
-        help="Select verification predicate profile (default=test command, release=build command)",
-    )
+    _add_verify_selection_args(verify_parser, profile_values=PROFILE_VALUES)
     verify_subcommands = verify_parser.add_subparsers(dest="verify_command", required=False)
     plan_parser = verify_subcommands.add_parser(
         "plan",
         help="Show what verify would run without executing it",
     )
-    plan_parser.add_argument("--qualifier")
-    plan_parser.add_argument(
+    _add_verify_selection_args(plan_parser, profile_values=PROFILE_VALUES)
+
+
+def _add_verify_selection_args(
+    parser: argparse.ArgumentParser,
+    *,
+    profile_values: frozenset[str],
+) -> None:
+    parser.add_argument("--qualifier")
+    parser.add_argument(
         "--task",
         choices=TASK_TYPE_VALUES,
         help="Map task type to a preferred verification qualifier when --qualifier is omitted",
     )
-    plan_parser.add_argument(
+    parser.add_argument(
         "--profile",
-        choices=("default", "release", "test"),
-        help="Select verification predicate profile (default=test command, release=build command)",
+        choices=profile_values,
+        help=(
+            "Select verification predicate profile "
+            "(default=test command, release=build command)"
+        ),
     )
 
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from omni._common import TASK_TYPE_VALUES, collapse_whitespace_command
+from omni._common import collapse_whitespace_command
 from omni.qualifiers import is_root_scoped_qualifier
+from omni.verify.inputs import PROFILE_VALUES, validate_selection_inputs
 from omni.verify.text import MAX_COMMAND_CHARS, redact_and_truncate_text
 
 VERIFY_PREDICATE = "uses_test_command"
-PROFILE_VALUES = frozenset({"default", "release", "test"})
 PROFILE_PREDICATES = {
     "default": "uses_test_command",
     "test": "uses_test_command",
@@ -190,12 +190,7 @@ def plan_view(
 ) -> dict[str, Any]:
     """Return verify selection without executing the chosen command."""
 
-    if task_type is not None and task_type not in TASK_TYPE_VALUES:
-        allowed = ", ".join(sorted(TASK_TYPE_VALUES))
-        raise ValueError(f"invalid task_type: {task_type!r}; expected one of: {allowed}")
-    if profile is not None and profile not in PROFILE_VALUES:
-        allowed = ", ".join(sorted(PROFILE_VALUES))
-        raise ValueError(f"invalid profile: {profile!r}; expected one of: {allowed}")
+    validate_selection_inputs(task_type=task_type, profile=profile)
 
     predicate = _resolve_predicate(profile)
     effective_qualifier = _resolve_qualifier(qualifier, task_type)

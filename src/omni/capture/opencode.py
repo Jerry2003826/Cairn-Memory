@@ -14,5 +14,6 @@ register(
         name="opencode",
         ingest_events=frozenset(),
         run_engine="opencode",
+        parse_engine="opencode",
     )
 )

@@ -14,5 +14,6 @@ register(
         name="qwen",
         ingest_events=frozenset(),
         run_engine="qwen",
+        parse_engine="qwen",
     )
 )

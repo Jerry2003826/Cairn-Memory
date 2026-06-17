@@ -12,6 +12,7 @@ def test_default_engine_is_claude() -> None:
     engine = default()
     assert engine.name == "claude"
     assert engine.run_engine == "claude_code"
+    assert engine.parse_engine == "claude"
 
 
 def test_get_unknown_engine_raises() -> None:
@@ -46,6 +47,7 @@ def test_opencode_engine_is_registered_for_run_metadata() -> None:
 
     assert engine.name == "opencode"
     assert engine.run_engine == "opencode"
+    assert engine.parse_engine == "opencode"
     assert engine.ingest_events == frozenset()
     assert engine.install is None
     assert engine.event_roles == {}
@@ -56,6 +58,7 @@ def test_qwen_engine_is_registered_for_run_metadata() -> None:
 
     assert engine.name == "qwen"
     assert engine.run_engine == "qwen"
+    assert engine.parse_engine == "qwen"
     assert engine.ingest_events == frozenset()
     assert engine.install is None
     assert engine.event_roles == {}

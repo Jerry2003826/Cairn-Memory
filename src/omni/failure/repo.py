@@ -39,6 +39,7 @@ STATE_VALUES = CANDIDATE_STATE_VALUES - {"all"}
 LIST_STATE_VALUES = CANDIDATE_STATE_VALUES
 PATTERN_STATUS_VALUES = NOTE_STATUS_VALUES - {"all"}
 LIST_PATTERN_STATUS_VALUES = NOTE_STATUS_VALUES
+READ_VIEW_SCHEMA_VERSION = 1
 
 
 def extract_candidates(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
@@ -92,13 +93,16 @@ PATTERN_READ_VIEW_FIELDS: tuple[tuple[str, bool], ...] = (
 )
 
 
-def read_view(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def read_view(conn: sqlite3.Connection) -> dict[str, Any]:
     """Return active failure patterns stripped to public machine-read fields."""
 
-    return [
-        _project_pattern_read_view(pattern)
-        for pattern in list_patterns(conn, status="active")
-    ]
+    return {
+        "schema_version": READ_VIEW_SCHEMA_VERSION,
+        "patterns": [
+            _project_pattern_read_view(pattern)
+            for pattern in list_patterns(conn, status="active")
+        ],
+    }
 
 
 def _project_pattern_read_view(pattern: dict[str, Any]) -> dict[str, Any]:

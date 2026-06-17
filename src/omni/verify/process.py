@@ -11,14 +11,13 @@ from typing import Any
 from omni.verify.command_safety import VerifyCommandError, _command_args
 from omni.verify.deps import os, signal
 from omni.verify.selection import (
-    PROFILE_VALUES,
     REASON_CODE_UNKNOWN,
-    TASK_TYPE_VALUES,
     VERIFY_PREDICATE,
     _resolve_predicate,
     _resolve_qualifier,
     _select_verification_command,
 )
+from omni.verify.inputs import validate_selection_inputs
 from omni.verify.text import _safe_output_with_flag
 
 DEFAULT_TIMEOUT_SECONDS = 120
@@ -43,12 +42,7 @@ def run_preflight(
 
     if timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be positive")
-    if task_type is not None and task_type not in TASK_TYPE_VALUES:
-        allowed = ", ".join(sorted(TASK_TYPE_VALUES))
-        raise ValueError(f"invalid task_type: {task_type!r}; expected one of: {allowed}")
-    if profile is not None and profile not in PROFILE_VALUES:
-        allowed = ", ".join(sorted(PROFILE_VALUES))
-        raise ValueError(f"invalid profile: {profile!r}; expected one of: {allowed}")
+    validate_selection_inputs(task_type=task_type, profile=profile)
 
     root_path = Path(root).resolve()
     predicate = _resolve_predicate(profile)

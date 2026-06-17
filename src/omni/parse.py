@@ -31,6 +31,11 @@ KNOWN_EVENT_KEYS = {
 }
 
 MAX_TRANSCRIPT_ARCHIVE_BYTES = 768 * 1024
+PARSE_ENGINE_ALIASES = {"claude_code": "claude"}
+UNKNOWN_SHAPE_REASONS = {
+    "opencode": "unknown_opencode_shape",
+    "qwen": "unknown_qwen_shape",
+}
 
 
 @dataclass(frozen=True)
@@ -131,6 +136,7 @@ def parse_transcript(
     engine: str = "claude",
 ) -> ParseResult:
     transcript_path = Path(path)
+    parse_engine = _parse_engine(engine)
     events: list[NormalizedEvent] = []
     archive = _TranscriptArchiveAccumulator()
 
@@ -146,10 +152,10 @@ def parse_transcript(
                 continue
 
             if not isinstance(parsed, dict) or not _event_type(parsed):
-                archive.append_bad_line(line_no, _unknown_shape_reason(engine), raw_line)
+                archive.append_bad_line(line_no, _unknown_shape_reason(parse_engine), raw_line)
                 continue
 
-            outcome = _normalize_event(len(events) + 1, parsed, engine=engine)
+            outcome = _normalize_event(len(events) + 1, parsed, engine=parse_engine)
             if outcome.archive_reason is not None:
                 archive.append_bad_line(line_no, outcome.archive_reason, raw_line)
                 continue
@@ -178,18 +184,29 @@ def _normalize_event(
     *,
     engine: str,
 ) -> _LineOutcome:
-    if engine == "opencode":
-        event = _normalize_opencode_tool_use(seq, row)
-        if event is None:
-            return _LineOutcome([], archive_reason=_unknown_shape_reason(engine))
-        return _LineOutcome([event])
-    if engine == "qwen":
-        events = _normalize_qwen_tool_events(seq, row)
-        if events is None:
-            return _LineOutcome([], archive_reason=_unknown_shape_reason(engine))
-        return _LineOutcome(events)
+    normalizer = ENGINE_NORMALIZERS.get(engine, _normalize_generic_events)
+    events = normalizer(seq, row)
+    if events is None:
+        return _LineOutcome([], archive_reason=_unknown_shape_reason(engine))
+    return _LineOutcome(events)
 
-    return _LineOutcome([_normalize_generic_event(seq, row)])
+
+def _parse_engine(engine: str) -> str:
+    return PARSE_ENGINE_ALIASES.get(engine, engine)
+
+
+def _normalize_generic_events(seq: int, row: dict[str, Any]) -> list[NormalizedEvent]:
+    return [_normalize_generic_event(seq, row)]
+
+
+def _normalize_opencode_tool_events(
+    seq: int,
+    row: dict[str, Any],
+) -> list[NormalizedEvent] | None:
+    event = _normalize_opencode_tool_use(seq, row)
+    if event is None:
+        return None
+    return [event]
 
 
 def _normalize_generic_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
@@ -360,6 +377,16 @@ def _qwen_block_meta(
     return meta
 
 
+ENGINE_NORMALIZERS: dict[
+    str,
+    Callable[[int, dict[str, Any]], list[NormalizedEvent] | None],
+] = {
+    "claude": _normalize_generic_events,
+    "opencode": _normalize_opencode_tool_events,
+    "qwen": _normalize_qwen_tool_events,
+}
+
+
 def _make_normalized_event(
     seq: int,
     row: dict[str, Any],
@@ -471,11 +498,7 @@ def _event_type(row: dict[str, Any]) -> Any:
 
 
 def _unknown_shape_reason(engine: str) -> str:
-    if engine == "opencode":
-        return "unknown_opencode_shape"
-    if engine == "qwen":
-        return "unknown_qwen_shape"
-    return "unknown_transcript_shape"
+    return UNKNOWN_SHAPE_REASONS.get(engine, "unknown_transcript_shape")
 
 
 def _optional_str(value: Any) -> str | None:
