@@ -257,6 +257,49 @@ def test_verify_preflight_rejects_or_shell_operator_commands(tmp_path: Path) -> 
     )
 
 
+def test_has_unquoted_shell_operator_detects_backtick_substitution() -> None:
+    from omni.verify.command_safety import _has_unquoted_shell_operator
+
+    assert _has_unquoted_shell_operator("echo `rm -rf .`") is True
+    # A backtick inside single quotes is literal and must not trip detection.
+    assert _has_unquoted_shell_operator("echo 'literal `tick`'") is False
+
+
+def test_has_unquoted_shell_operator_detects_single_ampersand() -> None:
+    from omni.verify.command_safety import _has_unquoted_shell_operator
+
+    # A single trailing '&' backgrounds the command and must be rejected.
+    assert _has_unquoted_shell_operator("python test.py &") is True
+    # Quoted ampersand is a literal argument, not an operator.
+    assert _has_unquoted_shell_operator('python test.py "a & b"') is False
+
+
+def test_verify_preflight_rejects_backtick_command_substitution(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "echo `whoami`")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_shell_operator"
+    assert result["reason"] == (
+        "could not parse verification command: shell operators are not supported"
+    )
+
+
+def test_verify_preflight_rejects_background_ampersand(tmp_path: Path) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python test.py &")
+
+    result = verify.run_preflight(conn, tmp_path)
+
+    assert result["status"] == "unknown"
+    assert result["reason_code"] == "parse_error_shell_operator"
+    assert result["reason"] == (
+        "could not parse verification command: shell operators are not supported"
+    )
+
+
 def test_verify_preflight_reports_invalid_parse_for_unclosed_quotes(tmp_path: Path) -> None:
     conn = _fixture_db(tmp_path)
     _insert_fact(conn, 'python "unterminated')
@@ -648,7 +691,10 @@ def test_verify_command_args_rejects_batch_metacharacters_for_batch_targets(
     monkeypatch.setattr(verify.shutil, "which", fake_which)
 
     with pytest.raises(ValueError, match="Windows batch metacharacters"):
-        verify._command_args("pnpm run test -- --grep ok & type .env", tmp_path)
+        # Use '%' (a batch-only metacharacter) so the batch guard is what
+        # rejects this command; '&' would now trip the shell-operator guard
+        # first, which is exercised separately.
+        verify._command_args("pnpm run test -- --grep %PATH%", tmp_path)
 
 
 def test_verify_json_redacts_stdout_and_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

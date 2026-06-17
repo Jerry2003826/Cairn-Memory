@@ -141,9 +141,13 @@ def _has_unquoted_shell_operator(command: str) -> bool:
             continue
         if char in {"'", '"'}:
             quote = char
-        elif char in {";", "|"}:
+        elif char in {";", "|", "`"}:
+            # Backtick triggers command substitution and must be rejected
+            # alongside the classic separators.
             return True
-        elif char == "&" and index + 1 < len(command) and command[index + 1] == "&":
+        elif char == "&":
+            # Both '&&' (logical and) and a lone '&' (background) are shell
+            # control operators that the verify runner must not execute.
             return True
         index += 1
     return False
