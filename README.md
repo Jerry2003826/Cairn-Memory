@@ -323,19 +323,22 @@ Core modules live in [`src/omni/`](src/omni/):
 | `redact.py` | Redaction core — fail-closed, irreversible |
 | `hook.py` / `spool.py` | Capture hook input → redacted spool |
 | `parse.py` / `ingest.py` / `store.py` | Parse transcripts, ingest, content-addressed storage |
-| `db.py` | SQLite connection & migrations (`migrations/001`–`008`) |
+| `db.py` / `dbaccess.py` | SQLite connection, read-only access & migrations (`migrations/001`–`008`) |
+| `jsonio.py` / `jsonc.py` | Redaction-aware JSON I/O and JSONC parsing |
 | `audit.py` | `cairn audit secrets` safety gate |
-| `capture/` | Capture engine registry with Claude as the first implementation |
-| `extract/` | Deterministic fact extraction (package manager, scripts, observed) |
+| `capture/` | Capture engine registry (`claude`, `opencode`, `qwen`); only Claude installs hooks |
+| `extract/` | Deterministic fact extraction (`pm`, `scripts`, `files`, `observed`) |
 | `gate.py` / `review.py` | Fact review gating |
-| `eval.py` | Behavior eval & dogfood comparison |
+| `eval/` | Behavior eval & dogfood comparison (`classify`, `command_match`, `dogfood_signals`, `machine_read`, `meta`) |
 | `outcome.py` | User-marked outcome log |
 | `experience.py` / `failure.py` / `preference.py` | Candidate → reviewed memory lifecycle |
-| `projects.py` / `doctor.py` | Multi-project registry and read-only diagnostics |
-| `verify.py` | Read-only verification preflight |
+| `projects.py` / `doctor.py` / `status.py` | Multi-project registry, read-only diagnostics & status |
+| `verify/` | Read-only verification preflight (`selection`, `command_safety`, `process`, `inputs`, `text`) |
 | `render.py` / `inject.py` | Render `memory.md` & inject managed prompt-file regions |
 | `task.py` | Operational task lifecycle and task read view |
 | `mcp.py` | Read-only stdio MCP wrapper over machine-read views |
+| `_event_meta.py` / `_common.py` | Shared event-meta decoding and common helpers |
+| `config.py` / `ids.py` / `qualifiers.py` | Configuration, identifier generation, and verify qualifiers |
 
 ## 🛡️ Safety invariants
 

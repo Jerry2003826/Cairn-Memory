@@ -293,19 +293,22 @@ Fast Path  ·  Commands  ·  Experience Notes  ·  Known Failures  ·  Boundarie
 | `redact.py` | 脱敏核心——fail-closed、不可逆 |
 | `hook.py` / `spool.py` | 捕获 hook 输入 → 脱敏 spool |
 | `parse.py` / `ingest.py` / `store.py` | 解析 transcript、ingest、内容寻址存储 |
-| `db.py` | SQLite 连接与迁移（`migrations/001`–`008`） |
+| `db.py` / `dbaccess.py` | SQLite 连接、只读访问与迁移（`migrations/001`–`008`） |
+| `jsonio.py` / `jsonc.py` | 脱敏感知的 JSON I/O 与 JSONC 解析 |
 | `audit.py` | `cairn audit secrets` 安全门禁 |
-| `capture/` | capture engine 注册表，Claude 是第一个实现 |
-| `extract/` | 确定性 fact 提取（包管理器、scripts、observed） |
+| `capture/` | capture engine 注册表（`claude`、`opencode`、`qwen`）；仅 Claude 安装 hook |
+| `extract/` | 确定性 fact 提取（`pm`、`scripts`、`files`、`observed`） |
 | `gate.py` / `review.py` | fact 审核门禁 |
-| `eval.py` | 行为评估与 dogfood 对比 |
+| `eval/` | 行为评估与 dogfood 对比（`classify`、`command_match`、`dogfood_signals`、`machine_read`、`meta`） |
 | `outcome.py` | 用户标注的 outcome log |
 | `experience.py` / `failure.py` / `preference.py` | 候选 → 审核记忆的生命周期 |
-| `projects.py` / `doctor.py` | 多项目 registry 与只读诊断 |
-| `verify.py` | 只读验证预检 |
+| `projects.py` / `doctor.py` / `status.py` | 多项目 registry、只读诊断与状态 |
+| `verify/` | 只读验证预检（`selection`、`command_safety`、`process`、`inputs`、`text`） |
 | `render.py` / `inject.py` | 渲染 `memory.md` 并注入 managed prompt-file 区块 |
 | `task.py` | operational task 生命周期与 task read view |
 | `mcp.py` | 机器读取接口的只读 stdio MCP wrapper |
+| `_event_meta.py` / `_common.py` | 共享的 event-meta 解码与通用辅助函数 |
+| `config.py` / `ids.py` / `qualifiers.py` | 配置、标识符生成与 verify qualifier |
 
 ## 🛡️ 安全不变量
 
