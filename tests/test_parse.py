@@ -231,6 +231,39 @@ def test_parse_qwen_archives_unrecorded_direct_tool_use_shape(tmp_path: Path) ->
     assert archive_record["reason"] == "unknown_qwen_shape"
 
 
+def test_parse_opencode_ingests_failed_tool_use_without_input(tmp_path: Path) -> None:
+    """I-03: a failed OpenCode tool (state has error/output but no input or
+    metadata) must be ingested as an event, not silently archived."""
+    transcript = tmp_path / "opencode-failed.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": 1781497265185,
+                "part": {
+                    "type": "tool",
+                    "tool": "bash",
+                    "callID": "call_fail",
+                    "state": {
+                        "error": "command not found: pytest",
+                        "output": "",
+                        "time": {"start": 1781497265149, "end": 1781497265183},
+                    },
+                },
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="opencode")
+
+    assert result.archive is None
+    assert len(result.events) == 1
+    event = result.events[0]
+    assert event.tool == "bash"
+    assert event.tool_use_id == "call_fail"
+
+
 def test_parse_opencode_archives_unrecorded_tool_use_shape(tmp_path: Path) -> None:
     transcript = tmp_path / "opencode-unknown.jsonl"
     write_jsonl(

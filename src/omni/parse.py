@@ -228,6 +228,21 @@ def _normalize_generic_event(seq: int, row: dict[str, Any]) -> NormalizedEvent:
     )
 
 
+def _opencode_state_has_signal(state: dict[str, Any]) -> bool:
+    """Return True when an OpenCode tool state reports a real execution signal.
+
+    Failed tools commonly surface an ``error`` string and/or an ``output``
+    field even when ``input``/``metadata`` are absent. Treat any non-empty
+    error or a present output as evidence the tool actually ran.
+    """
+    error = state.get("error")
+    if isinstance(error, str) and error.strip():
+        return True
+    if error not in (None, "") and not isinstance(error, str):
+        return True
+    return "output" in state
+
+
 def _normalize_opencode_tool_use(seq: int, row: dict[str, Any]) -> NormalizedEvent | None:
     if row.get("type") != "tool_use":
         return None
@@ -251,7 +266,11 @@ def _normalize_opencode_tool_use(seq: int, row: dict[str, Any]) -> NormalizedEve
     if metadata is not None and not isinstance(metadata, dict):
         return None
     if not isinstance(state_input, dict) and not isinstance(metadata, dict):
-        return None
+        # A failed or completed tool may carry no input/metadata yet still
+        # report an error/output signal. Such events are real executions and
+        # must be ingested rather than archived as an unknown shape.
+        if not _opencode_state_has_signal(state):
+            return None
     if metadata is None:
         metadata = {}
     time = state.get("time")
