@@ -96,7 +96,7 @@ def inject(root: Path | str, *, target: str, mode: str) -> InjectResult:
         return InjectResult(path=path, body=managed_region, diff="", wrote=False)
 
     rendered_diff = _diff(current, next_text, inject_target)
-    path.write_text(next_text, encoding="utf-8")
+    _replace_file_text(path, next_text)
     return InjectResult(path=path, body=managed_region, diff=rendered_diff, wrote=True)
 
 
@@ -123,7 +123,7 @@ def _project_local_file(base: Path, target: InjectTarget) -> Path:
         raise ValueError(f"invalid inject filename: {target.filename}")
 
     path = base / filename
-    if target.name in {"opencode", "qwen"} and path.is_symlink():
+    if path.is_symlink():
         raise ValueError(f"invalid {target.filename}: symlinks are not allowed")
 
     resolved_parent = path.parent.resolve()
@@ -216,8 +216,7 @@ def _inject_opencode(path: Path, target: InjectTarget, mode: str) -> InjectResul
     updated["instructions"] = [*instructions, target.import_line]
     rendered = _opencode_rendered_config(updated)
     rendered_diff = _redacted_text(_diff(current, rendered, target))
-    # The path is a fixed target filename validated by _project_local_file.
-    path.write_text(rendered, encoding="utf-8")  # NOSONAR
+    _replace_file_text(path, rendered)
     return InjectResult(path=path, body=preview, diff=rendered_diff, wrote=True)
 
 
@@ -247,3 +246,13 @@ def _opencode_rendered_config(data: dict[str, Any]) -> str:
 
 def _redacted_text(value: str) -> str:
     return redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
+
+
+def _replace_file_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(path.name + ".omni-tmp")
+    try:
+        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.replace(path)
+    finally:
+        tmp_path.unlink(missing_ok=True)

@@ -1250,6 +1250,26 @@ def test_render_writes_memory_through_temp_file_replace(
     assert not list(result.path.parent.glob("*.omni-tmp"))
 
 
+def test_render_does_not_write_memory_when_commit_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conn = connect(tmp_path)
+    seed_project_facts(conn)
+    original_update = render._update_block_state
+
+    def close_before_commit(*args, **kwargs):
+        dirty = original_update(*args, **kwargs)
+        conn.close()
+        return dirty
+
+    monkeypatch.setattr(render, "_update_block_state", close_before_commit)
+
+    with pytest.raises(Exception, match="closed database"):
+        render.render_project(conn, tmp_path)
+
+    assert not (tmp_path / ".omni" / "generated" / "memory.md").exists()
+
+
 def test_render_corrupt_generated_memory_raises_manual_edit_error(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     seed_project_facts(conn)

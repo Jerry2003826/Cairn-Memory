@@ -188,6 +188,24 @@ def test_ingest_attaches_run_to_open_task(tmp_path: Path) -> None:
     conn.close()
 
 
+def test_ingest_attaches_run_to_open_task_when_current_task_meta_is_missing(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path)
+    started = task.start_task(conn, tmp_path, "attach by open task fallback")
+    conn.execute("DELETE FROM meta WHERE key = ?", (task.CURRENT_TASK_META_KEY,))
+    conn.commit()
+
+    ingest._ensure_run(conn, tmp_path, "run_open_fallback", None)
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT task_id FROM runs WHERE run_id = 'run_open_fallback'"
+    ).fetchone()
+    assert row["task_id"] == started["task_id"]
+    conn.close()
+
+
 def test_ingest_without_task_leaves_task_id_null(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     ingest._ensure_run(conn, tmp_path, "run_unattached", None)

@@ -78,8 +78,8 @@ def render_project(
 
     dirty = _update_block_state(conn, body, line_hashes)
     path.parent.mkdir(parents=True, exist_ok=True)
-    _replace_file_text(path, text)
     conn.commit()
+    _replace_file_text(path, text)
     return RenderResult(path=path, body=text, diff=rendered_diff, wrote=True, dirty=dirty)
 
 

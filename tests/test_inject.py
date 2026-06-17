@@ -196,6 +196,57 @@ def test_opencode_link_rejects_symlink_without_writing(
     assert not config.exists()
 
 
+def test_claude_link_rejects_symlink_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claude_md = tmp_path / "CLAUDE.md"
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == claude_md:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+
+    with pytest.raises(ValueError, match="symlinks are not allowed"):
+        inject.inject(tmp_path, target="claude", mode="link")
+
+    assert not claude_md.exists()
+
+
+def test_opencode_link_writes_config_through_temp_file_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "opencode.json"
+    config.write_text('{"instructions":["README.md"]}\n', encoding="utf-8")
+    original_write_text = Path.write_text
+
+    def fail_direct_config_write(
+        self: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        if self == config:
+            raise AssertionError("opencode.json must be replaced from a temp file")
+        return original_write_text(
+            self, data, encoding=encoding, errors=errors, newline=newline
+        )
+
+    monkeypatch.setattr(Path, "write_text", fail_direct_config_write)
+
+    result = inject.inject(tmp_path, target="opencode", mode="link")
+    data = json.loads(config.read_text(encoding="utf-8"))
+
+    assert result.wrote is True
+    assert data["instructions"] == ["README.md", ".omni/generated/memory.md"]
+    assert not (tmp_path / "opencode.json.omni-tmp").exists()
+
+
 def test_qwen_preview_prints_managed_region_without_writing(tmp_path: Path) -> None:
     result = inject.inject(tmp_path, target="qwen", mode="preview")
 

@@ -1321,6 +1321,35 @@ def test_ingest_drains_queue_and_watchdog_closes_stale_open_runs(tmp_path: Path)
     assert dict(stale) == {"status": "closed", "end_reason": "watchdog"}
 
 
+def test_queued_ingest_rejects_transcript_path_outside_project_root(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.jsonl"
+    outside.write_text(
+        '{"type":"tool_use","id":"toolu_out","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+    try:
+        hook.capture_hook(
+            json.dumps(
+                {
+                    "hook_event_name": "SessionEnd",
+                    "session_id": "queued_outside",
+                    "transcript_path": str(outside),
+                }
+            ).encode("utf-8"),
+            root=tmp_path,
+        )
+        request_file = next((tmp_path / ".omni" / "spool").glob("ingest-*.json"))
+
+        with pytest.raises(ValueError, match="project root"):
+            ingest.ingest(root=tmp_path)
+
+        assert request_file.exists()
+    finally:
+        outside.unlink(missing_ok=True)
+
+
 def test_watchdog_closes_open_runs_with_missing_transcripts(tmp_path: Path) -> None:
     conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
     db.migrate(conn)

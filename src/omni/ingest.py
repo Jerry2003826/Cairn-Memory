@@ -146,9 +146,7 @@ def ingest(
                     transcript_path = request.get("transcript_path")
                     request_session_id = _optional_str(request.get("session_id"))
                     rid = request_session_id or run_id or "queued_run"
-                    path = Path(str(transcript_path)) if transcript_path else None
-                    if path is not None and not path.is_absolute():
-                        path = base / path
+                    path = _queued_transcript_path(base, transcript_path)
                     inserted, hook_paths = _ingest_one(
                         conn,
                         base,
@@ -303,6 +301,21 @@ def _ingest_one(
     return inserted, hook_paths
 
 
+def _queued_transcript_path(root: Path, transcript_path: Any) -> Path | None:
+    if transcript_path in (None, ""):
+        return None
+    raw_path = Path(str(transcript_path))
+    path = raw_path if raw_path.is_absolute() else root / raw_path
+    try:
+        resolved = path.resolve(strict=False)
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"queued transcript_path must stay under project root: {transcript_path}"
+        ) from exc
+    return resolved
+
+
 def _ensure_run(
     conn: sqlite3.Connection,
     root: Path,
@@ -311,6 +324,7 @@ def _ensure_run(
     *,
     run_engine: str = "claude_code",
 ) -> None:
+    project_id = project_id_for_path(root)
     conn.execute(
         """
         INSERT OR IGNORE INTO runs(
@@ -319,32 +333,50 @@ def _ensure_run(
         VALUES(
           ?,?,?,?,?,?,?,
           (
-            SELECT meta.value
-            FROM meta
-            JOIN tasks ON tasks.task_id = meta.value
-            WHERE meta.key = ? AND tasks.status = 'open'
+            SELECT task_id FROM (
+              SELECT tasks.task_id AS task_id, 0 AS priority, tasks.created_seq
+              FROM meta
+              JOIN tasks ON tasks.task_id = meta.value
+              WHERE meta.key = ? AND tasks.status = 'open'
+                AND tasks.project_id = ?
+              UNION ALL
+              SELECT tasks.task_id AS task_id, 1 AS priority, tasks.created_seq
+              FROM tasks
+              WHERE tasks.status = 'open' AND tasks.project_id = ?
+            )
+            ORDER BY priority, created_seq DESC
             LIMIT 1
           )
         )
         """,
         (
             run_id,
-            project_id_for_path(root),
+            project_id,
             run_engine,
             str(root),
             str(transcript) if transcript is not None else None,
             0,
             "open",
             CURRENT_TASK_META_KEY,
+            project_id,
+            project_id,
         ),
     )
     conn.execute(
         """
         WITH open_task AS (
-          SELECT meta.value AS task_id
-          FROM meta
-          JOIN tasks ON tasks.task_id = meta.value
-          WHERE meta.key = ? AND tasks.status = 'open'
+          SELECT task_id FROM (
+            SELECT tasks.task_id AS task_id, 0 AS priority, tasks.created_seq
+            FROM meta
+            JOIN tasks ON tasks.task_id = meta.value
+            WHERE meta.key = ? AND tasks.status = 'open'
+              AND tasks.project_id = ?
+            UNION ALL
+            SELECT tasks.task_id AS task_id, 1 AS priority, tasks.created_seq
+            FROM tasks
+            WHERE tasks.status = 'open' AND tasks.project_id = ?
+          )
+          ORDER BY priority, created_seq DESC
           LIMIT 1
         )
         UPDATE runs
@@ -353,7 +385,7 @@ def _ensure_run(
           AND task_id IS NULL
           AND EXISTS (SELECT 1 FROM open_task)
         """,
-        (CURRENT_TASK_META_KEY, run_id),
+        (CURRENT_TASK_META_KEY, project_id, project_id, run_id),
     )
 
 
