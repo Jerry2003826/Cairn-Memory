@@ -51,9 +51,10 @@ cairn task read
 cairn ingest --engine opencode --transcript
 ```
 
-At the time of this closeout, no MCP server had been added. No external write
-path, OpenCode plugin background capture, multi-agent router, permission-tier
-system, UI, vector search, or LLM extractor were added.
+At the time of this closeout, no write-capable MCP server, HTTP transport, or
+external write path had been added. OpenCode plugin background capture,
+multi-agent router, permission-tier system, UI, vector search, and LLM
+extractors were not added.
 
 Safety invariants were unchanged:
 
@@ -1145,7 +1146,7 @@ repositories.
 
 ## Explicitly not implemented at this closeout
 
-- No MCP server at this closeout. C-4 later landed as a read-only stdio wrapper.
+- No write-capable MCP server or HTTP transport; C-4 landed only as a read-only stdio wrapper over existing read surfaces.
 - No external write path for OpenCode, Codex, QwenCode, Cursor, or any other
   agent.
 - No OpenCode background plugin or automatic capture loop.

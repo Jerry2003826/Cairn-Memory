@@ -16,6 +16,7 @@ import pytest
 
 from omni import cli
 from omni import hook
+from omni.ingest import IngestResult
 from omni.ids import project_id_for_path
 from omni.status import status_json
 
@@ -1189,6 +1190,53 @@ def test_ingest_cli_qwen_requires_transcript_before_layout_write(tmp_path: Path)
     assert result.returncode == 2
     assert "requires transcript" in result.stderr
     assert not (tmp_path / ".omni").exists()
+
+
+def test_ingest_cli_rejects_manual_transcript_outside_project_before_layout_write(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.jsonl"
+    outside.write_text(
+        '{"type":"tool_use","id":"toolu_out","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+    result = run_omni(
+        tmp_path,
+        "ingest",
+        "outside_run",
+        "--transcript",
+        str(outside),
+    )
+
+    assert result.returncode == 2
+    assert "manual transcript must stay under project root" in result.stderr
+    assert not (tmp_path / ".omni").exists()
+
+
+def test_ingest_cli_reports_static_fact_detector_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_ingest(*_args, **_kwargs) -> IngestResult:
+        return IngestResult(
+            run_ids=("run_static_error",),
+            events_inserted=1,
+            queue_drained=0,
+            static_fact_detector_errors=1,
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "project_root", lambda: tmp_path)
+    monkeypatch.setattr("omni.ingest.ingest", fake_ingest)
+
+    code = cli.main(["ingest", "run_static_error"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "static_fact_detector_errors=1" in captured.out
+    assert captured.err == ""
 
 
 def test_run_show_cli_missing_db_is_read_only_and_clear(tmp_path: Path) -> None:

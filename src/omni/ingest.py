@@ -40,6 +40,7 @@ class IngestResult:
     run_ids: tuple[str, ...]
     events_inserted: int
     queue_drained: int
+    static_fact_detector_errors: int = 0
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,10 @@ def ingest(
 ) -> IngestResult:
     base = Path(root or Path.cwd()).resolve()
     selected_engine = capture_engine(engine)
-    if selected_engine.name != "claude" and transcript is None:
+    manual_transcript = (
+        _manual_transcript_path(base, transcript) if transcript is not None else None
+    )
+    if selected_engine.name != "claude" and manual_transcript is None:
         raise ValueError(f"engine {selected_engine.name} requires transcript ingest")
     ensure_project_layout(base)
     conn = dbaccess.connect_project_migrate(base)
@@ -120,15 +124,16 @@ def ingest(
         run_ids: list[str] = []
         drained = 0
         consumed_hook_paths: set[Path] = set()
+        static_fact_detector_errors = 0
 
-        if transcript is not None:
-            rid = run_id or _run_id_for_transcript(Path(transcript))
+        if manual_transcript is not None:
+            rid = run_id or _run_id_for_transcript(manual_transcript)
             manual_session_id = run_id
             inserted, hook_paths = _ingest_one(
                 conn,
                 base,
                 rid,
-                Path(transcript),
+                manual_transcript,
                 include_hooks=manual_session_id is not None and selected_engine.name == "claude",
                 session_id=manual_session_id,
                 run_engine=selected_engine.run_engine,
@@ -178,7 +183,8 @@ def ingest(
                     consumed_hook_paths.update(hook_paths)
                     run_ids.append(run_id)
 
-        gate.extract_static_facts(base, conn, commit=False)
+        static_fact_result = _extract_static_facts_for_ingest(base, conn)
+        static_fact_detector_errors = static_fact_result.detector_errors
         close_stale_runs(conn, commit=False)
         conn.commit()
         if transcript is None and requests:
@@ -189,6 +195,7 @@ def ingest(
             run_ids=tuple(dict.fromkeys(run_ids)),
             events_inserted=total_inserted,
             queue_drained=drained,
+            static_fact_detector_errors=static_fact_detector_errors,
         )
     finally:
         conn.close()
@@ -301,7 +308,26 @@ def _ingest_one(
     return inserted, hook_paths
 
 
+def _manual_transcript_path(root: Path, transcript_path: Any) -> Path:
+    resolved = _project_transcript_path(
+        root,
+        transcript_path,
+        label="manual transcript",
+    )
+    if resolved is None:
+        raise ValueError("manual transcript path is required")
+    return resolved
+
+
 def _queued_transcript_path(root: Path, transcript_path: Any) -> Path | None:
+    return _project_transcript_path(
+        root,
+        transcript_path,
+        label="queued transcript_path",
+    )
+
+
+def _project_transcript_path(root: Path, transcript_path: Any, *, label: str) -> Path | None:
     if transcript_path in (None, ""):
         return None
     raw_path = Path(str(transcript_path))
@@ -311,9 +337,28 @@ def _queued_transcript_path(root: Path, transcript_path: Any) -> Path | None:
         resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError(
-            f"queued transcript_path must stay under project root: {transcript_path}"
+            f"{label} must stay under project root: {transcript_path}"
         ) from exc
     return resolved
+
+
+def _extract_static_facts_for_ingest(
+    root: Path,
+    conn: sqlite3.Connection,
+) -> gate.GateResult:
+    conn.execute("SAVEPOINT ingest_static_facts")
+    try:
+        result = gate.extract_static_facts(root, conn, commit=False)
+    except gate.ConflictRequiresSupersede:
+        conn.execute("ROLLBACK TO SAVEPOINT ingest_static_facts")
+        conn.execute("RELEASE SAVEPOINT ingest_static_facts")
+        return gate.GateResult(auto_committed=0, pending=0)
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT ingest_static_facts")
+        conn.execute("RELEASE SAVEPOINT ingest_static_facts")
+        raise
+    conn.execute("RELEASE SAVEPOINT ingest_static_facts")
+    return result
 
 
 def _ensure_run(

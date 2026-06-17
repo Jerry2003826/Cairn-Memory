@@ -54,6 +54,7 @@ class FactCandidate:
 class GateResult:
     auto_committed: int
     pending: int
+    detector_errors: int = 0
 
 
 def extract_static_facts(
@@ -63,12 +64,17 @@ def extract_static_facts(
 
     root = Path(repo).resolve()
     candidates: list[FactCandidate] = []
+    detector_errors = 0
     for detector in (pm.detect, scripts.detect):
         try:
             candidates.extend(detector(root))
         except Exception:
+            detector_errors += 1
             continue
-    return apply_candidates(conn, candidates, commit=commit)
+    return replace(
+        apply_candidates(conn, candidates, commit=commit),
+        detector_errors=detector_errors,
+    )
 
 
 def extract_observed_facts(conn: sqlite3.Connection, *, commit: bool = True) -> GateResult:
@@ -90,7 +96,13 @@ def apply_candidates(
         if _active_fact_exists(conn, with_id):
             continue
         if _can_auto_commit(conn, with_id):
-            auto_committed += insert_fact(conn, with_id)
+            try:
+                auto_committed += insert_fact(conn, with_id)
+            except ConflictRequiresSupersede as exc:
+                before = conn.total_changes
+                stage_candidate(conn, replace(with_id, conflict_with=exc.fact_id))
+                if conn.total_changes > before:
+                    pending += 1
         else:
             before = conn.total_changes
             stage_candidate(conn, with_id)
@@ -288,5 +300,4 @@ def _fact_id(candidate: FactCandidate) -> str:
         f"{candidate.qualifier}:{candidate.object_norm}".encode("utf-8")
     ).hexdigest()
     return f"fact_{digest[:24]}"
-
 

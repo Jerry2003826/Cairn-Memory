@@ -174,6 +174,60 @@ def test_gate_keeps_new_value_pending_when_active_key_exists(tmp_path: Path) -> 
     assert [row["object_norm"] for row in facts] == ["current"]
 
 
+def test_gate_conflict_during_auto_commit_stages_candidate_instead_of_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = connect(tmp_path)
+    original_insert_fact = gate.insert_fact
+
+    def conflict_once(
+        conn: sqlite3.Connection,
+        candidate: gate.FactCandidate,
+    ) -> int:
+        raise gate.ConflictRequiresSupersede(
+            fact_id="fact_existing",
+            object_norm="pnpm run test",
+        )
+
+    monkeypatch.setattr(gate, "insert_fact", conflict_once)
+
+    result = gate.apply_candidates(
+        conn,
+        [
+            gate.FactCandidate(
+                scope="project",
+                subject=".",
+                predicate="uses_test_command",
+                qualifier="node",
+                object_norm="npm test",
+                value_type="string",
+                claim="Use npm test",
+                trust=2,
+                sensitivity="low",
+                origin="script_extractor@1",
+                evidence={"files": []},
+            )
+        ],
+    )
+    monkeypatch.setattr(gate, "insert_fact", original_insert_fact)
+
+    pending = conn.execute(
+        """
+        SELECT object_norm, state, conflict_with
+        FROM fact_candidates
+        WHERE predicate = 'uses_test_command'
+        """
+    ).fetchone()
+    assert result.auto_committed == 0
+    assert result.pending == 1
+    assert dict(pending) == {
+        "object_norm": "npm test",
+        "state": "pending",
+        "conflict_with": "fact_existing",
+    }
+
+
 def test_review_approve_rejects_conflicting_single_valued_fact(tmp_path: Path) -> None:
     conn = connect(tmp_path)
     gate.insert_fact(conn, candidate("pnpm run test", qualifier="node"))

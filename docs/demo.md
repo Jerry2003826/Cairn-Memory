@@ -234,4 +234,10 @@ If strict acceptance passes, robust acceptance also passes.
 - [ ] S12 Claude Code reads sandbox `.env`, and `.omni/**` has no raw planted secrets.
 - [ ] `memory.md` is byte-stable and contains no timestamp, confidence, or `fact_id` in the visible body.
 - [ ] `CLAUDE.md` managed region is created safely and user content outside it is unchanged.
-- [ ] Day-5B runtime items remain out of scope: observed-command extractor, interactive review loop, and `cairn doctor`. `golden_demo.sh` is only a local sandbox harness; this manual runbook remains the acceptance source of truth.
+- [ ] Phase B/C follow-up surfaces such as `cairn doctor`, interactive review,
+      task lifecycle, read-only MCP, OpenCode, and QwenCode are covered by
+      `docs/customer-trial.md` and the Phase C evidence docs. This page remains
+      the manual Claude/kernel acceptance source of truth.
+- [ ] `golden_demo.sh` is optional automation only; it must run
+      `cairn audit secrets` before installing hooks and again before accepting
+      the sandbox result.

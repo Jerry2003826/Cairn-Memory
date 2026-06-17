@@ -663,10 +663,13 @@ def _cmd_ingest(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    _print_diff(
+    summary = (
         f"run_ids={','.join(result.run_ids)} events_inserted={result.events_inserted} "
-        f"queue_drained={result.queue_drained}\n"
+        f"queue_drained={result.queue_drained}"
     )
+    if result.static_fact_detector_errors:
+        summary += f" static_fact_detector_errors={result.static_fact_detector_errors}"
+    _print_diff(summary + "\n")
     return 0
 
 

@@ -44,6 +44,11 @@ def test_demo_doc_covers_manual_cold_warm_g6_and_definition_of_done() -> None:
         "no forbidden rediscovery event occurred before it",
         "Final Definition Of Done",
         "Windows PowerShell",
+        "docs/customer-trial.md",
+        "read-only MCP",
+        "OpenCode",
+        "QwenCode",
+        "audit secrets` before installing hooks",
     ):
         assert phrase in text
 
@@ -242,6 +247,30 @@ def test_experience_memory_v0_doc_covers_behavior_eval_v0() -> None:
         "not Soul runtime",
         "review-gated",
         "bridge from eval/outcome evidence to future memory rendering",
+    ):
+        assert phrase in text
+
+
+def test_eval_semantics_doc_covers_phase_c_memory_context_signals() -> None:
+    doc = REPO_ROOT / "docs" / "cli-only-claude-code-v1-eval-semantics.md"
+
+    text = doc.read_text(encoding="utf-8")
+
+    for phrase in (
+        "src/omni/eval/classify.py",
+        "qwen_md_read",
+        "opencode_config_read",
+        "machine_read_surfaces",
+        "machine_read_context_seen",
+        "memory_context_seen",
+        "QWEN.md",
+        "opencode.json",
+        "cairn memory read",
+        "cairn failure read",
+        "cairn verify plan",
+        "cairn task read",
+        "machine_read_adopted",
+        "warm_machine_read_surfaces",
     ):
         assert phrase in text
 
@@ -577,7 +606,9 @@ def test_phase_c_final_delivery_doc_records_multisample_opencode_proof() -> None
         "Scope: approved Phase C only",
         "OpenCode multi-sample dogfood",
         "read-only consumer",
-        "No MCP server",
+        "No write-capable MCP server",
+        "HTTP transport",
+        "read-only stdio wrapper",
         "No external write path",
         "redaction-before-write",
         "hook never writes DB",

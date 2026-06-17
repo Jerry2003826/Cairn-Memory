@@ -520,6 +520,21 @@ def test_ingest_transcript_is_idempotent_and_redacts_db_content(
     assert github_secret.encode("utf-8") not in omni_bytes
 
 
+def test_manual_ingest_rejects_transcript_outside_project_before_layout_write(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.jsonl"
+    outside.write_text(
+        '{"type":"tool_use","id":"toolu_out","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="manual transcript must stay under project root"):
+        ingest.ingest(root=tmp_path, run_id="outside_run", transcript=outside)
+
+    assert not (tmp_path / ".omni").exists()
+
+
 def test_ingest_open_code_transcript_records_engine(tmp_path: Path) -> None:
     transcript = tmp_path / "opencode.jsonl"
     transcript.write_text(
@@ -1487,6 +1502,78 @@ def test_queued_ingest_survives_malformed_static_extractor_inputs_and_acks_reque
             "SELECT COUNT(*) FROM events WHERE run_id = ? AND tool_use_id = ?",
             ("queued_run", "toolu_q"),
         ).fetchone()[0]
+        == 1
+    )
+    assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
+
+
+def test_gate_extract_static_facts_counts_detector_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omni.extract import pm, scripts
+
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+
+    def fail_detector(_root: Path) -> list[gate.FactCandidate]:
+        raise RuntimeError("broken package file")
+
+    monkeypatch.setattr(pm, "detect", fail_detector)
+    monkeypatch.setattr(scripts, "detect", lambda _root: [])
+
+    result = gate.extract_static_facts(tmp_path, conn)
+
+    assert result.detector_errors == 1
+    assert result.auto_committed == 0
+    assert result.pending == 0
+
+
+def test_ingest_static_fact_conflict_preserves_events_and_skips_static_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","id":"toolu_conflict","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+    def conflict_after_staging(
+        _root: Path,
+        conn: sqlite3.Connection,
+        *,
+        commit: bool = True,
+    ) -> gate.GateResult:
+        gate.stage_candidate(
+            conn,
+            gate.FactCandidate(
+                scope="project",
+                subject=".",
+                predicate="uses_test_command",
+                qualifier="node",
+                object_norm="npm test",
+                value_type="string",
+                claim="Use npm test",
+                trust=1,
+                sensitivity="low",
+                origin="manual@1",
+                evidence={"files": []},
+            ),
+        )
+        raise gate.ConflictRequiresSupersede(
+            fact_id="fact_existing",
+            object_norm="pnpm run test",
+        )
+
+    monkeypatch.setattr(ingest.gate, "extract_static_facts", conflict_after_staging)
+
+    result = ingest.ingest(root=tmp_path, run_id="run_conflict", transcript=transcript)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+
+    assert result.events_inserted == 1
+    assert (
+        conn.execute("SELECT COUNT(*) FROM events WHERE run_id = 'run_conflict'").fetchone()[0]
         == 1
     )
     assert conn.execute("SELECT COUNT(*) FROM fact_candidates").fetchone()[0] == 0
