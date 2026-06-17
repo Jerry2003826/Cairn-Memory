@@ -233,10 +233,11 @@ Phase C final delivery evidence from 2026-06-16 is
 five bounded OpenCode samples consumed Cairn Memory read surfaces before
 validation, release-build, bugfix, refactor, and known-failure recovery work,
 then left `engine=opencode` run, task, and outcome evidence through approved CLI
-writers. Later same-day real-project controlled pairs on detached qwen-code and
-Cairn Memory worktrees showed OpenCode warm behavior using `memory_read`,
-`failure_read`, `verify_plan`, and `task_read`, producing `improvement=true`;
-the second pair also produced single-run `memory_effect=helped`. Verify planning
+writers. Later real-project controlled pairs on detached qwen-code, Cairn
+Memory, cardgame3077, lite-cv-ai, and cakephp-app worktrees showed OpenCode
+warm behavior using `memory_read`, `failure_read`, `verify_plan`, and
+`task_read`, producing `improvement=true` across five real cold/warm pairs; the
+Cairn self pair also produced single-run `memory_effect=helped`. Verify planning
 now also surfaces package-local workspace commands such as
 `npm run test --workspace=@qwen-code/acp-bridge` with package subjects.
 

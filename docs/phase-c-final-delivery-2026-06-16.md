@@ -859,6 +859,197 @@ The harness asserts that every tool returns a non-error `tools/call` result with
 `structuredContent`. It does not add any write-capable MCP tool, HTTP transport,
 new migration, or SDK dependency.
 
+## OpenCode additional real-project controlled cold/warm samples
+
+Update: the requested "more real projects / more task families" dogfood pack
+was run on 2026-06-17. This adds three more detached real-repo cold/warm pairs
+on top of the qwen-code and Cairn Memory pairs above.
+
+Shared controls:
+
+- The original user worktrees were not edited. Each run used a detached
+  worktree with project-local `.omni/` state.
+- `python3 -m omni.cli audit secrets` returned `ok=true` in Cairn Memory and
+  in every target before real-project dogfood.
+- Cold runs had no instruction to read Cairn surfaces.
+- Warm runs called the four read-only surfaces before source inspection:
+  `memory read`, `failure read`, `verify plan`, and `task read`.
+- Each cold transcript seeded one reviewed known-failure pattern through
+  `failure extract` and `failure approve`; each warm run then recovered the same
+  injected regression from that read surface.
+
+| Target | Source commit | Task family | Verification | Cold run | Warm run | Pattern |
+|---|---|---|---|---|---|---|
+| `cardgame3077` | `0dae7d3` | Python scoring bugfix | `python3 -m unittest tests.test_scoring` | `opencode_cardgame_cold_bugfix` | `opencode_cardgame_warm_bugfix` | `failure_pattern_6c65f86202554e3298c868b8348be4a1` |
+| `lite-cv-ai` | `8321bf7` | Vite release-build recovery | `npm run build` | `opencode_lite_cv_cold_build` | `opencode_lite_cv_warm_build` | `failure_pattern_d8998fe3f6554242b05137a07ba6265a` |
+| `cakephp-app` | `4aad785` | CakePHP backend bugfix | `vendor/bin/phpunit --colors=never tests/TestCase/Service/StripeCheckoutSessionClassifierTest.php` | `opencode_cakephp_cold_bugfix` | `opencode_cakephp_warm_bugfix` | `failure_pattern_690718700e26464aafbdb5b31640e166` |
+
+### Additional pair 1: cardgame3077 scoring bugfix
+
+Real target: `/Users/lijiarui/Downloads/cardgame3077-cairn-dogfood`.
+
+Baseline:
+
+```text
+python3 -m unittest tests.test_scoring
+Ran 7 tests in 0.019s
+OK
+```
+
+Controlled regression: completed destination tickets in
+`app/services/scoring_service.py` subtracted `ticket.points` instead of adding
+them. The failing check produced two scoring failures, including
+`AssertionError: -6 != 6`.
+
+Cold observed sequence:
+
+- ran `python3 -m unittest tests.test_scoring`
+- read `tests/test_scoring.py`
+- globbed for `**/*scoring*.py`
+- read `app/services/scoring_service.py`
+- changed `ticket_delta -= ticket.points` to `ticket_delta += ticket.points`
+- reran `python3 -m unittest tests.test_scoring`, which passed 7 tests
+
+Warm observed sequence:
+
+- `memory read` returned the reviewed scoring known-failure item
+- `failure read` returned the suggested action to inspect
+  `app/services/scoring_service.py` and restore completed-ticket addition
+- `verify plan --task bugfix` returned a read-only plan response
+- `task read` returned the open bugfix task
+- the agent then read `app/services/scoring_service.py`, applied the one-line
+  fix, and reran `python3 -m unittest tests.test_scoring`
+
+Pairwise result:
+
+```json
+{
+  "cold_rediscovery_count": 1,
+  "warm_rediscovery_count": 0,
+  "machine_read_adopted": true,
+  "memory_context_adopted": true,
+  "warm_machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "improvement": true
+}
+```
+
+### Additional pair 2: lite-cv-ai release-build recovery
+
+Real target: `/Users/lijiarui/Downloads/lite-cv-ai-cairn-dogfood`.
+
+Baseline:
+
+```text
+npm run build
+vite v7.3.5 building client environment for production...
+Prerendered 1 page:
+  /
+```
+
+Controlled regression: `src/shared/markdown.tsx` changed
+`export default function Markdown` to `export function Markdown`, while nine
+theme files still used default imports. The failing build emitted `TS2613`
+errors for the missing default export.
+
+Cold observed sequence:
+
+- ran `ls -la`
+- ran `npm run build`, which failed with `TS2613`
+- read `src/shared/markdown.tsx`
+- restored `export default function Markdown`
+- reran `npm run build`, which passed
+
+Warm observed sequence:
+
+- `memory read` and `failure read` returned the reviewed Markdown default-export
+  recovery action
+- `verify plan --profile release` returned a read-only release predicate
+- `task read` returned the open validation task
+- the agent stated that the Cairn surfaces identified
+  `src/shared/markdown.tsx`, restored the default export, and reran
+  `npm run build`
+
+Pairwise result:
+
+```json
+{
+  "cold_rediscovery_count": 1,
+  "warm_rediscovery_count": 0,
+  "machine_read_adopted": true,
+  "memory_context_adopted": true,
+  "warm_machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "improvement": true
+}
+```
+
+### Additional pair 3: cakephp-app backend classifier bugfix
+
+Real target: `/Users/lijiarui/Downloads/cakephp-app-cairn-dogfood`.
+
+Baseline:
+
+```text
+vendor/bin/phpunit --colors=never tests/TestCase/Service/StripeCheckoutSessionClassifierTest.php
+OK (6 tests, 6 assertions)
+```
+
+Controlled regression: `src/Service/StripeCheckoutSessionClassifier.php`
+returned `STATE_STALE` in the `sessionStatus === 'expired'` branch instead of
+`STATE_EXPIRED`. The focused PHPUnit test failed with expected `expired` and
+actual `stale`.
+
+Cold observed sequence:
+
+- ran the focused PHPUnit command and got one failure
+- read the PHPUnit test
+- globbed `src/Service/StripeCheckoutSessionClassifier*`
+- read `src/Service/StripeCheckoutSessionClassifier.php`
+- changed the expired branch from `STATE_STALE` to `STATE_EXPIRED`
+- reran the focused PHPUnit command, which passed 6 tests
+
+Warm observed sequence:
+
+- `memory read` and `failure read` returned the reviewed expired-session
+  classifier recovery action
+- `verify plan --task bugfix` returned a read-only plan response
+- `task read` returned the open bugfix task
+- the agent stated that Cairn surfaces confirmed the exact expired-branch bug,
+  read the service class, restored `STATE_EXPIRED`, and reran the focused
+  PHPUnit command
+
+Pairwise result:
+
+```json
+{
+  "cold_rediscovery_count": 1,
+  "warm_rediscovery_count": 0,
+  "machine_read_adopted": true,
+  "memory_context_adopted": true,
+  "warm_machine_read_surfaces": [
+    "memory_read",
+    "failure_read",
+    "verify_plan",
+    "task_read"
+  ],
+  "improvement": true
+}
+```
+
+This raises the delivery from two to five real-project controlled cold/warm
+pairs across five repositories: qwen-code, Cairn Memory, cardgame3077,
+lite-cv-ai, and cakephp-app. It is materially stronger than the earlier state,
+but it still should not be described as broad statistical proof.
+
 ## Verification Evidence
 
 Sandbox audit after each successful OpenCode ingest and task close:
@@ -909,6 +1100,9 @@ Machine-readable gate anchors:
 - OpenCode second real-project controlled cold/warm dogfood: one detached Cairn
   Memory self-dogfood bugfix pair with `memory_effect=helped` and
   `improvement=true`.
+- OpenCode additional real-project controlled cold/warm samples: three detached
+  real-repo pairs across Python scoring, Vite release-build recovery, and
+  CakePHP backend bugfix tasks, each with `improvement=true`.
 - Package-local workspace verify planning: monorepo package commands now retain
   package subjects and are visible to `verify plan`.
 - MCP client acceptance harness: a real stdio client launches `cairn mcp serve`,
@@ -922,16 +1116,17 @@ Machine-readable gate anchors:
 This evidence is stronger than the original single C-2 sample because it covers
 five sandbox OpenCode runs, two verification profiles, task-aware
 bugfix/refactor selection, a non-empty known-failure recovery path,
-package-local verify planning, and two real controlled pairs.
+package-local verify planning, and five real controlled pairs.
 
-The delivery now includes two real-project controlled cold/warm pairs. It still
-does not prove broad behavior improvement across many OpenCode task families or
+The delivery now includes five real-project controlled cold/warm pairs. It is
+no longer just "directionally plausible from two repos"; it still does not
+prove broad behavior improvement across many OpenCode task families or
 repositories.
 
 ## Remaining caveats after expanded dogfood
 
 - OpenCode v0 is now proved for bounded validation/build, bugfix, refactor, and
-  known-failure recovery prompts in disposable sandboxes, plus two real
+  known-failure recovery prompts in disposable sandboxes, plus five real
   controlled cold/warm pairs. This is still not broad causal proof across many
   projects and does not prove broad behavioral improvement.
 - Failure read is now proved both as a non-empty machine surface and as input to
@@ -955,8 +1150,9 @@ repositories.
 
 ## Next smallest high-value tasks
 
-1. Repeat the controlled OpenCode cold/warm pack across more repositories and
-   task families before claiming broad behavior improvement.
+1. Add a small aggregate report command or script for summarizing accumulated
+   cold/warm pairs, so future samples do not require hand-copying dogfood JSON
+   into closeout notes.
 2. Run the MCP client acceptance harness against one external MCP-capable agent
    configuration after choosing that agent's approved local config path.
 3. Keep the next adapter work at the same boundary: read governed Cairn Memory
