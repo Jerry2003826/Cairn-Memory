@@ -11,6 +11,7 @@ from typing import Any
 
 from omni.extract import pm
 from omni.gate import FactCandidate
+from omni.qualifiers import scoped_qualifier
 
 ORIGIN = "script_extractor@1"
 NPM_DEFAULT_TEST = 'echo "Error: no test specified" && exit 1'
@@ -104,7 +105,7 @@ def _node_commands_for_package(
             continue
         if script_name == "test" and str(scripts[script_name]).strip() == NPM_DEFAULT_TEST:
             continue
-        qualifier = _scoped_qualifier(mapped[1], qualifier_suffix)
+        qualifier = scoped_qualifier(mapped[1], qualifier_suffix)
         key = (mapped[0], qualifier, subject)
         commands[key] = _candidate(
             root,
@@ -123,7 +124,7 @@ def _node_commands_for_package(
 
     dev_script = "dev" if "dev" in scripts else "start" if "start" in scripts else None
     if dev_script:
-        qualifier = _scoped_qualifier("node", qualifier_suffix)
+        qualifier = scoped_qualifier("node", qualifier_suffix)
         key = ("uses_dev_command", qualifier, subject)
         commands[key] = _candidate(
             root,
@@ -206,10 +207,6 @@ def _workspace_qualifier_suffix(package: dict[str, Any], subject: str) -> str:
     if isinstance(name, str) and name.strip():
         return name.strip()
     return subject
-
-
-def _scoped_qualifier(base: str, suffix: str | None) -> str:
-    return base if suffix is None else f"{base}:{suffix}"
 
 
 def _node_run_command(

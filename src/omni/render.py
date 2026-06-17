@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from omni.jsonio import redact_text
+from omni.qualifiers import is_root_scoped_qualifier
 
 RENDER_VER = 1
 READ_VIEW_SCHEMA_VERSION = 1
@@ -516,7 +517,7 @@ def _known_command_for_predicate(facts: list[sqlite3.Row], predicate: str) -> st
     base_commands = {
         command
         for qualifier, command in matching_facts
-        if command and ":" not in qualifier
+        if command and is_root_scoped_qualifier(qualifier)
     }
     if len(base_commands) == 1:
         return next(iter(base_commands))

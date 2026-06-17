@@ -5,6 +5,8 @@ from pathlib import Path
 
 from omni import db
 from omni import gate
+from omni.extract import scripts
+from omni.qualifiers import is_root_scoped_qualifier, scoped_qualifier
 
 
 REPOS = Path(__file__).parent / "fixtures" / "repos"
@@ -96,3 +98,37 @@ def test_monorepo_workspace_package_test_command_uses_package_subject(
         "qualifier": "node:app",
         "object_norm": "pnpm --dir packages/app run test",
     } in rows
+
+
+def test_qualifier_helpers_document_root_scope_boundary() -> None:
+    assert scoped_qualifier("node", None) == "node"
+    assert scoped_qualifier("node", "app") == "node:app"
+    assert is_root_scoped_qualifier("node") is True
+    assert is_root_scoped_qualifier("node:unit") is False
+    assert is_root_scoped_qualifier("node:@scope/pkg") is False
+
+
+def test_node_workspace_run_command_templates(tmp_path: Path) -> None:
+    root = tmp_path
+    package_dir = root / "packages" / "app"
+    package_dir.mkdir(parents=True)
+    package = {"name": "@scope/app"}
+
+    cases = {
+        "npm": "npm run test --workspace=@scope/app",
+        "pnpm": "pnpm --dir packages/app run test",
+        "yarn": "yarn workspace @scope/app test",
+        "bun": "bun --cwd packages/app run test",
+    }
+
+    for pm_name, expected in cases.items():
+        assert (
+            scripts._node_run_command(
+                pm_name,
+                "test",
+                package_dir=package_dir,
+                package=package,
+                root=root,
+            )
+            == expected
+        )

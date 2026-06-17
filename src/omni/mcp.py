@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from omni import __version__
+from omni._common import TASK_TYPE_VALUES
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_NAME = "cairn-memory"
@@ -80,7 +81,7 @@ def tools() -> list[dict[str, Any]]:
             "qualifier": {"type": "string"},
             "task": {
                 "type": "string",
-                "enum": ["validation", "bugfix", "docs", "refactor", "exploration", "unknown"],
+                "enum": sorted(TASK_TYPE_VALUES),
             },
             "profile": {"type": "string", "enum": ["default", "release", "test"]},
         },

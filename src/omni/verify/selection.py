@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from omni._common import TASK_TYPE_VALUES
+from omni.qualifiers import is_root_scoped_qualifier
 from omni.verify.text import MAX_COMMAND_CHARS, _safe_text
 
 VERIFY_PREDICATE = "uses_test_command"
@@ -14,9 +16,6 @@ PROFILE_PREDICATES = {
     "test": "uses_test_command",
     "release": "uses_build_command",
 }
-TASK_TYPE_VALUES = frozenset(
-    {"validation", "bugfix", "docs", "refactor", "exploration", "unknown"}
-)
 TASK_QUALIFIER_HINTS: dict[str, str | None] = {
     "validation": None,
     "bugfix": "node:unit",
@@ -140,7 +139,9 @@ def _select_verification_command(
         }
 
     base_candidates = [
-        candidate for candidate in candidates if ":" not in candidate["_qualifier_raw"]
+        candidate
+        for candidate in candidates
+        if is_root_scoped_qualifier(candidate["_qualifier_raw"])
     ]
     base_commands = _unique_commands(base_candidates)
     if len(base_commands) == 1:

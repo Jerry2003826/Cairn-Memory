@@ -12,6 +12,7 @@ from omni import mcp
 from omni import db
 from omni import task
 from omni import verify
+from omni._common import TASK_TYPE_VALUES
 from tests.leak_helpers import assert_no_metadata_leak
 
 
@@ -135,6 +136,16 @@ def test_mcp_lists_only_readonly_tools(tmp_path: Path) -> None:
     ]
     assert all(tool["inputSchema"]["type"] == "object" for tool in tools)
     json.dumps(list_response)
+
+
+def test_mcp_verify_plan_task_enum_uses_shared_task_type_values() -> None:
+    verify_plan_tool = next(
+        tool for tool in mcp.tools() if tool["name"] == "verify_plan"
+    )
+
+    task_schema = verify_plan_tool["inputSchema"]["properties"]["task"]
+
+    assert task_schema["enum"] == sorted(TASK_TYPE_VALUES)
 
 
 def test_mcp_tool_call_returns_structured_content(tmp_path: Path) -> None:
