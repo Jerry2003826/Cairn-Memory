@@ -103,6 +103,19 @@ def inject_claude(root: Path | str, *, mode: str) -> InjectResult:
     return inject(root, target="claude", mode=mode)
 
 
+def inject_links(root: Path | str) -> dict[str, bool]:
+    base = Path(root).resolve()
+    links: dict[str, bool] = {}
+    for name, target in TARGETS.items():
+        try:
+            path = _project_local_file(base, target)
+        except ValueError:
+            links[name] = False
+            continue
+        links[name] = _target_link_present(path, target)
+    return links
+
+
 def _project_local_file(base: Path, target: InjectTarget) -> Path:
     filename = Path(target.filename)
     if filename.name != target.filename or filename.is_absolute():
@@ -116,6 +129,27 @@ def _project_local_file(base: Path, target: InjectTarget) -> Path:
     if resolved_parent != base:
         raise ValueError(f"invalid {target.filename}: target must stay project-local")
     return path
+
+
+def _target_link_present(path: Path, target: InjectTarget) -> bool:
+    if not path.is_file():
+        return False
+    if target.name == "opencode":
+        try:
+            data = _opencode_config(
+                path.read_text(encoding="utf-8-sig"),
+                label=target.filename,
+            )
+        except (OSError, UnicodeDecodeError, ValueError):
+            return False
+        instructions = data.get("instructions")
+        return isinstance(instructions, list) and target.import_line in instructions
+
+    try:
+        body = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return target.managed_region.rstrip("\n") in body
 
 
 def _linked_text(current: str, target: InjectTarget) -> str:

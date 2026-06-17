@@ -6,7 +6,8 @@ import hashlib
 import re
 from typing import Any
 
-from omni.failure._text import MAX_ERROR_CHARS, _collapse_whitespace, _safe_text
+from omni._common import collapse_whitespace
+from omni.failure._text import MAX_ERROR_CHARS, truncate_text
 from omni.failure.meta import _nested_error_strings, _nested_get
 
 ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -34,17 +35,17 @@ def _first_meaningful_line(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     for line in value.splitlines():
-        normalized = _collapse_whitespace(ANSI_RE.sub("", line))
+        normalized = collapse_whitespace(ANSI_RE.sub("", line))
         if normalized:
             return normalized
     return None
 
 
 def _normalize_error_line(value: str) -> str:
-    normalized = _collapse_whitespace(ANSI_RE.sub("", value))
+    normalized = collapse_whitespace(ANSI_RE.sub("", value))
     normalized = WINDOWS_ABS_PATH_RE.sub("<path>", normalized)
     normalized = _mask_unix_abs_paths(normalized)
-    return _safe_text(normalized, MAX_ERROR_CHARS) or "unknown failure"
+    return truncate_text(normalized, MAX_ERROR_CHARS) or "unknown failure"
 
 
 def _mask_unix_abs_paths(value: str) -> str:

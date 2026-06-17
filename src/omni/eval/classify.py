@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from omni import db
+from omni._common import truncate_with_suffix
 from omni.eval.command_match import (
     _contains_path,
     _has_unresolved_directory_change_prefix,
     _matches_any_expected_command,
-    _normalize_command,
     _path_in_text,
+    _strip_directory_change_prefix,
     _target_detail,
 )
 from omni.eval.machine_read import surface_from_command
@@ -72,7 +73,7 @@ def evaluate_run(root: Path | str, run_id: str) -> dict[str, Any]:
         conn.close()
 
     expected_norm = [
-        _normalize_command(command, project_root=project_root)
+        _strip_directory_change_prefix(command, project_root=project_root)
         for commands in expected_commands.values()
         for command in commands
     ]
@@ -322,7 +323,10 @@ def _observed_commands(
             {
                 "seq": event["seq"],
                 "tool": event["tool"],
-                "command": _normalize_command(str(command), project_root=project_root),
+                "command": _strip_directory_change_prefix(
+                    str(command),
+                    project_root=project_root,
+                ),
             }
         )
     return observed
@@ -424,7 +428,7 @@ def _broad_scan_detail(
         return None
     if _has_unresolved_directory_change_prefix(str(command), project_root):
         return None
-    normalized = _normalize_command(str(command), project_root=project_root)
+    normalized = _strip_directory_change_prefix(str(command), project_root=project_root)
     lowered = normalized.lower()
     if (
         "get-childitem" in lowered
@@ -451,7 +455,10 @@ def _detail_for(
 ) -> str:
     command = _nested_command(input_meta)
     if command is not None:
-        return f"command: {_normalize_command(str(command), project_root=project_root)}"
+        return (
+            "command: "
+            f"{_strip_directory_change_prefix(str(command), project_root=project_root)}"
+        )
     for value in _nested_strings(input_meta):
         if target == "LS" or _path_in_text(value, target):
             return _target_detail(value, target)
@@ -498,14 +505,17 @@ def _classify(
 
 
 def _safe_detail(detail: str) -> str:
-    normalized = _normalize_command(detail)
+    normalized = _strip_directory_change_prefix(detail)
     if len(normalized) <= MAX_DETAIL_CHARS:
         return normalized
-    return normalized[: MAX_DETAIL_CHARS - 14].rstrip() + "...[truncated]"
+    return truncate_with_suffix(normalized, MAX_DETAIL_CHARS)[0]
 
 
 def _safe_command(command: str) -> str:
-    return safe_json_string(_normalize_command(command), MAX_COMMAND_CHARS)
+    return safe_json_string(
+        _strip_directory_change_prefix(command),
+        MAX_COMMAND_CHARS,
+    )
 
 
 def _limit_observed_commands(

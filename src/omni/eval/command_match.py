@@ -5,12 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from omni._common import collapse_whitespace_command
+
 PACKAGE_MANAGERS = {"bun", "npm", "pnpm", "yarn"}
 
 
-def _normalize_command(command: str, *, project_root: Path | None = None) -> str:
+def _strip_directory_change_prefix(
+    command: str,
+    *,
+    project_root: Path | None = None,
+) -> str:
     return _strip_leading_directory_changes(
-        " ".join(command.strip().split()), project_root=project_root
+        collapse_whitespace_command(command),
+        project_root=project_root,
     )
 
 
@@ -65,7 +72,7 @@ def _directory_target_exists(target: str, project_root: Path) -> bool:
 
 
 def _has_unresolved_directory_change_prefix(command: str, project_root: Path) -> bool:
-    collapsed = " ".join(command.strip().split())
+    collapsed = collapse_whitespace_command(command)
     if "&&" not in collapsed:
         return False
     head, _tail = collapsed.split("&&", 1)
@@ -78,8 +85,8 @@ def _matches_any_expected_command(observed: str, expected_commands: list[str]) -
 
 
 def _matches_expected_command(observed: str, expected: str) -> bool:
-    observed_norm = _normalize_command(observed)
-    expected_norm = _normalize_command(expected)
+    observed_norm = _strip_directory_change_prefix(observed)
+    expected_norm = _strip_directory_change_prefix(expected)
     if _matches_command_prefix(observed_norm, expected_norm):
         return True
     observed_canonical = _canonical_pm_run_command(observed_norm)
@@ -123,7 +130,7 @@ def _looks_like_path(value: str, target: str) -> bool:
 
 def _target_detail(value: str, target: str) -> str:
     if _looks_like_path(value, target):
-        return f"path: {_normalize_command(value)}"
+        return f"path: {_strip_directory_change_prefix(value)}"
     if target == "LS":
         return "directory listing"
     return f"matched: {target}"

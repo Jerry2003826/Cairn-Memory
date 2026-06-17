@@ -18,7 +18,7 @@ from omni.jsonio import decode_json_dict, redact_mapping_str, redact_text
 from omni.failure._text import (
     MAX_EXCERPT_CHARS,
     _required_redacted_text,
-    _safe_text,
+    truncate_text,
 )
 from omni.failure.command_norm import normalize_command
 from omni.failure.error_lines import (
@@ -392,7 +392,7 @@ def _candidate_spec(event: sqlite3.Row) -> dict[str, Any] | None:
         failure_kind = "unknown_failure"
     error_signature = _normalize_error_line(error_line)
     # Legacy column name: this stores a redacted signature, not raw stderr.
-    stderr_excerpt = _safe_text(redact_text(error_signature), MAX_EXCERPT_CHARS)
+    stderr_excerpt = truncate_text(redact_text(error_signature), MAX_EXCERPT_CHARS)
     signature_hash = _signature_hash(command_norm, exit_code, error_signature)
     evidence = {
         "run_id": event["run_id"],

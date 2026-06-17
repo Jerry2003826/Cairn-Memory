@@ -6,21 +6,21 @@ import json
 import math
 from pathlib import Path
 
-from omni.inject import MANAGED_REGION
+from omni.inject import inject_links
 
 
 def status_json(root: Path | str | None = None) -> str:
     base = Path(root or Path.cwd()).resolve()
-    claude = base / "CLAUDE.md"
     memory = base / ".omni" / "generated" / "memory.md"
+    links = inject_links(base)
     body = {
         "ok": True,
         "omni_dir": (base / ".omni").is_dir(),
         "config": (base / ".omni" / "config.toml").is_file(),
         "database": (base / ".omni" / "omni.sqlite3").is_file(),
         "generated_memory": memory.is_file(),
-        "claude_link": claude.is_file()
-        and MANAGED_REGION.rstrip("\n") in claude.read_text(encoding="utf-8"),
+        "inject_links": links,
+        "claude_link": links["claude"],
     }
     body.update(_hook_elapsed_summary(base))
     return json.dumps(body, sort_keys=True) + "\n"

@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from omni._common import truncate_with_suffix
 from omni.redact import redact
 
 DEFAULT_JSON_DETAIL_CHARS = 200
@@ -46,9 +47,7 @@ def is_redaction_wrapper(value: str) -> bool:
 
 def safe_json_string(value: str, max_chars: int = DEFAULT_JSON_DETAIL_CHARS) -> str:
     redacted = redact(value.encode("utf-8")).data.decode("utf-8", errors="replace")
-    if len(redacted) <= max_chars:
-        return redacted
-    return redacted[: max_chars - 14].rstrip() + "...[truncated]"
+    return truncate_with_suffix(redacted, max_chars)[0]
 
 
 def as_json(

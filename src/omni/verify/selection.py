@@ -5,9 +5,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from omni._common import TASK_TYPE_VALUES
+from omni._common import TASK_TYPE_VALUES, collapse_whitespace_command
 from omni.qualifiers import is_root_scoped_qualifier
-from omni.verify.text import MAX_COMMAND_CHARS, _safe_text
+from omni.verify.text import MAX_COMMAND_CHARS, redact_and_truncate_text
 
 VERIFY_PREDICATE = "uses_test_command"
 PROFILE_VALUES = frozenset({"default", "release", "test"})
@@ -84,7 +84,10 @@ def _select_verification_command(
 
     if qualifier is not None:
         normalized_qualifier = _normalize_qualifier(qualifier)
-        display_qualifier = _safe_text(normalized_qualifier, MAX_COMMAND_CHARS)
+        display_qualifier = redact_and_truncate_text(
+            normalized_qualifier,
+            MAX_COMMAND_CHARS,
+        )
         qualified_candidates = [
             candidate
             for candidate in candidates
@@ -256,7 +259,7 @@ def _command_candidates(rows: list[sqlite3.Row]) -> list[dict[str, str]]:
     candidates: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
     for row in rows:
-        command = _normalize_command(str(row["object_norm"]))
+        command = collapse_whitespace_command(str(row["object_norm"]))
         qualifier = _normalize_qualifier(str(row["qualifier"] or "default"))
         subject = _normalize_subject(str(row["subject"] or "."))
         key = (subject, qualifier, command)
@@ -265,11 +268,11 @@ def _command_candidates(rows: list[sqlite3.Row]) -> list[dict[str, str]]:
         seen.add(key)
         candidates.append(
             {
-                "subject": _safe_text(subject, MAX_COMMAND_CHARS),
+                "subject": redact_and_truncate_text(subject, MAX_COMMAND_CHARS),
                 "_subject_raw": subject,
-                "qualifier": _safe_text(qualifier, MAX_COMMAND_CHARS),
+                "qualifier": redact_and_truncate_text(qualifier, MAX_COMMAND_CHARS),
                 "_qualifier_raw": qualifier,
-                "command": _safe_text(command, MAX_COMMAND_CHARS),
+                "command": redact_and_truncate_text(command, MAX_COMMAND_CHARS),
                 "_command_raw": command,
             }
         )
@@ -334,10 +337,6 @@ def _limit_candidates(candidates: list[dict[str, str]]) -> tuple[list[dict[str, 
             row = {"subject": candidate["subject"], **row}
         limited.append(row)
     return limited, max(0, len(candidates) - MAX_CANDIDATE_COMMANDS)
-
-
-def _normalize_command(command: str) -> str:
-    return " ".join(command.strip().split())
 
 
 def _normalize_qualifier(qualifier: str) -> str:

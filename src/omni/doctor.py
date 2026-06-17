@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import hashlib
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from omni import db
-from omni.inject import MANAGED_REGION
+from omni.inject import inject_links
 from omni.render import HEADER_RE
 
 REQUIRED_TABLES = {
@@ -46,12 +46,14 @@ class DoctorCheck:
 class DoctorResult:
     ok: bool
     checks: tuple[DoctorCheck, ...]
+    inject_links: dict[str, bool] = field(default_factory=dict)
     experimental: bool = False
 
     def as_json(self) -> str:
         return json.dumps(
             {
                 "experimental": self.experimental,
+                "inject_links": self.inject_links,
                 "ok": self.ok,
                 "checks": [check.as_dict() for check in self.checks],
             },
@@ -63,7 +65,7 @@ def run(root: Path | str | None = None) -> DoctorResult:
     base = Path(root or Path.cwd()).resolve()
     omni_dir = base / ".omni"
     memory = omni_dir / "generated" / "memory.md"
-    claude = base / "CLAUDE.md"
+    links = inject_links(base)
     checks = (
         _check_path("omni_dir", omni_dir, is_dir=True),
         _check_path("config", omni_dir / "config.toml"),
@@ -71,10 +73,13 @@ def run(root: Path | str | None = None) -> DoctorResult:
         _check_database_schema(omni_dir / "omni.sqlite3"),
         _check_schema_version(omni_dir / "omni.sqlite3"),
         _check_generated_memory(memory),
-        _check_claude_link(claude),
         _check_path("audit_passed", omni_dir / "audit" / "secrets.passed"),
     )
-    return DoctorResult(ok=all(check.ok for check in checks), checks=checks)
+    return DoctorResult(
+        ok=all(check.ok for check in checks),
+        checks=checks,
+        inject_links=links,
+    )
 
 
 def _check_path(name: str, path: Path, *, is_dir: bool = False) -> DoctorCheck:
@@ -142,12 +147,3 @@ def _check_schema_version(path: Path) -> DoctorCheck:
             f"schema_version {current!r} != expected {expected!r}",
         )
     return DoctorCheck("schema_version", True, f"schema_version is {expected}")
-
-
-def _check_claude_link(path: Path) -> DoctorCheck:
-    if not path.is_file():
-        return DoctorCheck("claude_link", False, f"missing file: {path}")
-    body = path.read_text(encoding="utf-8", errors="replace")
-    ok = MANAGED_REGION.rstrip("\n") in body
-    message = "CLAUDE.md managed region present" if ok else "CLAUDE.md managed region missing"
-    return DoctorCheck("claude_link", ok, message)

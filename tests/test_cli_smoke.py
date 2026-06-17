@@ -742,6 +742,11 @@ def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path
     assert empty["omni_dir"] is False
     assert empty["generated_memory"] is False
     assert empty["claude_link"] is False
+    assert empty["inject_links"] == {
+        "claude": False,
+        "opencode": False,
+        "qwen": False,
+    }
     assert "hook_elapsed_ms_p50" not in empty
     assert "hook_elapsed_ms_p95" not in empty
 
@@ -755,6 +760,40 @@ def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path
     assert initialized["omni_dir"] is True
     assert initialized["generated_memory"] is False
     assert initialized["claude_link"] is False
+    assert initialized["inject_links"] == {
+        "claude": False,
+        "opencode": False,
+        "qwen": False,
+    }
+
+
+def test_status_cli_reports_multi_engine_inject_links(tmp_path: Path) -> None:
+    assert run_omni(tmp_path, "inject", "opencode", "--mode", "link").returncode == 0
+    assert run_omni(tmp_path, "inject", "qwen", "--mode", "link").returncode == 0
+
+    result = run_omni(tmp_path, "status")
+    body = json.loads(result.stdout)
+
+    assert result.returncode == 0, result.stderr
+    assert body["claude_link"] is False
+    assert body["inject_links"] == {
+        "claude": False,
+        "opencode": True,
+        "qwen": True,
+    }
+
+
+def test_status_treats_symlinked_inject_targets_as_unlinked(tmp_path: Path) -> None:
+    target = tmp_path / "outside-opencode.json"
+    target.write_text('{"instructions":[".omni/generated/memory.md"]}\n', encoding="utf-8")
+    try:
+        os.symlink(target, tmp_path / "opencode.json")
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+
+    body = json.loads(status_json(tmp_path))
+
+    assert body["inject_links"]["opencode"] is False
 
 
 def test_status_cli_discovers_project_root_from_subdirectory(tmp_path: Path) -> None:

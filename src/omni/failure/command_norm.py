@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import shlex
 
-from omni.failure._text import MAX_COMMAND_CHARS, _collapse_whitespace, _safe_text
+from omni._common import collapse_whitespace
+from omni.failure._text import MAX_COMMAND_CHARS, truncate_text
 
 
 def normalize_command(command: str | None) -> str | None:
@@ -18,13 +19,13 @@ def normalize_command(command: str | None) -> str | None:
     known = _known_command_norm(lowered)
     if known is not None:
         return known
-    return _safe_text(collapsed, MAX_COMMAND_CHARS)
+    return truncate_text(collapsed, MAX_COMMAND_CHARS)
 
 
 def _normalizable_command(command: str | None) -> str | None:
     if command is None:
         return None
-    collapsed = _primary_command_segment(_collapse_whitespace(command))
+    collapsed = _primary_command_segment(collapse_whitespace(command))
     return collapsed or None
 
 
@@ -121,7 +122,7 @@ def _split_shell_segments(command: str) -> list[str]:
 
 
 def _append_segment(segments: list[str], current: list[str]) -> None:
-    segment = _collapse_whitespace("".join(current))
+    segment = collapse_whitespace("".join(current))
     if segment:
         segments.append(segment)
 

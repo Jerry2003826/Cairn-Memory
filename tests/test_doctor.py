@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,11 @@ def test_doctor_reports_initialized_project(tmp_path: Path) -> None:
     assert names["database_schema"] is True
     assert names["schema_version"] is True
     assert names["generated_memory"] is False
+    assert result.inject_links == {
+        "claude": False,
+        "opencode": False,
+        "qwen": False,
+    }
 
 
 def test_doctor_reports_outdated_schema_version(tmp_path: Path) -> None:
@@ -65,8 +71,14 @@ def test_cli_doctor_outputs_json(
 
     code = cli.main(["doctor"])
     captured = capsys.readouterr()
+    body = json.loads(captured.out)
 
     assert code == 1
     assert captured.err == ""
     assert '"checks"' in captured.out
     assert '"experimental": false' in captured.out
+    assert body["inject_links"] == {
+        "claude": False,
+        "opencode": False,
+        "qwen": False,
+    }

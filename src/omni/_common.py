@@ -36,6 +36,25 @@ def merge_redaction_status(*statuses: str) -> str:
     return "clean"
 
 
+TRUNCATION_SUFFIX = "...[truncated]"
+
+
+def truncate_with_suffix(value: str, max_chars: int) -> tuple[str, bool]:
+    if max_chars <= len(TRUNCATION_SUFFIX):
+        raise ValueError("max_chars must be longer than the truncation suffix")
+    if len(value) <= max_chars:
+        return value, False
+    return value[: max_chars - len(TRUNCATION_SUFFIX)].rstrip() + TRUNCATION_SUFFIX, True
+
+
+def collapse_whitespace(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def collapse_whitespace_command(command: str) -> str:
+    return collapse_whitespace(command)
+
+
 TASK_TYPE_VALUES = frozenset({"validation", "bugfix", "docs", "refactor", "exploration", "unknown"})
 MEMORY_EFFECT_VALUES = frozenset({"helped", "neutral", "failed_to_help", "unknown"})
 OUTCOME_STATUS_VALUES = frozenset({"success", "failed", "unknown"})

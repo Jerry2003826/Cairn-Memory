@@ -6,6 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
+from omni._common import collapse_whitespace_command
 from omni.gate import FactCandidate
 
 ORIGIN = "observed_command@1"
@@ -26,7 +27,7 @@ def detect(conn: sqlite3.Connection) -> list[FactCandidate]:
         command = _command_from_meta(row["meta"])
         if command is None:
             continue
-        command = _normalize_command(command)
+        command = collapse_whitespace_command(command)
         mapped = _classify(command)
         if mapped is None:
             continue
@@ -92,10 +93,6 @@ def _nested_command(value: Any) -> Any:
             if found is not None:
                 return found
     return None
-
-
-def _normalize_command(command: str) -> str:
-    return " ".join(command.strip().split())
 
 
 def _classify(command: str) -> tuple[str, str] | None:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from typing import Any
 
+from omni._common import collapse_whitespace
 from omni.jsonio import redact_text
 from omni.qualifiers import is_root_scoped_qualifier
 
@@ -394,18 +395,18 @@ def _render_experience_note_line(
             "- For validation tasks, prefer the known verification command early.",
         )
 
-    action = _collapse_whitespace(str(note["suggested_action"] or ""))
+    action = collapse_whitespace(str(note["suggested_action"] or ""))
     if not action:
-        action = _collapse_whitespace(str(note["body"] or ""))
+        action = collapse_whitespace(str(note["body"] or ""))
     if not action:
         return None
     return ("Experience Notes", f"- {action}")
 
 
 def _render_preference_note_line(note: sqlite3.Row) -> tuple[str, str] | None:
-    action = _collapse_whitespace(str(note["suggested_action"] or ""))
+    action = collapse_whitespace(str(note["suggested_action"] or ""))
     if not action:
-        action = _collapse_whitespace(str(note["body"] or ""))
+        action = collapse_whitespace(str(note["body"] or ""))
     if not action:
         return None
     return ("Preferences", f"- {action}")
@@ -444,12 +445,12 @@ def _validation_test_first_commands_line(
 
 
 def _render_failure_pattern_line(pattern: sqlite3.Row) -> tuple[str, str] | None:
-    error_signature = _collapse_whitespace(str(pattern["error_signature"] or ""))
+    error_signature = collapse_whitespace(str(pattern["error_signature"] or ""))
     suggested_action = _plain_text(str(pattern["suggested_action"] or ""))
     if not error_signature or not suggested_action:
         return None
 
-    command = _collapse_whitespace(str(pattern["command_norm"] or ""))
+    command = collapse_whitespace(str(pattern["command_norm"] or ""))
     if command:
         return (
             "Known Failures",
@@ -507,7 +508,7 @@ def _known_post_test_commands(facts: list[sqlite3.Row]) -> tuple[str, ...]:
 
 def _known_command_for_predicate(facts: list[sqlite3.Row], predicate: str) -> str | None:
     matching_facts = [
-        (str(fact["qualifier"]), _collapse_whitespace(str(fact["object_norm"])))
+        (str(fact["qualifier"]), collapse_whitespace(str(fact["object_norm"])))
         for fact in facts
         if fact["predicate"] == predicate
     ]
@@ -585,15 +586,11 @@ def _inline_command_list(commands: tuple[str, ...], *, conjunction: str = "or") 
 
 
 def _inline_code(value: str) -> str:
-    return f"`{_collapse_whitespace(value).replace('`', '')}`"
+    return f"`{collapse_whitespace(value).replace('`', '')}`"
 
 
 def _plain_text(value: str) -> str:
-    return _collapse_whitespace(value).replace("`", "")
-
-
-def _collapse_whitespace(value: str) -> str:
-    return " ".join(value.split())
+    return collapse_whitespace(value).replace("`", "")
 
 
 def _qualifier_label(qualifier: str) -> str:
