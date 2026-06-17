@@ -126,7 +126,11 @@ def run_preflight(
         )
         return result
 
-    assert isinstance(exit_code, int)
+    if not isinstance(exit_code, int):
+        raise RuntimeError(
+            "verification runner returned a non-integer exit code without "
+            f"timing out: {exit_code!r}"
+        )
     result.update(
         {
             "status": "passed" if exit_code == 0 else "failed",
