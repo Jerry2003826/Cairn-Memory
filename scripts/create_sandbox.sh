@@ -6,7 +6,7 @@ mkdir -p "$target"
 cd "$target"
 
 if [ ! -d .git ]; then
-  git init >/dev/null
+  git init -q >/dev/null
 fi
 
 cat > package.json <<'JSON'

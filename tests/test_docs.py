@@ -729,6 +729,38 @@ def test_qwen_code_v0_adapter_doc_records_boundary_and_acceptance() -> None:
     assert "Jiarui" not in text
 
 
+def test_customer_trial_doc_covers_pilot_scope_and_recovery() -> None:
+    doc = REPO_ROOT / "docs" / "customer-trial.md"
+
+    text = doc.read_text(encoding="utf-8")
+
+    for phrase in (
+        "Cairn Memory Customer Trial Pack",
+        "without requiring a real agent account",
+        "What This Trial Proves",
+        "What This Trial Does Not Prove",
+        "bash scripts/customer_trial_demo.sh",
+        ".customer-trial/report.json",
+        "\"dogfood_improvement\": true",
+        "scripts/mcp_client_acceptance.py",
+        "memory_read",
+        "failure_read",
+        "verify_plan",
+        "task_read",
+        "cairn inject claude --mode link",
+        "cairn inject opencode --mode link",
+        "cairn inject qwen --mode link",
+        "no write-capable external surface",
+        "delete the disposable sandbox",
+        "choose a fresh path",
+    ):
+        assert phrase in text
+
+    assert "PENDING" not in text
+    assert "C:\\Users" not in text
+    assert "Jiarui" not in text
+
+
 def test_minimal_linux_ci_workflow_runs_pytest_on_311_and_312() -> None:
     workflow = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 

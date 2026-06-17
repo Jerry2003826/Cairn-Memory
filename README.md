@@ -294,6 +294,17 @@ python scripts/mcp_client_acceptance.py --root <project>
 It launches `cairn mcp serve`, initializes the MCP session, lists tools, and
 calls all four read-only tools through stdin/stdout.
 
+For customer pilots, use the no-agent trial pack:
+
+```powershell
+bash scripts/customer_trial_demo.sh
+```
+
+It creates a disposable sandbox, runs the governed memory loop with synthetic
+transcripts, verifies read-only MCP access, audits secrets, and writes a compact
+report at `.customer-trial/report.json`. See
+[`docs/customer-trial.md`](docs/customer-trial.md).
+
 ## 🏗️ Architecture
 
 State is a small SQLite database plus a redacted spool, all under `.omni/`.
@@ -344,6 +355,7 @@ These are hard rules — a violation is grounds for reverting the change:
 - [`docs/cli-only-claude-code-v1-release-notes.md`](docs/cli-only-claude-code-v1-release-notes.md) — what shipped
 - [`docs/cli-only-claude-code-v1-closeout-2026-06-15.md`](docs/cli-only-claude-code-v1-closeout-2026-06-15.md) — dogfood evidence
 - [`docs/phase-c-final-delivery-2026-06-16.md`](docs/phase-c-final-delivery-2026-06-16.md) — Phase C OpenCode multi-sample delivery evidence
+- [`docs/customer-trial.md`](docs/customer-trial.md) — customer pilot runbook and no-agent trial pack
 - [`docs/cairn-memory-phase-b-charter-2026-06-15.md`](docs/cairn-memory-phase-b-charter-2026-06-15.md) · [`docs/cairn-memory-phase-c-charter.md`](docs/cairn-memory-phase-c-charter.md) — governed expansion records
 - [`docs/experience-memory-v0.md`](docs/experience-memory-v0.md) · [`docs/failure-memory-v0.md`](docs/failure-memory-v0.md) — memory model
 

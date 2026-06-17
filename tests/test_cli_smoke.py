@@ -1473,3 +1473,62 @@ echo "fake claude ran tests"
     assert "G6 robust: 3/3" in result.stdout
     assert (target / ".omni" / "generated" / "memory.md").is_file()
     assert "@.omni/generated/memory.md" in (target / "CLAUDE.md").read_text(encoding="utf-8")
+
+
+def test_customer_trial_demo_script_declares_no_agent_trial_pack() -> None:
+    script = (REPO_ROOT / "scripts" / "customer_trial_demo.sh").read_text(encoding="utf-8")
+
+    for phrase in (
+        "create_sandbox.sh",
+        "customer_trial_cold",
+        "customer_trial_warm",
+        "eval dogfood",
+        "mcp_client_acceptance.py",
+        "inject claude --mode link",
+        "inject opencode --mode link",
+        "inject qwen --mode link",
+        ".customer-trial/report.json",
+        "target already contains .omni",
+    ):
+        assert phrase in script
+
+
+def test_customer_trial_demo_script_runs_without_external_agent(tmp_path: Path) -> None:
+    bash_check = subprocess.run(
+        ["bash", "-lc", "true"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if bash_check.returncode != 0:
+        pytest.skip(f"bash is not usable: {bash_check.stderr.strip()}")
+
+    target = tmp_path / "customer-trial"
+    env = os.environ.copy()
+    env["PYTHON_BIN"] = sys.executable
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+
+    result = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "customer_trial_demo.sh"), str(target)],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "customer_trial_report:" in result.stdout
+    report = json.loads((target / ".customer-trial" / "report.json").read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["dogfood_improvement"] is True
+    assert report["mcp_ok"] is True
+    assert report["audit_ok"] is True
+    assert report["mcp_tools"] == ["memory_read", "failure_read", "verify_plan", "task_read"]
+    assert report["verify_command"] == "pnpm run test"
+    assert "memory_read" in report["warm_machine_read_surfaces"]
+    assert "verify_plan" in report["warm_machine_read_surfaces"]
+    assert (target / ".omni" / "generated" / "memory.md").is_file()
+    assert "@.omni/generated/memory.md" in (target / "CLAUDE.md").read_text(encoding="utf-8")
+    assert ".omni/generated/memory.md" in (target / "opencode.json").read_text(encoding="utf-8")
+    assert "@.omni/generated/memory.md" in (target / "QWEN.md").read_text(encoding="utf-8")
