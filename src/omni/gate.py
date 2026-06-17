@@ -55,6 +55,7 @@ class GateResult:
     auto_committed: int
     pending: int
     detector_errors: int = 0
+    detector_error_names: tuple[str, ...] = ()
 
 
 def extract_static_facts(
@@ -65,15 +66,18 @@ def extract_static_facts(
     root = Path(repo).resolve()
     candidates: list[FactCandidate] = []
     detector_errors = 0
+    detector_error_names: list[str] = []
     for detector in (pm.detect, scripts.detect):
         try:
             candidates.extend(detector(root))
         except Exception:
             detector_errors += 1
+            detector_error_names.append(f"{detector.__module__}.{detector.__qualname__}")
             continue
     return replace(
         apply_candidates(conn, candidates, commit=commit),
         detector_errors=detector_errors,
+        detector_error_names=tuple(detector_error_names),
     )
 
 

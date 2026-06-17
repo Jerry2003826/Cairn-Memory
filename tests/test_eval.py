@@ -10,6 +10,9 @@ from omni import cli
 from omni import db
 import omni.eval as eval_module
 import omni.redact as redact_module
+from omni.eval.classify import MAX_COMMAND_CHARS, _expected_commands_summary
+from omni.eval.command_match import _path_in_text
+from omni.eval.machine_read import surface_from_command
 
 
 def test_eval_run_reports_helped_when_expected_command_precedes_rediscovery(
@@ -943,6 +946,66 @@ def test_eval_json_redacts_final_output(tmp_path: Path) -> None:
 
     assert secret not in encoded
     assert "REDACTED:" in encoded
+
+
+@pytest.mark.parametrize(
+    ("command", "surface"),
+    [
+        ("cairn memory read", "memory_read"),
+        ("omni failure read", "failure_read"),
+        ("uv run cairn verify plan", "verify_plan"),
+        ("uv run omni task read", "task_read"),
+        ("python -m omni.cli memory read", "memory_read"),
+        ("python3 -m omni.cli failure read", "failure_read"),
+        ("/usr/local/bin/cairn memory read", "memory_read"),
+        ("./venv/bin/omni verify plan", "verify_plan"),
+        ("env PYTHONPATH=/repo/src uv run cairn memory read", "memory_read"),
+    ],
+)
+def test_surface_from_command_recognizes_cairn_invocations(
+    command: str, surface: str
+) -> None:
+    assert surface_from_command(command) == surface
+
+
+def test_surface_from_command_ignores_unrelated_commands() -> None:
+    assert surface_from_command("pnpm run test") is None
+    assert surface_from_command("uv run pytest") is None
+    assert surface_from_command("python -m pytest") is None
+
+
+@pytest.mark.parametrize(
+    ("value", "target", "matches"),
+    [
+        ("cat README.md", "README.md", True),
+        ("MYREADME.md", "README.md", False),
+        ("mypackage.json", "package.json", False),
+        ("packages/app/package.json", "package.json", True),
+        (".omni/generated/memory.md", ".omni/generated/memory.md", True),
+        ("Read(opencode.json)", "opencode.json", True),
+    ],
+)
+def test_path_in_text_uses_word_boundaries_not_substrings(
+    value: str, target: str, matches: bool
+) -> None:
+    assert _path_in_text(value, target) is matches
+
+
+def test_expected_commands_summary_truncates_like_max_command_chars() -> None:
+    long_command = "pnpm run test " + ("x" * 300)
+    summary = _expected_commands_summary(
+        {
+            "active_expected_commands": {
+                "uses_test_command": [long_command],
+                "uses_build_command": [],
+                "uses_lint_command": [],
+                "uses_typecheck_command": [],
+            }
+        }
+    )
+
+    assert len(summary) <= MAX_COMMAND_CHARS
+    assert summary.endswith("...[truncated]")
 
 
 def _fixture_db(root: Path) -> sqlite3.Connection:

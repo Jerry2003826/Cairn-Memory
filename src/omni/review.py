@@ -9,6 +9,7 @@ from typing import Callable
 
 from omni._common import now_iso
 from omni import gate
+from omni.jsonio import decode_json_dict
 
 
 @dataclass(frozen=True)
@@ -165,6 +166,9 @@ def _candidate_from_row(row: sqlite3.Row) -> gate.FactCandidate:
         trust=row["trust"],
         sensitivity="low",
         origin=row["extractor_version"],
-        evidence=json.loads(row["evidence"]),
+        evidence=decode_json_dict(
+            row["evidence"],
+            default={"decode_error": "invalid_json"},
+        ),
         conflict_with=row["conflict_with"],
     )

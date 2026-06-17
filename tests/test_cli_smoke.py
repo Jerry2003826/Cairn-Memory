@@ -15,9 +15,10 @@ from types import SimpleNamespace
 import pytest
 
 from omni import cli
+from omni import config
 from omni import hook
 from omni.ingest import IngestResult
-from omni.ids import project_id_for_path
+from omni.ids import _git_origin_url, project_id_for_path
 from omni.status import status_json
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +113,42 @@ def test_init_adds_entire_omni_ignore_when_narrow_entry_exists(tmp_path: Path) -
     assert ".claude/*.omni-tmp" not in gitignore
     assert ".claude/settings.json.omni-bak" not in gitignore
     assert ".omni/project_id" not in gitignore
+
+
+def test_ensure_gitignore_entry_uses_atomic_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_write_text = Path.write_text
+
+    def fail_direct_gitignore_write(self: Path, *args: object, **kwargs: object) -> int:
+        if self.name == ".gitignore" and not self.name.endswith(".tmp"):
+            raise AssertionError("gitignore must be written through a temp file")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_direct_gitignore_write)
+
+    assert config.ensure_gitignore_entry(tmp_path, (".omni/",)) is True
+    assert ".omni/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_git_origin_url_uses_subprocess_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["timeout"] = kwargs.get("timeout")
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="https://github.com/example/repo.git\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert _git_origin_url(tmp_path) == "https://github.com/example/repo.git"
+    assert captured["timeout"] == 5
 
 
 def test_ingest_does_not_modify_existing_gitignore(tmp_path: Path) -> None:
@@ -741,7 +778,8 @@ def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path
     assert empty_status.returncode == 0, empty_status.stderr
     assert not (tmp_path / ".omni").exists()
     empty = json.loads(empty_status.stdout)
-    assert empty["ok"] is True
+    assert empty["ok"] is False
+    assert empty["initialized"] is False
     assert empty["omni_dir"] is False
     assert empty["generated_memory"] is False
     assert empty["claude_link"] is False
@@ -759,8 +797,10 @@ def test_status_cli_reports_project_state_without_creating_layout(tmp_path: Path
     assert init.returncode == 0, init.stderr
     assert initialized_status.returncode == 0, initialized_status.stderr
     initialized = json.loads(initialized_status.stdout)
-    assert initialized["ok"] is True
+    assert initialized["ok"] is False
+    assert initialized["initialized"] is False
     assert initialized["omni_dir"] is True
+    assert initialized["database"] is False
     assert initialized["generated_memory"] is False
     assert initialized["claude_link"] is False
     assert initialized["inject_links"] == {
@@ -856,9 +896,11 @@ def test_status_skips_spool_files_that_disappear_during_scan(
 
     monkeypatch.setattr(Path, "read_text", flaky_read_text)
 
+    (tmp_path / ".omni" / "omni.sqlite3").write_bytes(b"")
     body = json.loads(status_json(tmp_path))
 
     assert body["ok"] is True
+    assert body["initialized"] is True
     assert "hook_elapsed_ms_p50" not in body
 
 
@@ -1237,6 +1279,55 @@ def test_ingest_cli_reports_static_fact_detector_errors(
     assert code == 0
     assert "static_fact_detector_errors=1" in captured.out
     assert captured.err == ""
+
+
+def test_ingest_cli_reports_static_fact_skipped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_ingest(*_args, **_kwargs) -> IngestResult:
+        return IngestResult(
+            run_ids=("run_skipped",),
+            events_inserted=1,
+            queue_drained=0,
+            static_fact_skipped=True,
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "project_root", lambda: tmp_path)
+    monkeypatch.setattr("omni.ingest.ingest", fake_ingest)
+
+    code = cli.main(["ingest", "run_skipped"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "static_fact_skipped=True" in captured.out
+
+
+def test_ingest_cli_reports_static_fact_detector_error_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_ingest(*_args, **_kwargs) -> IngestResult:
+        return IngestResult(
+            run_ids=("run_detector_names",),
+            events_inserted=0,
+            queue_drained=0,
+            static_fact_detector_errors=1,
+            static_fact_detector_error_names=("omni.extract.pm.detect",),
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "project_root", lambda: tmp_path)
+    monkeypatch.setattr("omni.ingest.ingest", fake_ingest)
+
+    code = cli.main(["ingest", "run_detector_names"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "static_fact_detector_error_names=omni.extract.pm.detect" in captured.out
 
 
 def test_run_show_cli_missing_db_is_read_only_and_clear(tmp_path: Path) -> None:

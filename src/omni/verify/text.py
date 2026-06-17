@@ -33,10 +33,6 @@ def redact_and_truncate_text_with_flag(value: str, max_chars: int) -> tuple[str,
     return truncate_with_suffix(normalized, max_chars)
 
 
-def _sanitize_for_json(value: str) -> str:
-    return redact_and_truncate_text(value, MAX_OUTPUT_CHARS)
-
-
 def _to_text(value: str | bytes | None) -> str:
     if value is None:
         return ""

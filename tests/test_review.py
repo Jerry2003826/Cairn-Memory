@@ -439,3 +439,18 @@ def test_review_interactive_no_pending_candidates(tmp_path: Path) -> None:
         skipped=0,
         remaining=0,
     )
+
+
+def test_review_pending_candidates_tolerate_corrupt_evidence_json(tmp_path: Path) -> None:
+    conn = connect(tmp_path)
+    pending = gate.stage_candidate(conn, candidate("corrupt-evidence"))
+    conn.execute(
+        "UPDATE fact_candidates SET evidence = ? WHERE cand_id = ?",
+        ("not-json", pending.cand_id),
+    )
+    conn.commit()
+
+    loaded = review._pending_candidates(conn)
+
+    assert len(loaded) == 1
+    assert loaded[0].evidence == {"decode_error": "invalid_json"}

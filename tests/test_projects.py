@@ -37,6 +37,46 @@ def test_status_all_is_read_only_aggregate(tmp_path: Path, monkeypatch: pytest.M
     project = summary["projects"][0]
     assert project["root"] == str(project_a.resolve())
     assert project["omni_dir"] is True
+    assert project["ok"] is False
+    assert project["initialized"] is False
+
+
+def test_status_all_marks_missing_registered_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "missing_repo"
+    registry = tmp_path / "registry" / "projects.json"
+    monkeypatch.setattr(projects, "registry_path", lambda: registry)
+    projects.register(missing)
+
+    summary = projects.status_all()
+
+    assert summary["count"] == 1
+    project = summary["projects"][0]
+    assert project == {
+        "root": str(missing.resolve()),
+        "ok": False,
+        "missing": True,
+    }
+
+
+def test_status_all_marks_initialized_project_ok(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_a = tmp_path / "repo_a"
+    project_a.mkdir()
+    (project_a / ".omni").mkdir()
+    (project_a / ".omni" / "omni.sqlite3").write_bytes(b"")
+    registry = tmp_path / "registry" / "projects.json"
+    monkeypatch.setattr(projects, "registry_path", lambda: registry)
+    projects.register(project_a)
+
+    summary = projects.status_all()
+
+    project = summary["projects"][0]
+    assert project["ok"] is True
+    assert project["initialized"] is True
+    assert project.get("missing") is None
 
 
 def test_cli_project_register_and_status_all(

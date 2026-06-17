@@ -551,7 +551,8 @@ def _expected_commands_summary(result: dict[str, Any]) -> str:
         for predicate in EXPECTED_PREDICATES
         for command in result["active_expected_commands"].get(predicate, [])
     ]
-    return ", ".join(commands) if commands else "none"
+    summary = ", ".join(commands) if commands else "none"
+    return safe_json_string(summary, MAX_COMMAND_CHARS)
 
 
 def _rediscovery_kinds(result: dict[str, Any]) -> str:

@@ -61,10 +61,11 @@ def serve_stdio(
                 try:
                     response = handle_request(root, request)
                 except Exception as exc:
+                    print(f"cairn mcp internal error: {exc}", file=sys.stderr)
                     response = _error(
                         request.get("id"),
                         JSONRPC_INTERNAL_ERROR,
-                        f"Internal error: {exc}",
+                        "Internal error",
                     )
         if response is None:
             continue

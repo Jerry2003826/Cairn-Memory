@@ -70,6 +70,15 @@ def list_registered() -> dict[str, object]:
 def status_all() -> dict[str, object]:
     projects: list[dict[str, object]] = []
     for path in load_paths():
+        if not path.exists():
+            projects.append(
+                {
+                    "root": str(path),
+                    "ok": False,
+                    "missing": True,
+                }
+            )
+            continue
         entry = json.loads(status_json(path))
         entry["root"] = str(path)
         projects.append(entry)

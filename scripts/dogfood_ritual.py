@@ -32,7 +32,10 @@ import argparse
 import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _run_cli(args: list[str]) -> dict[str, Any]:
     proc = subprocess.run(
         [sys.executable, "-m", "omni.cli", *args],
+        cwd=REPO_ROOT,
         text=True,
         capture_output=True,
     )

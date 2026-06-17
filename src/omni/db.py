@@ -50,6 +50,11 @@ def migrate(conn: sqlite3.Connection) -> None:
         if int(version) > current_int:
             _apply_migration(conn, filename)
     conn.commit()
+    final = _current_schema_version(conn)
+    if final != LATEST_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"schema_version is {final!r}, expected {LATEST_SCHEMA_VERSION!r}"
+        )
 
 
 def _apply_migration(conn: sqlite3.Connection, filename: str) -> None:

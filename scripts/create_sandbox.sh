@@ -61,6 +61,6 @@ node_modules/
 GITIGNORE
 
 git add package.json pnpm-lock.yaml test.js build.js CLAUDE.md .gitignore >/dev/null
-git -c user.name='Cairn Sandbox' -c user.email='omni-sandbox@local.invalid' commit -m 'sandbox init' >/dev/null 2>&1 || true
+git -c user.name='Cairn Sandbox' -c user.email='omni-sandbox@local.invalid' commit -m 'sandbox init' >/dev/null 2>&1
 
 printf '%s\n' "$PWD"

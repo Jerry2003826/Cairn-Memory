@@ -258,7 +258,24 @@ def test_memory_effect_omitted_uses_eval_safely_when_available(
     assert result["memory_effect"] == "helped"
 
 
-def test_memory_effect_omitted_defaults_unknown_when_eval_not_feasible(
+def test_memory_effect_omitted_defaults_unknown_when_eval_raises_expected_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _fixture_db(tmp_path)
+    _insert_run(conn, "run_eval_sqlite_error")
+
+    def fail_evaluate_run(root: Path | str, run_id: str) -> dict[str, object]:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(outcome.behavior_eval, "evaluate_run", fail_evaluate_run)
+
+    result = outcome.mark_outcome(conn, "run_eval_sqlite_error")
+
+    assert result["memory_effect"] == "unknown"
+    assert result["evidence"]["eval_error"] == "database is locked"
+
+
+def test_memory_effect_omitted_reraises_unexpected_eval_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     conn = _fixture_db(tmp_path)
@@ -269,9 +286,8 @@ def test_memory_effect_omitted_defaults_unknown_when_eval_not_feasible(
 
     monkeypatch.setattr(outcome.behavior_eval, "evaluate_run", fail_evaluate_run)
 
-    result = outcome.mark_outcome(conn, "run_eval_error")
-
-    assert result["memory_effect"] == "unknown"
+    with pytest.raises(RuntimeError, match="eval unavailable"):
+        outcome.mark_outcome(conn, "run_eval_error")
 
 
 def test_mark_outcome_from_verify_passed_records_tests_without_success_inference(

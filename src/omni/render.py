@@ -100,9 +100,7 @@ def read_view(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         items: list[str] = []
         for _dep, line in entries:
-            redacted = redact_text(line)
-            if redacted is not None:
-                items.append(redacted)
+            items.append(redact_text(line))
         output_sections.append({"kind": section, "items": items})
     if _truncation_notice_shown(output_lines):
         if output_sections:

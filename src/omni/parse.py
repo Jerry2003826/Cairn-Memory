@@ -36,6 +36,7 @@ UNKNOWN_SHAPE_REASONS = {
     "opencode": "unknown_opencode_shape",
     "qwen": "unknown_qwen_shape",
 }
+QWEN_ARCHIVED_EVENT_TYPES = frozenset({"result", "system", "stream_event"})
 
 
 @dataclass(frozen=True)
@@ -184,10 +185,14 @@ def _normalize_event(
     *,
     engine: str,
 ) -> _LineOutcome:
-    normalizer = ENGINE_NORMALIZERS.get(engine, _normalize_generic_events)
+    normalizer = ENGINE_NORMALIZERS.get(engine)
+    if normalizer is None:
+        return _LineOutcome([], archive_reason=_unknown_shape_reason(engine))
     events = normalizer(seq, row)
     if events is None:
         return _LineOutcome([], archive_reason=_unknown_shape_reason(engine))
+    if not events and engine == "qwen" and _event_type(row) in QWEN_ARCHIVED_EVENT_TYPES:
+        return _LineOutcome([], archive_reason="qwen_non_tool_line")
     return _LineOutcome(events)
 
 
@@ -275,7 +280,7 @@ def _normalize_qwen_tool_events(seq: int, row: dict[str, Any]) -> list[Normalize
         return _normalize_qwen_user_tool_results(seq, row)
     if event_type == "tool_use":
         return _normalize_qwen_direct_tool_use(seq, row)
-    if event_type in {"result", "system", "stream_event"}:
+    if event_type in QWEN_ARCHIVED_EVENT_TYPES:
         return []
     return None
 

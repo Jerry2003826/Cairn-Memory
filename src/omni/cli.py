@@ -669,6 +669,13 @@ def _cmd_ingest(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
     )
     if result.static_fact_detector_errors:
         summary += f" static_fact_detector_errors={result.static_fact_detector_errors}"
+    if result.static_fact_detector_error_names:
+        summary += (
+            " static_fact_detector_error_names="
+            f"{','.join(result.static_fact_detector_error_names)}"
+        )
+    if result.static_fact_skipped:
+        summary += " static_fact_skipped=True"
     _print_diff(summary + "\n")
     return 0
 
@@ -727,6 +734,8 @@ def _cmd_review(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
             parser.error(f"unknown review command: {args.review_command}")
             return 2
     finally:
+        if conn.in_transaction:
+            conn.rollback()
         conn.close()
     _print_diff(result.as_json())
     return 0

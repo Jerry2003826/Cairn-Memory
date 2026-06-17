@@ -8,7 +8,7 @@ Cairn Memory is a local governed memory layer for AI coding agents. It makes
 Claude Code learn from its own runs, then exposes that knowledge through
 review-gated CLI and machine-read surfaces.
 
-[![CI](https://github.com/Jerry2003826/OmniAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/Jerry2003826/OmniAgent/actions/workflows/ci.yml)
+[![CI](https://github.com/Jerry2003826/Cairn-Memory/actions/workflows/ci.yml/badge.svg)](https://github.com/Jerry2003826/Cairn-Memory/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 ![Runtime deps](https://img.shields.io/badge/runtime%20deps-0-success.svg)
 ![Status](https://img.shields.io/badge/status-Phase%20C%20partial-blueviolet.svg)

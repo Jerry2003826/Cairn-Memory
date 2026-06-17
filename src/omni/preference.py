@@ -45,13 +45,20 @@ def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             continue
         pref_cand_id = new_id("pref_cand")
         now = now_iso()
-        conn.execute(
+        # The NOT EXISTS guard re-checks source_cand_id inside the write statement so
+        # two concurrent extracts cannot both pass _candidate_exists_for_source and
+        # insert duplicate candidates for the same fact candidate.
+        inserted = conn.execute(
             """
             INSERT INTO preference_candidates(
               pref_cand_id, source_cand_id, scope, kind, predicate, qualifier,
               body, suggested_action, evidence, state, created_at, reviewed_at,
               review_note
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            )
+            SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
+            WHERE NOT EXISTS(
+              SELECT 1 FROM preference_candidates WHERE source_cand_id = ?
+            )
             """,
             (
                 pref_cand_id,
@@ -67,8 +74,11 @@ def extract_candidates(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 now,
                 None,
                 None,
+                row["cand_id"],
             ),
         )
+        if inserted.rowcount == 0:
+            continue
         created.append(show_candidate(conn, pref_cand_id))
     conn.commit()
     return created

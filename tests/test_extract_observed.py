@@ -180,3 +180,79 @@ def test_observed_command_reads_reconciled_transcript_or_hook_meta(tmp_path: Pat
             "state": "pending",
         }
     ]
+
+
+def test_observed_command_detects_lowercase_bash_tool(tmp_path: Path) -> None:
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "bash-run",
+                "timestamp": "2026-06-11T00:00:00Z",
+                "tool_use_id": "toolu_bash",
+                "tool": "bash",
+                "tool_input": {"command": "pnpm run test"},
+                "tool_response": {"stdout": "ok", "stderr": ""},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "bash-run",
+                "transcript_path": None,
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    ingest.ingest(root=tmp_path)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    from omni.extract import observed
+
+    candidates = observed.detect(conn)
+    conn.close()
+
+    assert len(candidates) == 1
+    assert candidates[0].object_norm == "pnpm run test"
+    assert candidates[0].predicate == "uses_test_command"
+
+
+def test_observed_command_detects_run_shell_command_tool(tmp_path: Path) -> None:
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "PostToolUse",
+                "session_id": "shell-run",
+                "timestamp": "2026-06-11T00:00:00Z",
+                "tool_use_id": "toolu_shell",
+                "tool": "run_shell_command",
+                "tool_input": {"command": "pytest"},
+                "tool_response": {"stdout": "ok", "stderr": ""},
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+    hook.capture_hook(
+        json.dumps(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "shell-run",
+                "transcript_path": None,
+            }
+        ).encode("utf-8"),
+        root=tmp_path,
+    )
+
+    ingest.ingest(root=tmp_path)
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    from omni.extract import observed
+
+    candidates = observed.detect(conn)
+    conn.close()
+
+    assert len(candidates) == 1
+    assert candidates[0].object_norm == "pytest"
+    assert candidates[0].predicate == "uses_test_command"

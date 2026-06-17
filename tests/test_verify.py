@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from omni import cli
 from omni import db
 from omni import verify
 from omni.dbaccess import connect_project_readonly_verify
+from omni.verify import process as verify_process
 
 
 def test_verify_preflight_runs_selected_test_command(tmp_path: Path) -> None:
@@ -553,6 +555,33 @@ def test_terminate_process_tree_kills_direct_posix_process_if_group_kill_misses(
         ("killpg", 1234, 9),
         ("kill", 1234, None),
     ]
+
+
+def test_run_process_flags_reader_incomplete_when_join_times_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def slow_read(stream: object, buffer: bytearray, truncated: list[bool]) -> None:
+        time.sleep(10)
+        if stream is not None and hasattr(stream, "close"):
+            stream.close()
+
+    monkeypatch.setattr(verify_process, "_read_limited", slow_read)
+
+    script = _script(
+        tmp_path,
+        "reader_ok.py",
+        "import time\nprint('verify ok', flush=True)\n",
+    )
+    result = verify._run_process(
+        [sys.executable, str(script)],
+        tmp_path,
+        timeout_seconds=5,
+    )
+
+    assert result["reader_incomplete"] is True
+    assert result["stdout_capture_truncated"] is True
+    assert result["stderr_capture_truncated"] is True
 
 
 def test_verify_preflight_reports_timeout_with_reason_code(tmp_path: Path) -> None:

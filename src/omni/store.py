@@ -33,6 +33,7 @@ def put_artifact(
     data: bytes,
 ) -> StoredArtifact:
     base = Path(root).resolve()
+    _cleanup_stale_artifact_temps(base / ".omni" / "artifacts")
     redaction = redact(data)
     content = redaction.data
     digest = hashlib.sha256(content).hexdigest()
@@ -88,6 +89,19 @@ def _artifact_file_is_valid(path: Path, digest: str) -> bool:
         return hashlib.sha256(path.read_bytes()).hexdigest() == digest
     except OSError:
         return False
+
+
+def _cleanup_stale_artifact_temps(artifacts_dir: Path) -> None:
+    if not artifacts_dir.exists():
+        return
+    try:
+        for temp in artifacts_dir.rglob("*.tmp"):
+            try:
+                temp.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 def _atomic_write_bytes(path: Path, content: bytes) -> None:

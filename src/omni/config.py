@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,8 +85,21 @@ def ensure_gitignore_entry(root: Path, entries: tuple[str, ...] = GITIGNORE_ENTR
         return False
 
     prefix = "" if not existing or existing.endswith(("\n", "\r\n")) else "\n"
-    gitignore.write_text(f"{existing}{prefix}{chr(10).join(missing)}\n", encoding="utf-8")
+    _atomic_write_text(gitignore, f"{existing}{prefix}{chr(10).join(missing)}\n")
     return True
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    temp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp.write_text(content, encoding="utf-8")
+        temp.replace(path)
+    finally:
+        if temp.exists():
+            try:
+                temp.unlink()
+            except OSError:
+                pass
 
 
 def _has_gitignore_entry(lines: list[str], entry: str) -> bool:

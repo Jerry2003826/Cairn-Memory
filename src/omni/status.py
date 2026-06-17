@@ -13,11 +13,15 @@ def status_json(root: Path | str | None = None) -> str:
     base = Path(root or Path.cwd()).resolve()
     memory = base / ".omni" / "generated" / "memory.md"
     links = inject_links(base)
+    omni_dir = (base / ".omni").is_dir()
+    database = (base / ".omni" / "omni.sqlite3").is_file()
+    initialized = omni_dir and database
     body = {
-        "ok": True,
-        "omni_dir": (base / ".omni").is_dir(),
+        "ok": initialized,
+        "initialized": initialized,
+        "omni_dir": omni_dir,
         "config": (base / ".omni" / "config.toml").is_file(),
-        "database": (base / ".omni" / "omni.sqlite3").is_file(),
+        "database": database,
         "generated_memory": memory.is_file(),
         "inject_links": links,
         "claude_link": links["claude"],

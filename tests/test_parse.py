@@ -166,7 +166,8 @@ def test_parse_transcript_normalizes_observed_qwen_stream_json_tool_use(
 
     result = parse.parse_transcript(transcript, engine="qwen")
 
-    assert result.archive is None
+    assert result.archive is not None
+    assert result.archive.line_count == 2
     assert [event.event_type for event in result.events] == ["tool_use", "tool_result"]
     tool_use = result.events[0]
     tool_result = result.events[1]
@@ -178,6 +179,33 @@ def test_parse_transcript_normalizes_observed_qwen_stream_json_tool_use(
     assert tool_result.event_type == "tool_result"
     assert tool_result.tool_use_id == "toolu_qwen"
     assert tool_result.meta["qwen_content_block"]["content"] == "tests passed"
+    reasons = [
+        json.loads(line)["reason"]
+        for line in result.archive.payload.decode("utf-8").splitlines()
+    ]
+    assert reasons == ["qwen_non_tool_line", "qwen_non_tool_line"]
+
+
+def test_parse_transcript_archives_lines_for_unknown_engine(tmp_path: Path) -> None:
+    transcript = tmp_path / "codex.jsonl"
+    write_jsonl(
+        transcript,
+        [
+            {
+                "type": "tool_use",
+                "timestamp": "2026-06-17T00:00:00Z",
+                "id": "toolu_codex",
+                "name": "Bash",
+            }
+        ],
+    )
+
+    result = parse.parse_transcript(transcript, engine="codex")
+
+    assert result.events == []
+    assert result.archive is not None
+    archive_record = json.loads(result.archive.payload.decode("utf-8").splitlines()[0])
+    assert archive_record["reason"] == "unknown_transcript_shape"
 
 
 def test_parse_qwen_archives_unrecorded_direct_tool_use_shape(tmp_path: Path) -> None:

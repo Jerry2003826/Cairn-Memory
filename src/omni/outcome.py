@@ -48,8 +48,9 @@ def mark_outcome(
     validate_choice("status", status, OUTCOME_STATUS_VALUES)
     validate_choice("tests_status", tests_status, TESTS_STATUS_VALUES)
     validate_choice("task_type", task_type, TASK_TYPE_VALUES)
+    eval_error: str | None = None
     if memory_effect is None:
-        memory_effect = _memory_effect_from_eval(conn, run_id)
+        memory_effect, eval_error = _memory_effect_from_eval(conn, run_id)
     validate_choice("memory_effect", memory_effect, MEMORY_EFFECT_VALUES)
 
     existing = conn.execute(
@@ -57,7 +58,10 @@ def mark_outcome(
         (run_id,),
     ).fetchone()
     now = now_iso()
-    evidence_json = _evidence_json(evidence or {"source": "user", "run_id": run_id})
+    base_evidence = evidence or {"source": "user", "run_id": run_id}
+    if eval_error is not None and evidence is None:
+        base_evidence = {**base_evidence, "eval_error": eval_error}
+    evidence_json = _evidence_json(base_evidence)
     values = {
         "run_id": run_id,
         "task_type": task_type,
@@ -292,16 +296,18 @@ def _evidence_json(value: dict[str, Any]) -> str:
     return redact(encoded).data.decode("utf-8", errors="replace")
 
 
-def _memory_effect_from_eval(conn: sqlite3.Connection, run_id: str) -> str:
+def _memory_effect_from_eval(conn: sqlite3.Connection, run_id: str) -> tuple[str, str | None]:
     root = root_from_connection(conn)
     if root is None:
-        return "unknown"
+        return "unknown", None
     try:
         result = behavior_eval.evaluate_run(root, run_id)
-    except Exception:
-        return "unknown"
+    except (sqlite3.Error, KeyError) as exc:
+        return "unknown", redact_text(str(exc))
     effect = result.get("memory_effect")
-    return effect if isinstance(effect, str) and effect in MEMORY_EFFECT_VALUES else "unknown"
+    if isinstance(effect, str) and effect in MEMORY_EFFECT_VALUES:
+        return effect, None
+    return "unknown", None
 
 
 def _tests_status_from_verify(verify_result: dict[str, Any]) -> str:

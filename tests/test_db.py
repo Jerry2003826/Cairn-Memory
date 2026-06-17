@@ -350,6 +350,26 @@ def test_failed_migration_rolls_back_completely_and_can_retry(
     assert "migration_probe" in table_names(conn)
 
 
+def test_migrate_raises_when_schema_version_stays_behind_latest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    original_migration_sql = db.migration_sql
+
+    def fake_migration_sql(filename: str) -> str:
+        if filename == "009_incomplete.sql":
+            return "CREATE TABLE incomplete_probe(x TEXT);"
+        return original_migration_sql(filename)
+
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS + (("9", "009_incomplete.sql"),))
+    monkeypatch.setattr(db, "LATEST_SCHEMA_VERSION", "9")
+    monkeypatch.setattr(db, "migration_sql", fake_migration_sql)
+
+    with pytest.raises(RuntimeError, match="schema_version is '8', expected '9'"):
+        db.migrate(conn)
+
+
 def test_migration_sql_does_not_set_pragmas() -> None:
     sql = db.migration_sql("001_init.sql")
     executable_sql = "\n".join(
@@ -465,6 +485,54 @@ def test_put_artifact_writes_content_through_temp_file(
 
     assert artifact.path.exists()
     assert artifact.path.read_bytes() == b'{"event":"tool_use"}\n'
+
+
+def test_put_artifact_cleans_stale_temp_files(tmp_path: Path) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    artifacts = tmp_path / ".omni" / "artifacts"
+    stale = artifacts / "ab" / "cd" / "deadbeef.tmp"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"orphan")
+
+    store.put_artifact(
+        tmp_path,
+        conn,
+        kind="transcript_event",
+        data=b'{"event":"tool_use"}\n',
+    )
+
+    assert not stale.exists()
+
+
+def test_close_stale_runs_resolves_relative_transcript_against_run_cwd(
+    tmp_path: Path,
+) -> None:
+    conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
+    db.migrate(conn)
+    transcript = tmp_path / "relative.jsonl"
+    transcript.write_text(
+        '{"type":"tool_use","id":"toolu_rel","timestamp":"2026-06-11T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+    conn.execute(
+        """
+        INSERT INTO runs(
+          run_id, project_id, cwd, snapshot_seq, transcript_path, status
+        ) VALUES(?,?,?,?,?,?)
+        """,
+        ("relative_run", "project", str(tmp_path), 0, "relative.jsonl", "open"),
+    )
+    conn.commit()
+    os.utime(transcript, (1, 1))
+
+    closed = ingest.close_stale_runs(conn, older_than_seconds=0, now_ts=10)
+    row = conn.execute(
+        "SELECT status, end_reason FROM runs WHERE run_id = 'relative_run'"
+    ).fetchone()
+
+    assert closed == 1
+    assert dict(row) == {"status": "closed", "end_reason": "watchdog"}
 
 
 def test_ingest_transcript_is_idempotent_and_redacts_db_content(
@@ -1525,6 +1593,9 @@ def test_gate_extract_static_facts_counts_detector_errors(
     result = gate.extract_static_facts(tmp_path, conn)
 
     assert result.detector_errors == 1
+    assert result.detector_error_names == (
+        f"{fail_detector.__module__}.{fail_detector.__qualname__}",
+    )
     assert result.auto_committed == 0
     assert result.pending == 0
 
@@ -1571,6 +1642,7 @@ def test_ingest_static_fact_conflict_preserves_events_and_skips_static_facts(
     result = ingest.ingest(root=tmp_path, run_id="run_conflict", transcript=transcript)
     conn = db.connect(tmp_path / ".omni" / "omni.sqlite3")
 
+    assert result.static_fact_skipped is True
     assert result.events_inserted == 1
     assert (
         conn.execute("SELECT COUNT(*) FROM events WHERE run_id = 'run_conflict'").fetchone()[0]

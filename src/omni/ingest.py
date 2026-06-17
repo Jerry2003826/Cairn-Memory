@@ -41,6 +41,8 @@ class IngestResult:
     events_inserted: int
     queue_drained: int
     static_fact_detector_errors: int = 0
+    static_fact_detector_error_names: tuple[str, ...] = ()
+    static_fact_skipped: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,9 +185,9 @@ def ingest(
                     consumed_hook_paths.update(hook_paths)
                     run_ids.append(run_id)
 
-        static_fact_result = _extract_static_facts_for_ingest(base, conn)
+        static_fact_result, static_fact_skipped = _extract_static_facts_for_ingest(base, conn)
         static_fact_detector_errors = static_fact_result.detector_errors
-        close_stale_runs(conn, commit=False)
+        close_stale_runs(conn, root=base, commit=False)
         conn.commit()
         if transcript is None and requests:
             ack_ingest_queue(requests)
@@ -196,6 +198,8 @@ def ingest(
             events_inserted=total_inserted,
             queue_drained=drained,
             static_fact_detector_errors=static_fact_detector_errors,
+            static_fact_detector_error_names=static_fact_result.detector_error_names,
+            static_fact_skipped=static_fact_skipped,
         )
     finally:
         conn.close()
@@ -204,17 +208,26 @@ def ingest(
 def close_stale_runs(
     conn: sqlite3.Connection,
     *,
+    root: Path | str | None = None,
     older_than_seconds: int = 600,
     now_ts: float | None = None,
     commit: bool = True,
 ) -> int:
     now = datetime.now(timezone.utc).timestamp() if now_ts is None else now_ts
     rows = conn.execute(
-        "SELECT run_id, transcript_path FROM runs WHERE status = 'open' AND transcript_path IS NOT NULL"
+        """
+        SELECT run_id, transcript_path, cwd
+        FROM runs
+        WHERE status = 'open' AND transcript_path IS NOT NULL
+        """
     ).fetchall()
     closed = 0
     for row in rows:
-        path = Path(row["transcript_path"])
+        path = _resolve_run_transcript_path(
+            row["transcript_path"],
+            row["cwd"],
+            root,
+        )
         try:
             stale = not path.exists() or now - path.stat().st_mtime >= older_than_seconds
         except OSError:
@@ -229,6 +242,18 @@ def close_stale_runs(
     if commit:
         conn.commit()
     return closed
+
+
+def _resolve_run_transcript_path(
+    transcript_path: str,
+    cwd: str | None,
+    root: Path | str | None,
+) -> Path:
+    raw = Path(transcript_path)
+    if raw.is_absolute():
+        return raw
+    base = Path(cwd) if cwd else Path(root or Path.cwd()).resolve()
+    return (base / raw).resolve(strict=False)
 
 
 def run_show(root: Path | str | None, run_id: str, seq: int | None = None) -> str:
@@ -345,20 +370,20 @@ def _project_transcript_path(root: Path, transcript_path: Any, *, label: str) ->
 def _extract_static_facts_for_ingest(
     root: Path,
     conn: sqlite3.Connection,
-) -> gate.GateResult:
+) -> tuple[gate.GateResult, bool]:
     conn.execute("SAVEPOINT ingest_static_facts")
     try:
         result = gate.extract_static_facts(root, conn, commit=False)
     except gate.ConflictRequiresSupersede:
         conn.execute("ROLLBACK TO SAVEPOINT ingest_static_facts")
         conn.execute("RELEASE SAVEPOINT ingest_static_facts")
-        return gate.GateResult(auto_committed=0, pending=0)
+        return gate.GateResult(auto_committed=0, pending=0), True
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT ingest_static_facts")
         conn.execute("RELEASE SAVEPOINT ingest_static_facts")
         raise
     conn.execute("RELEASE SAVEPOINT ingest_static_facts")
-    return result
+    return result, False
 
 
 def _ensure_run(

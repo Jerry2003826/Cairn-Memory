@@ -59,8 +59,9 @@ def _git_origin_url(path: Path) -> str | None:
             text=True,
             capture_output=True,
             check=False,
+            timeout=5,
         )
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
         return None

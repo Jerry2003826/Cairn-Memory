@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from omni import mcp
 from omni import db
 from omni import task
@@ -369,3 +371,39 @@ def test_mcp_tools_use_readonly_connection_without_migrate(
     )
 
     assert response["result"]["isError"] is False
+
+
+def test_mcp_internal_error_uses_generic_message(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import io
+
+    def boom(_root: Path | str, _request: dict[str, object]) -> dict[str, object]:
+        raise RuntimeError("secret-internal-detail")
+
+    monkeypatch.setattr(mcp, "handle_request", boom)
+    stdout = io.StringIO()
+
+    exit_code = mcp.serve_stdio(
+        tmp_path,
+        stdin=io.StringIO(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "ping",
+                }
+            )
+            + "\n"
+        ),
+        stdout=stdout,
+    )
+    captured = capsys.readouterr()
+    response = json.loads(stdout.getvalue())
+
+    assert exit_code == 0
+    assert response["error"]["message"] == "Internal error"
+    assert "secret-internal-detail" in captured.err
+    assert "secret-internal-detail" not in stdout.getvalue()

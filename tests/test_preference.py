@@ -262,6 +262,44 @@ def test_cli_preference_extract_outputs_json(
     assert output["created"] == 1
 
 
+def test_extract_insert_guard_blocks_duplicates_when_precheck_misses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    conn = _fixture_db(tmp_path)
+    conn.execute(
+        """
+        INSERT INTO fact_candidates(
+          cand_id, scope, subject, predicate, qualifier, object_norm, value_type,
+          claim, trust, evidence, extractor_version, state, created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            "cand_guard",
+            "project",
+            ".",
+            "prefers_small_prs",
+            "default",
+            "true",
+            "string",
+            "Keep pull requests small.",
+            2,
+            "{}",
+            "test@1",
+            "pending",
+            "2026-06-15T00:00:00Z",
+        ),
+    )
+    conn.commit()
+    [first] = preference.extract_candidates(conn)
+    monkeypatch.setattr(preference, "_candidate_exists_for_source", lambda *_args: False)
+
+    second = preference.extract_candidates(conn)
+
+    assert second == []
+    candidates = preference.list_candidates(conn, state="all")
+    assert [item["pref_cand_id"] for item in candidates] == [first["pref_cand_id"]]
+
+
 def _fixture_db(root: Path) -> sqlite3.Connection:
     (root / ".omni").mkdir()
     conn = db.connect(root / ".omni" / "omni.sqlite3")

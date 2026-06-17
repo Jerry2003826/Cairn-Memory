@@ -10,7 +10,7 @@ from omni._common import collapse_whitespace_command
 from omni.gate import FactCandidate
 
 ORIGIN = "observed_command@1"
-COMMAND_TOOLS = {"Bash", "PowerShell"}
+COMMAND_TOOLS = {"Bash", "PowerShell", "bash", "run_shell_command"}
 
 
 def detect(conn: sqlite3.Connection) -> list[FactCandidate]:
@@ -18,7 +18,7 @@ def detect(conn: sqlite3.Connection) -> list[FactCandidate]:
         """
         SELECT run_id, seq, tool, meta
         FROM events
-        WHERE tool IN ('Bash', 'PowerShell')
+        WHERE tool IN ('Bash', 'PowerShell', 'bash', 'run_shell_command')
         ORDER BY run_id, seq
         """
     ).fetchall()

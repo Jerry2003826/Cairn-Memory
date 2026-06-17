@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +114,13 @@ def _canonical_pm_run_command(command: str) -> str:
 def _path_in_text(value: str, target: str) -> bool:
     normalized_value = value.replace("\\", "/").lower()
     normalized_target = target.replace("\\", "/").lower()
-    return normalized_target in normalized_value
+    if normalized_value == normalized_target:
+        return True
+    escaped = re.escape(normalized_target)
+    return re.search(
+        rf"(?:^|[\s\"'`|;,=&(:]|/){escaped}(?=$|[\s\"'`|;,=&):]|/)",
+        normalized_value,
+    ) is not None
 
 
 def _contains_path(values: Any, target: str) -> bool:

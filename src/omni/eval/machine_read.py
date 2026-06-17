@@ -22,22 +22,30 @@ def surface_from_command(command: str) -> str | None:
         index += 1
     while index < len(tokens) and _looks_like_env_assignment(tokens[index]):
         index += 1
-    if index >= len(tokens):
-        return None
-
-    executable = Path(tokens[index]).name
-    if (
-        executable in {"python", "python3"}
-        and tokens[index + 1 : index + 3] == ["-m", "omni.cli"]
-    ):
-        args = tokens[index + 3 :]
-    elif executable in {"cairn", "omni"}:
-        args = tokens[index + 1 :]
-    else:
-        return None
-    if len(args) < 2:
+    args = _resolve_cairn_args(tokens, index)
+    if args is None or len(args) < 2:
         return None
     return SURFACE_COMMANDS.get((args[0], args[1]))
+
+
+def _resolve_cairn_args(tokens: list[str], start: int) -> list[str] | None:
+    if start >= len(tokens):
+        return None
+    if tokens[start] == "uv" and start + 2 < len(tokens) and tokens[start + 1] == "run":
+        return _resolve_cairn_args(tokens, start + 2)
+
+    executable = Path(tokens[start]).name
+    if executable.lower().endswith(".exe"):
+        executable = executable[:-4]
+
+    if executable in {"python", "python3"}:
+        if tokens[start + 1 : start + 3] == ["-m", "omni.cli"]:
+            return tokens[start + 3 :]
+        return None
+
+    if executable in {"cairn", "omni"}:
+        return tokens[start + 1 :]
+    return None
 
 
 def _command_tokens(command: str) -> list[str]:

@@ -236,8 +236,15 @@ def _run_process(
             pass
         raise
 
-    for thread in threads:
+    reader_incomplete = False
+    for index, thread in enumerate(threads):
         thread.join(timeout=1)
+        if thread.is_alive():
+            reader_incomplete = True
+            if index == 0:
+                stdout_capture_truncated[0] = True
+            else:
+                stderr_capture_truncated[0] = True
 
     return {
         "exit_code": exit_code,
@@ -246,6 +253,7 @@ def _run_process(
         "stderr": bytes(stderr),
         "stdout_capture_truncated": stdout_capture_truncated[0],
         "stderr_capture_truncated": stderr_capture_truncated[0],
+        "reader_incomplete": reader_incomplete,
     }
 
 
