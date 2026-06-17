@@ -922,6 +922,35 @@ def test_connect_project_readonly_supports_verify_and_blocks_writes(tmp_path: Pa
     assert result["status"] == "passed"
 
 
+def test_verify_preflight_raises_when_exit_code_not_int(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-int exit_code (without timeout) must raise, not be silently masked.
+
+    The integrity guard was previously a bare ``assert`` which is stripped
+    under ``python -O``; the malformed result would then be reported as a
+    plain ``failed`` run, hiding a runner malfunction.
+    """
+    conn = _fixture_db(tmp_path)
+    _insert_fact(conn, "python test.py")
+
+    def return_non_int_exit(*args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "timed_out": False,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "stdout_capture_truncated": False,
+            "stderr_capture_truncated": False,
+        }
+
+    monkeypatch.setattr(verify, "_run_process", return_non_int_exit)
+
+    with pytest.raises(RuntimeError):
+        verify.run_preflight(conn, tmp_path)
+
+
 def _fixture_db(root: Path) -> sqlite3.Connection:
     (root / ".omni").mkdir()
     conn = db.connect(root / ".omni" / "omni.sqlite3")
